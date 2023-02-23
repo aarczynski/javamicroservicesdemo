@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo
+package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company
 
 import org.springframework.boot.test.context.SpringBootTest
 import spock.lang.Specification
