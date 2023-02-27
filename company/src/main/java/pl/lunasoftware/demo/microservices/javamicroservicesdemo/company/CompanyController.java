@@ -15,7 +15,7 @@ public class CompanyController {
 
     @GetMapping("/departments/costs")
     public DepartmentsCostDto getTotalCost() {
-        return companyService.getAllDepartmentsCost();
+        return companyService.getAllDepartmentsCosts();
     }
 
     @GetMapping("/departments/{departmentName}/costs")

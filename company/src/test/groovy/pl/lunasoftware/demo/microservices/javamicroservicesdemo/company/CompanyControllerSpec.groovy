@@ -25,7 +25,7 @@ class CompanyControllerSpec extends Specification {
 
     def "should return json response for all departments costs"() {
         given:
-        companyService.getAllDepartmentsCost() >> new DepartmentsCostDto(
+        companyService.getAllDepartmentsCosts() >> new DepartmentsCostDto(
                 BigDecimal.TEN.setScale(2, RoundingMode.HALF_UP), [buildTestDepartmentDto()])
 
         when:
