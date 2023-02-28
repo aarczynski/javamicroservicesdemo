@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  company-app:
+    build:
+      context: ./company
+      dockerfile: docker/Dockerfile
+    container_name: company-app
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+
+    ports:
+      - '8080:8080'
+      - '5005:5005'
+    networks:
+      - microservices-demo-network
+    command: ["java", "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005", "-jar", "./company-app.jar"]
+
+  postgres-db:
+    image: postgres:15.2
+    container_name: miscrosevices-demo-db
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=microservicesdemodb
+    ports:
+      - '5432:5432'
+    networks:
+      - microservices-demo-network
+
+networks:
+  microservices-demo-network:
