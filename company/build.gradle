@@ -9,6 +9,10 @@ group = 'pl.luna-software.demo.microservices'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = '17'
 
+compileJava {
+    options.compilerArgs << '--enable-preview'
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor

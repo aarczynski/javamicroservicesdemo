@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@Entity(name = "employee")
+@Entity(name = "Employee")
 @Table(name = "employee")
 public class EmployeeEntity {
 

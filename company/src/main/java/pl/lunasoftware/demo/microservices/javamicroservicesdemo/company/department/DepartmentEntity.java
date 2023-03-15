@@ -6,6 +6,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.NamedAttributeNode;
+import jakarta.persistence.NamedEntityGraph;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -18,8 +20,9 @@ import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@Entity(name = "department")
+@Entity(name = "Department")
 @Table(name = "department")
+@NamedEntityGraph(name = "department-employees", attributeNodes = @NamedAttributeNode(value = "employees"))
 public class DepartmentEntity {
 
     @Id

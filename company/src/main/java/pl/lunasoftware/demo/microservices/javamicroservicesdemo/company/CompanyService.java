@@ -23,7 +23,7 @@ public class CompanyService {
     }
 
     public DepartmentsCostDto getAllDepartmentsCosts() {
-        List<DepartmentCostDto> departmentsCosts = departmentRepository.findAll()
+        List<DepartmentCostDto> departmentsCosts = departmentRepository.findAllBy()
                 .stream()
                 .collect(Collectors.toMap(Function.identity(), DepartmentEntity::calculateTotalCost))
                 .entrySet().stream()

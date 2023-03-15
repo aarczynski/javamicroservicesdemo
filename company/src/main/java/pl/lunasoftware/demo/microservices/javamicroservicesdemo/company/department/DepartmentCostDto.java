@@ -6,5 +6,5 @@ import java.math.BigDecimal;
 
 public record DepartmentCostDto(
         String departmentName,
-        @JsonFormat(shape = JsonFormat.Shape.STRING)BigDecimal cost) {
+        @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal cost) {
 }

@@ -7,5 +7,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    open-in-view: false
   flyway:
     locations: db/migration/postgres
