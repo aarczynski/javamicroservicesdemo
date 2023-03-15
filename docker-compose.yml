@@ -7,7 +7,7 @@ services:
       dockerfile: docker/Dockerfile
     container_name: company-app
     depends_on:
-      postgres-db:
+      company-app-db:
         condition: service_healthy
 
     ports:
@@ -17,7 +17,7 @@ services:
       - microservices-demo-network
     command: ["java", "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005", "-jar", "./company-app.jar"]
 
-  postgres-db:
+  company-app-db:
     image: postgres:15.2
     container_name: miscrosevices-demo-db
     healthcheck:
