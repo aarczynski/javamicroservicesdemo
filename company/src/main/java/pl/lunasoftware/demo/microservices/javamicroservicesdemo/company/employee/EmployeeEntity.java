@@ -1,6 +1,8 @@
 package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.employee;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
@@ -20,6 +22,7 @@ import java.util.UUID;
 public class EmployeeEntity {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
     private String firstName;
     private String lastName;

@@ -1,12 +1,12 @@
 CREATE TABLE department
 (
-    id   UUID PRIMARY KEY,
+    id   UUID DEFAULT random_uuid() PRIMARY KEY,
     name VARCHAR(50) NOT NULL
 );
 
 CREATE TABLE employee
 (
-    id         UUID PRIMARY KEY,
+    id         UUID DEFAULT random_uuid() PRIMARY KEY,
     first_name VARCHAR(100)   NOT NULL,
     last_name  VARCHAR(100)   NOT NULL,
     email      VARCHAR(100)   NOT NULL,
@@ -18,5 +18,6 @@ CREATE TABLE department_employee
     department_id UUID,
     employee_id   UUID,
     FOREIGN KEY (department_id) REFERENCES department (id),
-    FOREIGN KEY (employee_id) REFERENCES employee (id)
+    FOREIGN KEY (employee_id) REFERENCES employee (id),
+    UNIQUE (department_id, employee_id)
 );
