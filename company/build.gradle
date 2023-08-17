@@ -7,7 +7,10 @@ plugins {
 
 group = 'pl.luna-software.demo.microservices'
 version = '0.0.1-SNAPSHOT'
-sourceCompatibility = '17'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+}
 
 compileJava {
     options.compilerArgs << '--enable-preview'
@@ -37,6 +40,10 @@ dependencies {
     testImplementation 'com.h2database:h2:2.1.214'
 }
 
-tasks.named('test') {
-    useJUnitPlatform()
+testing {
+    suites {
+        test {
+            useJUnitJupiter()
+        }
+    }
 }
