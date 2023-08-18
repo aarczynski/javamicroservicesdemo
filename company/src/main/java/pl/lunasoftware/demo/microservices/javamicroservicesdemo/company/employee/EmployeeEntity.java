@@ -1,6 +1,8 @@
 package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.employee;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -29,6 +31,8 @@ public class EmployeeEntity {
     @EqualsAndHashCode.Include
     private String email;
     private BigDecimal salary;
+    @Enumerated(EnumType.STRING)
+    private EmployeeStatus status;
     @ManyToMany(mappedBy = "employees")
     private Set<DepartmentEntity> departments = new HashSet<>();
 }

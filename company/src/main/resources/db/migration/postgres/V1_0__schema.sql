@@ -10,8 +10,11 @@ CREATE TABLE employee
     first_name VARCHAR(100)   NOT NULL,
     last_name  VARCHAR(100)   NOT NULL,
     email      VARCHAR(100)   NOT NULL,
-    salary     NUMERIC(10, 2) NOT NULL
+    salary     NUMERIC(10, 2) NOT NULL,
+    status     VARCHAR(50)    NOT NULL
 );
+
+CREATE INDEX employee_status_idx ON employee (status) WHERE status = 'ACTIVE';
 
 CREATE TABLE department_employee
 (

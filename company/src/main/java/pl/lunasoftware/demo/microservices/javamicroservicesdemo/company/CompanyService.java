@@ -23,7 +23,7 @@ public class CompanyService {
     }
 
     public DepartmentsCostDto getAllDepartmentsCosts() {
-        List<DepartmentCostDto> departmentsCosts = departmentRepository.findAllBy()
+        List<DepartmentCostDto> departmentsCosts = departmentRepository.findAllActiveEmployees()
                 .stream()
                 .collect(Collectors.toMap(Function.identity(), DepartmentEntity::calculateTotalCost))
                 .entrySet().stream()
@@ -38,7 +38,7 @@ public class CompanyService {
     }
 
     public DepartmentCostDto getDepartmentCost(String departmentName) {
-        BigDecimal cost = departmentRepository.findByNameIgnoringCase(departmentName)
+        BigDecimal cost = departmentRepository.findAllActiveEmployeesForDepartment(departmentName)
                 .map(DepartmentEntity::calculateTotalCost)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, departmentName + " not found"));
         return new DepartmentCostDto(departmentName, cost);

@@ -2,6 +2,7 @@ package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.departm
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,4 +17,10 @@ public interface DepartmentRepository extends JpaRepository<DepartmentEntity, UU
 
     @EntityGraph(value = "department-employees")
     List<DepartmentEntity> findAllBy();
+
+    @Query("SELECT d FROM Department d JOIN FETCH d.employees e WHERE e.status = 'ACTIVE'")
+    List<DepartmentEntity> findAllActiveEmployees();
+
+    @Query("SELECT d FROM Department d JOIN FETCH d.employees e WHERE e.status = 'ACTIVE' AND UPPER(d.name) = UPPER(:departmentName)")
+    Optional<DepartmentEntity> findAllActiveEmployeesForDepartment(String departmentName);
 }

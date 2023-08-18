@@ -1,0 +1,5 @@
+GET localhost:8080/departments/costs
+
+###
+
+GET localhost:8080/departments/it/costs
