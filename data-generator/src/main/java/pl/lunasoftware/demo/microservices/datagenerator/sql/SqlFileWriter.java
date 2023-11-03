@@ -30,10 +30,10 @@ public class SqlFileWriter {
                 departments = deps;
                 employees = empls;
             } catch (Exception e) {
-                System.out.println("Unable to parse arguments. Using defaults.");
+                System.out.printf("Unable to parse arguments. Using defaults (%d departments, %d employees).%n", departments, employees);
             }
         } else {
-            System.out.println("No arguments provided. Using defaults.");
+            System.out.printf("No arguments provided. Using defaults (%d departments, %d employees).%n", departments, employees);
         }
 
         new SqlFileWriter().writeSqlFile(departments, employees);
