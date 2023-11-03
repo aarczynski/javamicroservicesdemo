@@ -34,3 +34,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Generated SQLs
+company/src/main/resources/db/migration/postgres/V1_1_*_generated-data.sql

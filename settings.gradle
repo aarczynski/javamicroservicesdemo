@@ -7,3 +7,4 @@ pluginManagement {
 }
 rootProject.name = 'javamicroservicesdemo'
 include 'company'
+include 'data-generator'

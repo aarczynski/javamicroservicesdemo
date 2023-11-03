@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+    id 'groovy'
+}
+
+group = 'pl.luna-software.demo.microservices'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+}
+
+compileJava {
+    options.compilerArgs << '--enable-preview'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'pl.lunasoftware.demo.microservices.datagenerator.sql.SqlFileWriter'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.github.javafaker:javafaker:1.0.2'
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
+}
+
+testing {
+    suites {
+        test {
+            useJUnitJupiter()
+        }
+    }
+}
+
