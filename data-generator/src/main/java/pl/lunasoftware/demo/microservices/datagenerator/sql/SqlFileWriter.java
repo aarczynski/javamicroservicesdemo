@@ -22,7 +22,7 @@ public class SqlFileWriter {
 
     public static void main(String[] args) throws IOException {
         int departments = 1_000;
-        int employees = 1_000_000;
+        int employees = 10_000;
         if (args.length == 2) {
             try {
                 int deps = Integer.parseInt(args[0]);
@@ -40,25 +40,43 @@ public class SqlFileWriter {
     }
 
     public void writeSqlFile(int departmentsCount, int employeesCount) throws IOException {
-        //TODO: split into batches due to OoM
-//        int departmentsBatchSize = 100;
-//        int employeesBatchSize = 1000;
-//        for (int d = 1; d < departmentsCount; d += departmentsBatchSize) {
-//
-//        }
-
-        List<Department> departments = departmentGenerator.randomDepartments(departmentsCount);
-        List<Employee> employees = employeeGenerator.randomEmployees(employeesCount);
-        Map<Department, List<Employee>> departmentsEmployees = matcher.assignEmployeesToDepartments(departments, employees);
-
-        String departmentsSql = sqlGenerator.generateDepartmentsBatchSql(departments);
-        String employeesSql = sqlGenerator.generateEmployeesBatchSql(employees);
-        String departmentsEmployeesSql = sqlGenerator.generateDepartmentsEmployeesAssignmentSql(departmentsEmployees);
+        int departmentsBatchSize = 1000;
+        int employeesBatchSize = 1000;
 
         Path path = findNextSqlDataFile();
-        Files.write(path, departmentsSql.getBytes(), StandardOpenOption.CREATE_NEW);
-        Files.write(path, employeesSql.getBytes(), StandardOpenOption.APPEND);
-        Files.write(path, departmentsEmployeesSql.getBytes(), StandardOpenOption.APPEND);
+        Files.createFile(path);
+
+        int departmentsToGenerate = departmentsCount;
+        int departmentsBatches = (int) Math.ceil(departmentsCount / (double) departmentsBatchSize);
+
+        int departmentsGenerated = 0;
+        int employeesGenerated = 0;
+
+        while (departmentsToGenerate > 0) {
+            List<Department> departments = departmentGenerator.randomDepartments(Math.min(departmentsToGenerate, departmentsBatchSize));
+            String departmentsSql = sqlGenerator.generateDepartmentsBatchSql(departments);
+            Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
+            departmentsGenerated += departments.size();
+
+            int employeesToGenerate = employeesCount / departmentsBatches;
+            while (employeesToGenerate > 0) {
+                List<Employee> employees = employeeGenerator.randomEmployees(Math.min(employeesToGenerate, employeesBatchSize));
+                String employeesSql = sqlGenerator.generateEmployeesBatchSql(employees);
+                Files.write(path, employeesSql.getBytes(), StandardOpenOption.APPEND);
+                employeesGenerated += employees.size();
+
+                Map<Department, List<Employee>> departmentsEmployees = matcher.assignEmployeesToDepartments(departments, employees);
+                String departmentsEmployeesSql = sqlGenerator.generateDepartmentsEmployeesAssignmentSql(departmentsEmployees);
+                Files.write(path, departmentsEmployeesSql.getBytes(), StandardOpenOption.APPEND);
+
+                employeesToGenerate -= employees.size();
+                System.out.printf("Generating progress: %.2f%%%n", 100 * employeesGenerated / (double) employeesCount);
+            }
+            departmentsToGenerate -= departments.size();
+        }
+
+        System.out.println("Departments generated: " + departmentsGenerated);
+        System.out.println("Employees generated: " + employeesGenerated);
         System.out.println("Generated file: " + path);
     }
 

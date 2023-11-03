@@ -4,6 +4,7 @@ import com.github.javafaker.Faker;
 import pl.lunasoftware.demo.microservices.datagenerator.model.Employee.Status;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -31,7 +32,7 @@ public class EmployeeGenerator {
                 firstName,
                 lastName,
                 faker.internet().emailAddress(emailBeginning),
-                BigDecimal.valueOf(faker.number().numberBetween(3000, 30000)),
+                BigDecimal.valueOf(faker.number().randomDouble(2, 5000, 30000)).setScale(2, RoundingMode.HALF_UP),
                 randomEmployeeStatus()
         );
     }

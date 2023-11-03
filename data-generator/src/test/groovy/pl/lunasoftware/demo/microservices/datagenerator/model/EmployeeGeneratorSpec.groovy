@@ -26,6 +26,7 @@ class EmployeeGeneratorSpec extends Specification {
 
         then:
         actual.size() == count
+        actual*.salary().each { assert it.scale() == 2 }
         (actual*.firstName() as Set).size() > 1
         (actual*.lastName() as Set).size() > 1
         (actual*.email() as Set).size() > 1
