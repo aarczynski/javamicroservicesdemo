@@ -9,13 +9,13 @@ class DepartmentGeneratorSpec extends Specification {
 
     def "should generate random departments"() {
         given:
-        def count = 100
+        def count = 100_000
 
         when:
         def actual = gen.randomDepartments(count)
 
         then:
         actual.size() == count
-        (actual*.name() as Set).size() > 1
+        (actual*.name() as Set).size() == count
     }
 }

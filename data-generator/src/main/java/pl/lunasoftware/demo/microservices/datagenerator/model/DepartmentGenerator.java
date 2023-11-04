@@ -19,7 +19,7 @@ public class DepartmentGenerator {
     private Department randomDepartment() {
         return new Department(
                 UUID.randomUUID(),
-                faker.company().name()
+                String.join(" ", faker.company().name(), UUID.randomUUID().toString())
         );
     }
 }

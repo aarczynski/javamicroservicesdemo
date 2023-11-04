@@ -24,15 +24,14 @@ public class EmployeeGenerator {
     private Employee randomEmployee() {
         var firstName = faker.name().firstName();
         var lastName = faker.name().lastName();
-        var randomSuffix = Integer.toString(faker.number().numberBetween(1, 10000));
-        var emailBeginning = String.join(".", firstName, lastName, randomSuffix).toLowerCase().replaceAll("'", "");
+        var emailBeginning = String.join(".", firstName, lastName, UUID.randomUUID().toString()).toLowerCase().replaceAll("'", "");
 
         return new Employee(
                 UUID.randomUUID(),
                 firstName,
                 lastName,
                 faker.internet().emailAddress(emailBeginning),
-                BigDecimal.valueOf(faker.number().randomDouble(2, 5000, 30000)).setScale(2, RoundingMode.HALF_UP),
+                BigDecimal.valueOf(faker.number().randomDouble(2, 5_000, 30_000)).setScale(2, RoundingMode.HALF_UP),
                 randomEmployeeStatus()
         );
     }

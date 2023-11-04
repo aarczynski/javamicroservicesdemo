@@ -83,7 +83,7 @@ public class SqlFileWriter {
     private Path findNextSqlDataFile() {
         String pathTemplate = "company/src/main/resources/db/migration/postgres/V1_1_%d__generated-data.sql";
 
-        int i = 0;
+        int i = 1;
         while (Files.exists(Paths.get(String.format(pathTemplate, i)))) {
             i++;
         }

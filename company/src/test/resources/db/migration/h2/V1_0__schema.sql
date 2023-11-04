@@ -1,7 +1,7 @@
 CREATE TABLE department
 (
     id   UUID DEFAULT random_uuid() PRIMARY KEY,
-    name VARCHAR(50) NOT NULL
+    name VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE employee

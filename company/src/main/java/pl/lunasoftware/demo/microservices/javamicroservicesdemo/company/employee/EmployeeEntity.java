@@ -1,5 +1,6 @@
 package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.employee;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -29,6 +30,7 @@ public class EmployeeEntity {
     private String firstName;
     private String lastName;
     @EqualsAndHashCode.Include
+    @Column(unique = true)
     private String email;
     private BigDecimal salary;
     @Enumerated(EnumType.STRING)
