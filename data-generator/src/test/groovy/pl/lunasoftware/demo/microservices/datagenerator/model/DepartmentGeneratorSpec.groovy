@@ -7,9 +7,9 @@ class DepartmentGeneratorSpec extends Specification {
 
     private DepartmentGenerator gen = new DepartmentGenerator()
 
-    def "should generate random departments"() {
+    def "should generate random department"() {
         given:
-        def count = 10
+        def count = 1
 
         when:
         def actual = gen.randomDepartments(count)

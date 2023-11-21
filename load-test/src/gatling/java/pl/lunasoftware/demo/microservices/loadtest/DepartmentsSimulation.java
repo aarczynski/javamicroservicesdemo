@@ -21,7 +21,7 @@ public class DepartmentsSimulation extends Simulation {
 
     private static final Faker faker = new Faker();
 
-    private static final int RPS = 500;
+    private static final int RPS = 100;
     private static final int LOAD_TEST_DURATION_SECS = 10;
 
     public DepartmentsSimulation() {

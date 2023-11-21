@@ -22,7 +22,7 @@ public class SqlFileWriter {
     private final SqlGenerator sqlGenerator = new SqlGenerator();
 
     public static void main(String[] args) throws IOException {
-        int departments = 1_000;
+        int departments = 5_000;
         int employees = 10_000;
         if (args.length == 1) {
             try {
