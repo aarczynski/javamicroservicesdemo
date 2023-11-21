@@ -18,11 +18,18 @@ This file may be extremely large (several GB) leading to very long artifact buil
 It is possible to change data size, changing above params. It is recommended to use multiples of 1 000. Otherwise, generated amount data may be slightly inaccurate. When no params or wrong params are provided, default values will be used: 1 000 departments, 10 000 employees.
 
 Generated SQL scripts are not tracked by Git.
+
 ## Running company app locally
 Run following command:
 ```shell
 ./gradlew clean build && docker-compose up --build
 ```
+
 ## Sample HTTP requests
 Check `http/requests.http` file.
 
+## Performance testing
+Gatling gradle plugin is used. Run following command:
+```shell
+./gradlew clean :load-test:gatlingRun
+```
