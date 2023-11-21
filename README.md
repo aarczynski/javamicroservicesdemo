@@ -9,15 +9,13 @@ Requires JDK17+, Docker, and Docker Compose installed on your machine.
 Run following commands:
 ```shell
 ./gradlew clean :data-generator:build
-java -jar data-generator/build/libs/data-generator-0.0.1-SNAPSHOT.jar 2000 200000
+java -jar data-generator/build/libs/data-generator-0.0.1-SNAPSHOT.jar 100000
 ```
-This generates SQL script that inserts 2 000 departments, 200 000 employees, and generates random relations between them. Generated files are put in `company` module `resources/db/migration/postgres` folder. It will be loaded by Flyway during application startup.
+This generates SQL script that inserts 1 000 departments (fixed value), 100 000 employees (configurable), and generates random relations between them. Generated files are put in `data-generator` module in `output`. Import them into application database (check `docker-compose.yml` for credentials).
 
-This file may be extremely large (several GB) leading to very long artifact building and application startup times. You may prefer to import this file into DB manually.
+These files may be extremely large (several GB), thus they are not tracked by Git.
 
-It is possible to change data size, changing above params. It is recommended to use multiples of 1 000. Otherwise, generated amount data may be slightly inaccurate. When no params or wrong params are provided, default values will be used: 1 000 departments, 10 000 employees.
-
-Generated SQL scripts are not tracked by Git.
+Actual departments number may be slightly smaller due to duplicates removal.
 
 ## Running company app locally
 Run following command:

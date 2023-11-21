@@ -3,13 +3,14 @@ package pl.lunasoftware.demo.microservices.datagenerator.sql;
 import pl.lunasoftware.demo.microservices.datagenerator.model.Department;
 import pl.lunasoftware.demo.microservices.datagenerator.model.Employee;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 public class SqlGenerator {
 
-    public String generateDepartmentsBatchSql(List<Department> departments) {
+    public String generateDepartmentsBatchSql(Collection<Department> departments) {
         String sqlTemplate = """
                 INSERT INTO department(id, name) VALUES
                 %s;
