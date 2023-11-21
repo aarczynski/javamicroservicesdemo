@@ -21,6 +21,6 @@ public interface DepartmentRepository extends JpaRepository<DepartmentEntity, UU
     @Query("SELECT d FROM Department d JOIN FETCH d.employees e WHERE e.status = 'ACTIVE'")
     List<DepartmentEntity> findAllActiveEmployees();
 
-    @Query("SELECT d FROM Department d JOIN FETCH d.employees e WHERE e.status = 'ACTIVE' AND UPPER(d.name) = UPPER(:departmentName)")
+    @Query("SELECT d FROM Department d JOIN FETCH d.employees e WHERE e.status = 'ACTIVE' AND d.name = :departmentName")
     Optional<DepartmentEntity> findAllActiveEmployeesForDepartment(String departmentName);
 }

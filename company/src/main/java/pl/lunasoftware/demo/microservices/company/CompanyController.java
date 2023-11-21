@@ -25,6 +25,6 @@ public class CompanyController {
     @GetMapping("/departments/{departmentName}/costs")
     public DepartmentCostDto getDepartmentCost(@PathVariable String departmentName) {
         log.info("Received request for {} department cost", departmentName);
-        return companyService.getDepartmentCost(departmentName.toLowerCase());
+        return companyService.getDepartmentCost(departmentName);
     }
 }
