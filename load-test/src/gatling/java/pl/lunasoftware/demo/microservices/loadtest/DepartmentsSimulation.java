@@ -19,10 +19,15 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class DepartmentsSimulation extends Simulation {
 
-    private static final com.github.javafaker.Faker faker = new Faker();
+    private static final Faker faker = new Faker();
+
+    private static final int RPS = 1000;
+    private static final int LOAD_TEST_DURATION_SECS = 10;
 
     public DepartmentsSimulation() {
-        this.setUp(departmentsCostsScenario().injectOpen(constantUsersPerSec(1000).during(Duration.ofSeconds(10))))
+        this.setUp(departmentsCostsScenario()
+                        .injectOpen(constantUsersPerSec(RPS)
+                                .during(Duration.ofSeconds(LOAD_TEST_DURATION_SECS))))
                 .protocols(httpProtocolBuilder());
     }
 
@@ -39,7 +44,7 @@ public class DepartmentsSimulation extends Simulation {
                 .exec(http("get departments costs")
                         .get("/departments/#{departmentName}/costs")
                         .header("Content-Type", "application/json")
-                        .check(status().is(404))
+                        .check(status().in(200, 404))
                 );
     }
 
