@@ -1,11 +1,10 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company
+package pl.lunasoftware.demo.microservices.company
 
 import org.spockframework.spring.SpringBean
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.test.web.servlet.MockMvc
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentCostDto
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentsCostDto
+import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto
 import spock.lang.Specification
 
 import java.math.RoundingMode
@@ -25,7 +24,7 @@ class CompanyControllerSpec extends Specification {
 
     def "should return json response for all departments costs"() {
         given:
-        companyService.getAllDepartmentsCosts() >> new DepartmentsCostDto(
+        companyService.getAllDepartmentsCosts() >> new pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto(
                 BigDecimal.TEN.setScale(2, RoundingMode.HALF_UP), [buildTestDepartmentDto()])
 
         when:

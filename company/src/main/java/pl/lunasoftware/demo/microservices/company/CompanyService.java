@@ -1,12 +1,12 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company;
+package pl.lunasoftware.demo.microservices.company;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentCostDto;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentEntity;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentRepository;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentsCostDto;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentEntity;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentRepository;
 
 import java.math.BigDecimal;
 import java.util.List;

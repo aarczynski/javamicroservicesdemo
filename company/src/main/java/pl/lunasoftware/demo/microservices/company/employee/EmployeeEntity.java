@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.employee;
+package pl.lunasoftware.demo.microservices.company.employee;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,7 +11,7 @@ import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentEntity;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentEntity;
 
 import java.math.BigDecimal;
 import java.util.HashSet;

@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department
+package pl.lunasoftware.demo.microservices.company.department
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest

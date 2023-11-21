@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department;
+package pl.lunasoftware.demo.microservices.company.department;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 

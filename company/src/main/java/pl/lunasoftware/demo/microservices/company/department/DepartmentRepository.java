@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department;
+package pl.lunasoftware.demo.microservices.company.department;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;

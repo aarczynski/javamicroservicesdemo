@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company;
+package pl.lunasoftware.demo.microservices.company;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

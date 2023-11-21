@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department;
+package pl.lunasoftware.demo.microservices.company.department;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -13,7 +13,7 @@ import jakarta.persistence.NamedEntityGraph;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.employee.EmployeeEntity;
+import pl.lunasoftware.demo.microservices.company.employee.EmployeeEntity;
 
 import java.math.BigDecimal;
 import java.util.HashSet;

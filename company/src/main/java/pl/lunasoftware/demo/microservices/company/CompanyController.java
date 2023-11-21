@@ -1,11 +1,11 @@
-package pl.lunasoftware.demo.microservices.javamicroservicesdemo.company;
+package pl.lunasoftware.demo.microservices.company;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentCostDto;
-import pl.lunasoftware.demo.microservices.javamicroservicesdemo.company.department.DepartmentsCostDto;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto;
+import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto;
 
 @RestController
 @RequiredArgsConstructor
