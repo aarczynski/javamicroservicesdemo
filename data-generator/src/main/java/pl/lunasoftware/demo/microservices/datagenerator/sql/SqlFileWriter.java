@@ -39,7 +39,7 @@ public class SqlFileWriter {
         new SqlFileWriter().writeSqlFile(departments, employees);
     }
 
-    public void writeSqlFile(int departmentsCount, int employeesCount) throws IOException {
+    private void writeSqlFile(int departmentsCount, int employeesCount) throws IOException {
         int departmentsBatchSize = 1000;
         int employeesBatchSize = 1000;
 
