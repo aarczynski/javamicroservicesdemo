@@ -18,11 +18,11 @@ CREATE TABLE employee
 
 CREATE INDEX employee_status_idx ON employee (status) WHERE status = 'INACTIVE';
 
-CREATE TABLE department_employee
+CREATE TABLE employee_department
 (
-    department_id UUID,
     employee_id   UUID,
+    department_id UUID,
     FOREIGN KEY (department_id) REFERENCES department (id),
     FOREIGN KEY (employee_id) REFERENCES employee (id),
-    UNIQUE (department_id, employee_id)
+    UNIQUE (employee_id, department_id)
 );

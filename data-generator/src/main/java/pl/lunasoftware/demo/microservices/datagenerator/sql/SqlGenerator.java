@@ -1,10 +1,9 @@
 package pl.lunasoftware.demo.microservices.datagenerator.sql;
 
-import pl.lunasoftware.demo.microservices.datagenerator.model.Department;
-import pl.lunasoftware.demo.microservices.datagenerator.model.Employee;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -24,7 +23,7 @@ public class SqlGenerator {
         return sqlTemplate.formatted(values);
     }
 
-    public String generateEmployeesBatchSql(List<Employee> employees) {
+    public String generateEmployeesBatchSql(Collection<Employee> employees) {
         String sqlTemplate = """
                 INSERT INTO employee(id, first_name, last_name, email, salary, status) VALUES
                 %s;
@@ -38,15 +37,15 @@ public class SqlGenerator {
         return sqlTemplate.formatted(values);
     }
 
-    public String generateDepartmentsEmployeesAssignmentSql(Map<Department, List<Employee>> departmentsEmployees) {
+    public String generateDepartmentsEmployeesAssignmentSql(Map<Employee, Collection<Department>> departmentsEmployees) {
         String sqlTemplate = """
-                INSERT INTO department_employee(department_id, employee_id) VALUES
+                INSERT INTO employee_department(employee_id, department_id) VALUES
                 %s;
                 """;
 
         String values = departmentsEmployees.keySet().stream()
-                .flatMap(d -> departmentsEmployees.get(d).stream()
-                        .map(e -> String.format("('%s', '%s'),", d.id(), e.id())))
+                .flatMap(e -> departmentsEmployees.get(e).stream()
+                        .map(d -> String.format("('%s', '%s'),", e.id(), d.id())))
                 .collect(Collectors.joining("\n"))
                 .replaceAll(",$", "");
 

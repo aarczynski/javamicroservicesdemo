@@ -1,24 +1,26 @@
-package pl.lunasoftware.demo.microservices.datagenerator.model;
+package pl.lunasoftware.demo.microservices.datagenerator.generator;
 
 import com.github.javafaker.Faker;
-import pl.lunasoftware.demo.microservices.datagenerator.model.Employee.Status;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee.Status;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import static java.util.stream.Collectors.toSet;
+
 public class EmployeeGenerator {
 
-    static final double ACTIVE_STATUS_PROBABILITY = 0.999;
+    public static final double ACTIVE_STATUS_PROBABILITY = 0.999;
 
     private final Faker faker = new Faker();
 
-    public List<Employee> randomEmployees(int count) {
+    public Set<Employee> randomEmployees(int count) {
         return Stream.generate(this::randomEmployee)
                 .limit(count)
-                .toList();
+                .collect(toSet());
     }
 
     private Employee randomEmployee() {

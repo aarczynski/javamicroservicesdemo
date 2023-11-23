@@ -1,9 +1,11 @@
 package pl.lunasoftware.demo.microservices.datagenerator.model
 
+import pl.lunasoftware.demo.microservices.datagenerator.generator.EmployeeGenerator
+import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee
 import spock.lang.Specification
 
-import static pl.lunasoftware.demo.microservices.datagenerator.model.Employee.Status.ACTIVE
-import static pl.lunasoftware.demo.microservices.datagenerator.model.EmployeeGenerator.ACTIVE_STATUS_PROBABILITY
+import static pl.lunasoftware.demo.microservices.datagenerator.generator.Employee.Status.ACTIVE
+import static pl.lunasoftware.demo.microservices.datagenerator.generator.EmployeeGenerator.ACTIVE_STATUS_PROBABILITY
 
 class EmployeeGeneratorSpec extends Specification {
 
@@ -11,7 +13,7 @@ class EmployeeGeneratorSpec extends Specification {
 
     def "random employee email should start with full name"() {
         when:
-        def actual = gen.randomEmployees(1).get(0)
+        def actual = gen.randomEmployees(1).collect().get(0)
 
         then:
         actual.email().startsWith("$actual.firstName.$actual.lastName".toLowerCase())
@@ -31,7 +33,7 @@ class EmployeeGeneratorSpec extends Specification {
         assertActiveAndInactiveEmployeesDistribution(actual, count)
     }
 
-    private void assertActiveAndInactiveEmployeesDistribution(List<Employee> actual, int count) {
+    private void assertActiveAndInactiveEmployeesDistribution(Collection<Employee> actual, int count) {
         def tolerance = 0.95
         assert actual*.status().findAll { it == ACTIVE }.size() >= count * ACTIVE_STATUS_PROBABILITY * tolerance
     }

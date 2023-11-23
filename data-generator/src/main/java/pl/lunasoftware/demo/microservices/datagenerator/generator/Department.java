@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.datagenerator.model;
+package pl.lunasoftware.demo.microservices.datagenerator.generator;
 
 import java.util.Objects;
 import java.util.UUID;

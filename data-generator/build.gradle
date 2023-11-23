@@ -16,7 +16,7 @@ compileJava {
 
 jar {
     manifest {
-        attributes 'Main-Class': 'pl.lunasoftware.demo.microservices.datagenerator.sql.SqlFileWriter'
+        attributes 'Main-Class': 'pl.lunasoftware.demo.microservices.datagenerator.Main'
     }
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
@@ -29,6 +29,7 @@ repositories {
 
 dependencies {
     implementation 'com.github.javafaker:javafaker:1.0.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.0'
     testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
 }
 

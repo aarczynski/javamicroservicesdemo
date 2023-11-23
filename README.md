@@ -11,11 +11,11 @@ Run following commands:
 ./gradlew clean :data-generator:build
 java -jar data-generator/build/libs/data-generator-0.0.1-SNAPSHOT.jar 100000
 ```
-This generates SQL script that inserts 5 000 departments (fixed value), 100 000 employees (configurable), and generates random relations between them. Generated files are put in `data-generator` module in `output`. Import them into application database (check `docker-compose.yml` for credentials).
+This generates SQL script that inserts 10 000 departments (fixed value), 100 000 employees (configurable), and generates random relations between them. Generated files are put in `data-generator` module in `output`. Import them into application database (check `docker-compose.yml` for credentials).
+
+This also generates a JSON file with generated departments. It is used during load tests to generate requests.
 
 These files may be extremely large (several GB), thus they are not tracked in Git.
-
-Actual departments number may be smaller due to duplicates removal during random generation.
 
 ## Running company app locally
 Run following command:

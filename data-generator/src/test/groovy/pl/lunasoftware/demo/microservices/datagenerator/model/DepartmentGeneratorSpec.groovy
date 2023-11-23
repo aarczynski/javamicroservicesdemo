@@ -1,6 +1,6 @@
 package pl.lunasoftware.demo.microservices.datagenerator.model
 
-
+import pl.lunasoftware.demo.microservices.datagenerator.generator.DepartmentGenerator
 import spock.lang.Specification
 
 class DepartmentGeneratorSpec extends Specification {
@@ -9,7 +9,7 @@ class DepartmentGeneratorSpec extends Specification {
 
     def "should generate random department"() {
         given:
-        def count = 1
+        def count = 5000
 
         when:
         def actual = gen.randomDepartments(count)
