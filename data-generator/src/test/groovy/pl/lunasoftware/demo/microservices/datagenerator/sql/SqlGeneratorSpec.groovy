@@ -67,7 +67,7 @@ class SqlGeneratorSpec extends Specification {
                   '''.stripIndent()
     }
 
-    def "should escape single quote char in deparment name"() {
+    def "should escape single quote char in department name"() {
         given:
         def departments = [
                 new Department(UUID.fromString('2204e991-8b91-46cf-82f0-c669583670d5'), "Test'department")
