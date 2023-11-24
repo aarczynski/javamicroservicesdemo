@@ -51,8 +51,8 @@ class SqlGeneratorSpec extends Specification {
     def "should return employees departments assigment sql"() {
         given:
         def employeeDepartments = [
-                (EMPLOYEE_1): [DEPARTMENT_1, DEPARTMENT_2],
-                (EMPLOYEE_2): [DEPARTMENT_1],
+                (EMPLOYEE_1): [DEPARTMENT_1, DEPARTMENT_2] as Set,
+                (EMPLOYEE_2): [DEPARTMENT_1] as Set,
         ]
 
         when:

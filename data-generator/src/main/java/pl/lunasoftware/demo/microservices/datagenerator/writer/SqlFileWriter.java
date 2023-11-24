@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 
 public class SqlFileWriter {
     private final SqlGenerator sqlGenerator = new SqlGenerator();
@@ -24,7 +25,7 @@ public class SqlFileWriter {
         Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
     }
 
-    public void writeEmployeesDepartmentsAssignments(Map<Employee, Collection<Department>> employeeDepartments, Path path) throws IOException {
+    public void writeEmployeesDepartmentsAssignments(Map<Employee, Set<Department>> employeeDepartments, Path path) throws IOException {
         String departmentsSql = sqlGenerator.generateDepartmentsEmployeesAssignmentSql(employeeDepartments);
         Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
     }

@@ -1,16 +1,15 @@
 package pl.lunasoftware.demo.microservices.datagenerator.writer;
 
+import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
 import pl.lunasoftware.demo.microservices.datagenerator.generator.DepartmentEmployeeMatcher;
 import pl.lunasoftware.demo.microservices.datagenerator.generator.DepartmentGenerator;
-import pl.lunasoftware.demo.microservices.datagenerator.generator.EmployeeGenerator;
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
 import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.EmployeeGenerator;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
@@ -38,8 +37,8 @@ public class DataFileWriter {
             Set<Employee> employees = employeeGenerator.randomEmployees(EMPLOYEES_BATCH_SIZE);
             sqlFileWriter.writeEmployeesToFile(employees, path);
 
-            Map<Employee, Collection<Department>> departmentsEmployees = matcher.assignEmployeesToDepartments(employees, departments);
-            sqlFileWriter.writeEmployeesDepartmentsAssignments(departmentsEmployees, path);
+            Map<Employee, Set<Department>> employeeDepartments = matcher.assignEmployeesToDepartments(employees, departments);
+            sqlFileWriter.writeEmployeesDepartmentsAssignments(employeeDepartments, path);
 
             employeesGenerated += employees.size();
             System.out.printf("Employees generating progress: %.2f%%%n", 100 * employeesGenerated / (double) employeesCount);

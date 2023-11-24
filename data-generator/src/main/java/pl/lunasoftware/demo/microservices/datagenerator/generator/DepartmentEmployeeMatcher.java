@@ -1,8 +1,5 @@
 package pl.lunasoftware.demo.microservices.datagenerator.generator;
 
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -18,7 +15,7 @@ public class DepartmentEmployeeMatcher {
 
     private static final int MAX_EMPLOYEES_PER_DEPARTMENT = 6;
 
-    public Map<Employee, Collection<Department>> assignEmployeesToDepartments(Collection<Employee> employees, Collection<Department> departments) {
+    public Map<Employee, Set<Department>> assignEmployeesToDepartments(Collection<Employee> employees, Collection<Department> departments) {
         return employees.stream()
                 .collect(Collectors.toMap(
                         Function.identity(),

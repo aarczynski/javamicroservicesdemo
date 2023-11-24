@@ -5,6 +5,7 @@ import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class SqlGenerator {
@@ -37,7 +38,7 @@ public class SqlGenerator {
         return sqlTemplate.formatted(values);
     }
 
-    public String generateDepartmentsEmployeesAssignmentSql(Map<Employee, Collection<Department>> departmentsEmployees) {
+    public String generateDepartmentsEmployeesAssignmentSql(Map<Employee, Set<Department>> departmentsEmployees) {
         String sqlTemplate = """
                 INSERT INTO employee_department(employee_id, department_id) VALUES
                 %s;
