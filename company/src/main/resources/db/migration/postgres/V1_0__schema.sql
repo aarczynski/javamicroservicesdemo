@@ -22,7 +22,7 @@ CREATE TABLE employee_department
 (
     employee_id   UUID,
     department_id UUID,
-    FOREIGN KEY (department_id) REFERENCES department (id),
     FOREIGN KEY (employee_id) REFERENCES employee (id),
+    FOREIGN KEY (department_id) REFERENCES department (id),
     UNIQUE (employee_id, department_id)
 );

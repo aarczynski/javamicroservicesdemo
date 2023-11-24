@@ -33,7 +33,7 @@ public class DepartmentEntity {
     @EqualsAndHashCode.Include
     private String name;
     @ManyToMany(cascade = { CascadeType.PERSIST, CascadeType.MERGE })
-    @JoinTable(name = "department_employee",
+    @JoinTable(name = "employee_department",
             joinColumns = @JoinColumn(name = "department_id"),
             inverseJoinColumns = @JoinColumn(name = "employee_id"))
     private Set<EmployeeEntity> employees = new HashSet<>();

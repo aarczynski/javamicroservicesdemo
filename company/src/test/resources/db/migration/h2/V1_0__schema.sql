@@ -14,11 +14,11 @@ CREATE TABLE employee
     status     VARCHAR(50)    NOT NULL
 );
 
-CREATE TABLE department_employee
+CREATE TABLE employee_department
 (
-    department_id UUID,
     employee_id   UUID,
-    FOREIGN KEY (department_id) REFERENCES department (id),
+    department_id UUID,
     FOREIGN KEY (employee_id) REFERENCES employee (id),
-    UNIQUE (department_id, employee_id)
+    FOREIGN KEY (department_id) REFERENCES department (id),
+    UNIQUE (employee_id, department_id)
 );
