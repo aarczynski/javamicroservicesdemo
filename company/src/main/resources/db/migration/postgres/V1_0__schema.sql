@@ -4,8 +4,6 @@ CREATE TABLE department
     name VARCHAR(100) UNIQUE NOT NULL
 );
 
-CREATE INDEX department_name_idx ON department (name);
-
 CREATE TABLE employee
 (
     id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -15,8 +13,6 @@ CREATE TABLE employee
     salary     NUMERIC(10, 2)      NOT NULL,
     status     VARCHAR(50)         NOT NULL
 );
-
-CREATE INDEX employee_status_idx ON employee (status) WHERE status = 'INACTIVE';
 
 CREATE TABLE employee_department
 (
