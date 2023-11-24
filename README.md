@@ -20,7 +20,7 @@ These files may be extremely large (several GB), thus they are not tracked in Gi
 ## Running company app locally
 Run following command:
 ```shell
-./gradlew clean build && docker-compose up --build
+./gradlew clean :company:build && docker-compose up --build
 ```
 
 ## Sample HTTP requests
