@@ -33,7 +33,7 @@ class EmployeeGeneratorSpec extends Specification {
         assertActiveAndInactiveEmployeesDistribution(actual, count)
     }
 
-    private void assertActiveAndInactiveEmployeesDistribution(Collection<Employee> actual, int count) {
+    private void assertActiveAndInactiveEmployeesDistribution(Employee[] actual, int count) {
         def tolerance = 0.95
         assert actual*.status().findAll { it == ACTIVE }.size() >= count * ACTIVE_STATUS_PROBABILITY * tolerance
     }

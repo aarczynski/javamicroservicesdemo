@@ -20,7 +20,7 @@ class SqlGeneratorSpec extends Specification {
 
     def "should return departments insert sql"() {
         given:
-        def departments = [DEPARTMENT_1, DEPARTMENT_2]
+        def departments = [DEPARTMENT_1, DEPARTMENT_2] as Department[]
 
         when:
         def actual = generator.generateDepartmentsBatchSql(departments)
@@ -35,7 +35,7 @@ class SqlGeneratorSpec extends Specification {
 
     def "should return employees insert sql"() {
         given:
-        def employees = [EMPLOYEE_1, EMPLOYEE_2]
+        def employees = [EMPLOYEE_1, EMPLOYEE_2] as Employee[]
 
         when:
         def actual = generator.generateEmployeesBatchSql(employees)
@@ -51,8 +51,8 @@ class SqlGeneratorSpec extends Specification {
     def "should return employees departments assigment sql"() {
         given:
         def employeeDepartments = [
-                (EMPLOYEE_1): [DEPARTMENT_1, DEPARTMENT_2] as Set,
-                (EMPLOYEE_2): [DEPARTMENT_1] as Set,
+                (EMPLOYEE_1): [DEPARTMENT_1, DEPARTMENT_2] as Department[],
+                (EMPLOYEE_2): [DEPARTMENT_1] as Department[],
         ]
 
         when:
@@ -72,7 +72,7 @@ class SqlGeneratorSpec extends Specification {
         given:
         def departments = [
                 new Department(UUID.fromString('2204e991-8b91-46cf-82f0-c669583670d5'), "Test'department")
-        ]
+        ] as Department[]
 
         when:
         def actual = generator.generateDepartmentsBatchSql(departments)
@@ -88,7 +88,7 @@ class SqlGeneratorSpec extends Specification {
         given:
         def employees = [
                 new Employee(UUID.fromString("f142e106-e3a2-4074-b3b7-aa6facab9c69"), "First'name", "Last'name", 'firstname.lastname@gmail.com', BigDecimal.valueOf(5000.00).setScale(2, HALF_UP), ACTIVE)
-        ]
+        ] as Employee[]
 
         when:
         def actual = generator.generateEmployeesBatchSql(employees)

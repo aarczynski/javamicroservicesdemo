@@ -5,11 +5,7 @@ import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee.Statu
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
-
-import static java.util.stream.Collectors.toSet;
 
 public class EmployeeGenerator {
 
@@ -17,10 +13,12 @@ public class EmployeeGenerator {
 
     private final Faker faker = new Faker();
 
-    public Set<Employee> randomEmployees(int count) {
-        return Stream.generate(this::randomEmployee)
-                .limit(count)
-                .collect(toSet());
+    public Employee[] randomEmployees(int count) {
+        Employee[] result = new Employee[count];
+        for (int i = 0; i < count; i++) {
+            result[i] = randomEmployee();
+        }
+        return result;
     }
 
     private Employee randomEmployee() {
