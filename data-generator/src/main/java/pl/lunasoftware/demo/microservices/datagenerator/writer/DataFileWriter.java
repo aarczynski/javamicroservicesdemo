@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
-import java.util.Set;
 
 public class DataFileWriter {
     private final DepartmentGenerator departmentGenerator = new DepartmentGenerator();
@@ -28,21 +27,21 @@ public class DataFileWriter {
         Files.createDirectories(path.getParent());
         Files.createFile(path);
 
-        Set<Department> departments = departmentGenerator.randomDepartments(departmentsCount);
+        Department[] departments = departmentGenerator.randomDepartments(departmentsCount);
         sqlFileWriter.writeDepartmentsToFile(departments, path);
         jsonFileWriter.writeToFile(departments, Paths.get("data-generator/output/departments.json"));
 
         int employeesGenerated = 0;
         int employeesToGenerate = employeesCount;
         while (employeesGenerated < employeesCount) {
-            Set<Employee> employees = employeeGenerator.randomEmployees(Math.min(EMPLOYEES_BATCH_SIZE, employeesToGenerate));
+            Employee[] employees = employeeGenerator.randomEmployees(Math.min(EMPLOYEES_BATCH_SIZE, employeesToGenerate));
             sqlFileWriter.writeEmployeesToFile(employees, path);
 
-            Map<Employee, Set<Department>> employeeDepartments = matcher.assignEmployeesToDepartments(employees, departments);
+            Map<Employee, Department[]> employeeDepartments = matcher.assignEmployeesToDepartments(employees, departments);
             sqlFileWriter.writeEmployeesDepartmentsAssignments(employeeDepartments, path);
 
-            employeesToGenerate -= employees.size();
-            employeesGenerated += employees.size();
+            employeesToGenerate -= employees.length;
+            employeesGenerated += employees.length;
             System.out.printf("Employees generating progress: %.2f%%%n", 100 * employeesGenerated / (double) employeesCount);
         }
         System.out.println("Generated " + employeesGenerated + " employees");

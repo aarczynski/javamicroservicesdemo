@@ -5,9 +5,6 @@ import com.github.javafaker.Faker;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
-
-import static java.util.stream.Collectors.toSet;
 
 public class DepartmentGenerator {
 
@@ -15,20 +12,23 @@ public class DepartmentGenerator {
 
     private final Faker faker = new Faker();
 
-    public Set<Department> randomDepartments(int count) {
+    public Department[] randomDepartments(int count) {
         count = validateDepartmentsCount(count);
 
         Set<Department> departments = new HashSet<>();
         while (departments.size() < count) {
-            departments.addAll(
-                    Stream.generate(this::randomDepartment)
-                            .limit(count)
-                            .collect(toSet())
-            );
+            departments.add(randomDepartment());
+        }
+
+        Department[] result = new Department[count];
+        int i = 0;
+        for (Department d : departments) {
+            result[i] = d;
+            i++;
         }
 
         System.out.println("Generated " + count + " departments");
-        return departments.stream().limit(count).collect(toSet());
+        return result;
     }
 
     private Department randomDepartment() {

@@ -15,17 +15,17 @@ import java.util.Set;
 public class SqlFileWriter {
     private final SqlGenerator sqlGenerator = new SqlGenerator();
 
-    public void writeDepartmentsToFile(Collection<Department> departments, Path path) throws IOException {
+    public void writeDepartmentsToFile(Department[] departments, Path path) throws IOException {
         String departmentsSql = sqlGenerator.generateDepartmentsBatchSql(departments);
         Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
     }
 
-    public void writeEmployeesToFile(Collection<Employee> employees, Path path) throws IOException {
+    public void writeEmployeesToFile(Employee[] employees, Path path) throws IOException {
         String departmentsSql = sqlGenerator.generateEmployeesBatchSql(employees);
         Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
     }
 
-    public void writeEmployeesDepartmentsAssignments(Map<Employee, Set<Department>> employeeDepartments, Path path) throws IOException {
+    public void writeEmployeesDepartmentsAssignments(Map<Employee, Department[]> employeeDepartments, Path path) throws IOException {
         String departmentsSql = sqlGenerator.generateDepartmentsEmployeesAssignmentSql(employeeDepartments);
         Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
     }

@@ -7,13 +7,12 @@ import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 
 public class JsonFileWriter {
 
     private final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
-    public void writeToFile(Collection<Department> departments, Path path) throws IOException {
+    public void writeToFile(Department[] departments, Path path) throws IOException {
         safeCreateFile(path);
         objectMapper.writeValue(path.toFile(), departments);
     }
