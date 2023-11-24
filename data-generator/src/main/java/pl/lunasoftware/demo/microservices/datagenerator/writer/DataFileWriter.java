@@ -34,7 +34,7 @@ public class DataFileWriter {
 
         int employeesGenerated = 0;
         while (employeesGenerated < employeesCount) {
-            Set<Employee> employees = employeeGenerator.randomEmployees(EMPLOYEES_BATCH_SIZE);
+            Set<Employee> employees = employeeGenerator.randomEmployees(Math.min(EMPLOYEES_BATCH_SIZE, employeesCount));
             sqlFileWriter.writeEmployeesToFile(employees, path);
 
             Map<Employee, Set<Department>> employeeDepartments = matcher.assignEmployeesToDepartments(employees, departments);
