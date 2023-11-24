@@ -33,16 +33,19 @@ public class DataFileWriter {
         jsonFileWriter.writeToFile(departments, Paths.get("data-generator/output/departments.json"));
 
         int employeesGenerated = 0;
+        int employeesToGenerate = employeesCount;
         while (employeesGenerated < employeesCount) {
-            Set<Employee> employees = employeeGenerator.randomEmployees(Math.min(EMPLOYEES_BATCH_SIZE, employeesCount));
+            Set<Employee> employees = employeeGenerator.randomEmployees(Math.min(EMPLOYEES_BATCH_SIZE, employeesToGenerate));
             sqlFileWriter.writeEmployeesToFile(employees, path);
 
             Map<Employee, Set<Department>> employeeDepartments = matcher.assignEmployeesToDepartments(employees, departments);
             sqlFileWriter.writeEmployeesDepartmentsAssignments(employeeDepartments, path);
 
+            employeesToGenerate -= employees.size();
             employeesGenerated += employees.size();
             System.out.printf("Employees generating progress: %.2f%%%n", 100 * employeesGenerated / (double) employeesCount);
         }
+        System.out.println("Generated " + employeesGenerated + " employees");
     }
 
     private Path findNextSqlDataFile() {

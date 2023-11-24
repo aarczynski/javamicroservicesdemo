@@ -1,7 +1,6 @@
 package pl.lunasoftware.demo.microservices.datagenerator.generator;
 
 import com.github.javafaker.Faker;
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -28,6 +27,7 @@ public class DepartmentGenerator {
             );
         }
 
+        System.out.println("Generated " + count + " departments");
         return departments.stream().limit(count).collect(toSet());
     }
 
