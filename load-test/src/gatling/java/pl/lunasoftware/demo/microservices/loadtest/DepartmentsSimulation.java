@@ -1,14 +1,19 @@
 package pl.lunasoftware.demo.microservices.loadtest;
 
-import com.github.javafaker.Faker;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -19,10 +24,11 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class DepartmentsSimulation extends Simulation {
 
-    private static final Faker faker = new Faker();
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final int RPS = 100;
     private static final int LOAD_TEST_DURATION_SECS = 10;
+    private static final String[] departmentNames = departmentNames();
 
     public DepartmentsSimulation() {
         this.setUp(departmentsCostsScenario()
@@ -49,7 +55,21 @@ public class DepartmentsSimulation extends Simulation {
     }
 
     private static Iterator<Map<String, Object>> departmentNameFeeder() {
-        return Stream.generate((Supplier<Map<String, Object>>) () -> Collections.singletonMap("departmentName", faker.company().name())
+        int idx = ThreadLocalRandom.current().nextInt(departmentNames.length);
+        return Stream.generate((Supplier<Map<String, Object>>) () -> Collections.singletonMap("departmentName", departmentNames[idx])
         ).iterator();
     }
+
+    private static String[] departmentNames() {
+        try {
+            Department[] departments = objectMapper.readValue(Path.of("data-generator/output/departments.json").toFile().getAbsoluteFile(), Department[].class);
+            return Arrays.stream(departments)
+                    .map(Department::name)
+                    .toArray(String[]::new);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read file: data-generator/output/departments.json. Did you generate test data first?", e);
+        }
+    }
+
+    record Department(UUID id, String name) { }
 }
