@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto;
 import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto;
+import pl.lunasoftware.demo.microservices.company.employee.EmployeeDto;
 
 @Slf4j
 @RestController
@@ -26,5 +27,11 @@ public class CompanyController {
     public DepartmentCostDto getDepartmentCost(@PathVariable String departmentName) {
         log.info("Received request for {} department cost", departmentName);
         return companyService.getDepartmentCost(departmentName);
+    }
+
+    @GetMapping("/employees/{email}")
+    public EmployeeDto getEmployee(@PathVariable String email) {
+        log.info("Received request for {} employee", email);
+        return companyService.findEmployee(email);
     }
 }
