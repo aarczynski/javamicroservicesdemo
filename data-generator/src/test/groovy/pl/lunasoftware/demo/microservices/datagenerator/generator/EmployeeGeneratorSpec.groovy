@@ -1,7 +1,6 @@
-package pl.lunasoftware.demo.microservices.datagenerator.model
+package pl.lunasoftware.demo.microservices.datagenerator.generator
 
-import pl.lunasoftware.demo.microservices.datagenerator.generator.EmployeeGenerator
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee
+
 import spock.lang.Specification
 
 import static pl.lunasoftware.demo.microservices.datagenerator.generator.Employee.Status.ACTIVE
@@ -13,7 +12,7 @@ class EmployeeGeneratorSpec extends Specification {
 
     def "random employee email should start with full name"() {
         when:
-        def actual = gen.randomEmployees(1).collect().get(0)
+        def actual = gen.randomEmployees(1)[0]
 
         then:
         actual.email().startsWith("$actual.firstName.$actual.lastName".toLowerCase())

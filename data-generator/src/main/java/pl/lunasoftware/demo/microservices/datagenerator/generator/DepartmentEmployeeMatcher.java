@@ -8,13 +8,15 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class DepartmentEmployeeMatcher {
 
-    private static final int MAX_EMPLOYEES_PER_DEPARTMENT = 6;
+    static final int MIN_EMPLOYEES_PER_DEPARTMENT = 1;
+    static final int MAX_EMPLOYEES_PER_DEPARTMENT = 5;
 
     public Map<Employee, Department[]> assignEmployeesToDepartments(Employee[] employees, Department[] departments) {
         Map<Employee, Department[]> result = new HashMap<>();
         for (Employee e : employees) {
             for (int i = 0; i < ThreadLocalRandom.current().nextInt(2, MAX_EMPLOYEES_PER_DEPARTMENT); i++) {
-                result.put(e, pickNRandomDepartments(departments, ThreadLocalRandom.current().nextInt(2, MAX_EMPLOYEES_PER_DEPARTMENT)));
+                int n = ThreadLocalRandom.current().nextInt(MIN_EMPLOYEES_PER_DEPARTMENT, MAX_EMPLOYEES_PER_DEPARTMENT + 1);
+                result.put(e, pickNRandomDepartments(departments, n));
             }
         }
         return result;

@@ -1,7 +1,6 @@
 package pl.lunasoftware.demo.microservices.company;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto;
@@ -15,6 +14,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Slf4j
 @Service
@@ -48,7 +49,7 @@ public class CompanyService {
                 .map(DepartmentEntity::calculateTotalCost)
                 .orElseThrow(() -> {
                     log.info("{} department not found", departmentName);
-                    return new ResponseStatusException(HttpStatus.NOT_FOUND, departmentName + " not found");
+                    return new ResponseStatusException(NOT_FOUND, departmentName + " not found");
                 });
 
         log.info("{} department cost is {}", departmentName, cost);
@@ -62,13 +63,14 @@ public class CompanyService {
                         e.getFirstName(),
                         e.getLastName(),
                         e.getEmail(),
+                        e.getSalary(),
                         e.getDepartments().stream()
                                 .map(DepartmentEntity::getName)
                                 .toList()
                 ))
                 .orElseThrow(() -> {
                     log.info("{} employee not found", email);
-                    return new ResponseStatusException(HttpStatus.NOT_FOUND, email + " not found");
+                    return new ResponseStatusException(NOT_FOUND, email + " not found");
                 });
         log.info("Found employee {}", email);
         return employeeDto;

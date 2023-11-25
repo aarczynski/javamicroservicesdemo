@@ -1,20 +1,19 @@
-package pl.lunasoftware.demo.microservices.datagenerator.writer
+package pl.lunasoftware.demo.microservices.datagenerator.sql
 
-import pl.lunasoftware.demo.microservices.datagenerator.sql.SqlGenerator
+import org.instancio.Instancio
 import pl.lunasoftware.demo.microservices.datagenerator.generator.Department
 import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee
 import spock.lang.Specification
 
 import static java.math.RoundingMode.HALF_UP
 import static pl.lunasoftware.demo.microservices.datagenerator.generator.Employee.Status.ACTIVE
-import static pl.lunasoftware.demo.microservices.datagenerator.generator.Employee.Status.INACTIVE
 
 class SqlGeneratorSpec extends Specification {
 
-    private static final Employee EMPLOYEE_1 = new Employee(UUID.fromString('a35ef9ef-8634-4ab1-aca0-0d99aa6175d7'), 'Testing', 'Tester', 'testing.tester@gmail.com', BigDecimal.valueOf(10000.00).setScale(2, HALF_UP), ACTIVE)
-    private static final Employee EMPLOYEE_2 = new Employee(UUID.fromString('e689e87d-ad00-4fd4-a9cd-94d161ba656d'), 'Developing', 'Developer', 'developing.developer@gmail.com', BigDecimal.valueOf(10000.50).setScale(2, HALF_UP), INACTIVE)
-    private static final Department DEPARTMENT_1 = new Department(UUID.fromString('c5c2e4f2-ea58-42d4-a203-cbc1102a65be'), "Test Department 1")
-    private static final Department DEPARTMENT_2 = new Department(UUID.fromString('d6de356f-171a-4102-8689-1d21a7d08171'), "Test Department 2")
+    private static final Employee EMPLOYEE_1 = Instancio.create(Employee)
+    private static final Employee EMPLOYEE_2 = Instancio.create(Employee)
+    private static final Department DEPARTMENT_1 = Instancio.create(Department)
+    private static final Department DEPARTMENT_2 = Instancio.create(Department)
 
     private SqlGenerator generator = new SqlGenerator()
 
@@ -26,11 +25,11 @@ class SqlGeneratorSpec extends Specification {
         def actual = generator.generateDepartmentsBatchSql(departments)
 
         then:
-        actual == '''\
+        actual == """\
                   INSERT INTO department(id, name) VALUES
-                  ('c5c2e4f2-ea58-42d4-a203-cbc1102a65be', 'Test Department 1'),
-                  ('d6de356f-171a-4102-8689-1d21a7d08171', 'Test Department 2');
-                  '''.stripIndent()
+                  ('$DEPARTMENT_1.id', '$DEPARTMENT_1.name'),
+                  ('$DEPARTMENT_2.id', '$DEPARTMENT_2.name');
+                  """.stripIndent()
     }
 
     def "should return employees insert sql"() {
@@ -41,11 +40,11 @@ class SqlGeneratorSpec extends Specification {
         def actual = generator.generateEmployeesBatchSql(employees)
 
         then:
-        actual == '''\
+        actual == """\
                   INSERT INTO employee(id, first_name, last_name, email, salary, status) VALUES
-                  ('a35ef9ef-8634-4ab1-aca0-0d99aa6175d7', 'Testing', 'Tester', 'testing.tester@gmail.com', 10000.00, 'ACTIVE'),
-                  ('e689e87d-ad00-4fd4-a9cd-94d161ba656d', 'Developing', 'Developer', 'developing.developer@gmail.com', 10000.50, 'INACTIVE');
-                  '''.stripIndent()
+                  ('$EMPLOYEE_1.id', '$EMPLOYEE_1.firstName', '$EMPLOYEE_1.lastName', '$EMPLOYEE_1.email', $EMPLOYEE_1.salary, '$EMPLOYEE_1.status'),
+                  ('$EMPLOYEE_2.id', '$EMPLOYEE_2.firstName', '$EMPLOYEE_2.lastName', '$EMPLOYEE_2.email', $EMPLOYEE_2.salary, '$EMPLOYEE_2.status');
+                  """.stripIndent()
     }
 
     def "should return employees departments assigment sql"() {
@@ -60,12 +59,12 @@ class SqlGeneratorSpec extends Specification {
         print(actual)
 
         then:
-        actual == '''\
+        actual == """\
                   INSERT INTO employee_department(employee_id, department_id) VALUES
-                  ('a35ef9ef-8634-4ab1-aca0-0d99aa6175d7', 'c5c2e4f2-ea58-42d4-a203-cbc1102a65be'),
-                  ('a35ef9ef-8634-4ab1-aca0-0d99aa6175d7', 'd6de356f-171a-4102-8689-1d21a7d08171'),
-                  ('e689e87d-ad00-4fd4-a9cd-94d161ba656d', 'c5c2e4f2-ea58-42d4-a203-cbc1102a65be');
-                  '''.stripIndent()
+                  ('$EMPLOYEE_1.id', '$DEPARTMENT_1.id'),
+                  ('$EMPLOYEE_1.id', '$DEPARTMENT_2.id'),
+                  ('$EMPLOYEE_2.id', '$DEPARTMENT_1.id');
+                  """.stripIndent()
     }
 
     def "should escape single quote char in department name"() {

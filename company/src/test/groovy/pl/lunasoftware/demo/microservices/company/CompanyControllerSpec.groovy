@@ -1,17 +1,18 @@
 package pl.lunasoftware.demo.microservices.company
 
+import org.instancio.Instancio
 import org.spockframework.spring.SpringBean
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.test.web.servlet.MockMvc
 import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto
+import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto
+import pl.lunasoftware.demo.microservices.company.employee.EmployeeDto
 import spock.lang.Specification
 
-import java.math.RoundingMode
-
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import static org.instancio.Select.field
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 
 @WebMvcTest(CompanyController)
 class CompanyControllerSpec extends Specification {
@@ -24,47 +25,61 @@ class CompanyControllerSpec extends Specification {
 
     def "should return json response for all departments costs"() {
         given:
-        companyService.getAllDepartmentsCosts() >> new pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto(
-                BigDecimal.TEN.setScale(2, RoundingMode.HALF_UP), [buildTestDepartmentDto()])
+        def dto = Instancio.of(DepartmentsCostDto)
+                .generate(field('departmentsCosts'), gen -> gen.collection().size(1))
+                .create()
+        companyService.getAllDepartmentsCosts() >> dto
 
         when:
         def response = mockMvc.perform(get('/departments/costs'))
 
         then:
         response.andExpect(status().isOk())
-                .andExpect(jsonPath('$.total').value('10.00'))
+                .andExpect(jsonPath('$.total').value(dto.total()))
                 .andExpect(jsonPath('$.departmentsCosts.length()').value(1))
-                .andExpect(jsonPath('$.departmentsCosts[0].departmentName').value('IT'))
-                .andExpect(jsonPath('$.departmentsCosts[0].cost').value('10.00'))
+                .andExpect(jsonPath('$.departmentsCosts[0].departmentName').value(dto.departmentsCosts[0].departmentName))
+                .andExpect(jsonPath('$.departmentsCosts[0].cost').value(dto.departmentsCosts[0].cost))
     }
 
     def "should return json response for specific department cost"() {
-        DepartmentCostDto testDepartmentCostDto = buildTestDepartmentDto()
         given:
-        companyService.getDepartmentCost('it') >> testDepartmentCostDto
+        DepartmentCostDto dto = Instancio.create(DepartmentCostDto)
+        companyService.getDepartmentCost('it') >> dto
 
         when:
         def response = mockMvc.perform(get('/departments/it/costs'))
 
         then:
         response.andExpect(status().isOk())
-                .andExpect(jsonPath('$.departmentName').value('IT'))
-                .andExpect(jsonPath('$.cost').value('10.00'))
+                .andExpect(jsonPath('$.departmentName').value(dto.departmentName))
+                .andExpect(jsonPath('$.cost').value(dto.cost))
     }
 
-    def "department name URL param should be case insensitive"() {
+    def "should return json response for user"() {
         given:
-        companyService.getDepartmentCost('it') >> buildTestDepartmentDto()
+        def dto = Instancio.of(EmployeeDto)
+                .generate(field('departments'), gen -> gen.collection().size(1))
+                .create()
+        companyService.findEmployee(dto.email) >> dto
 
         when:
-        def response = mockMvc.perform(get('/departments/IT/costs'))
+        def response = mockMvc.perform(get("/employees/$dto.email"))
 
         then:
         response.andExpect(status().isOk())
-    }
-
-    private DepartmentCostDto buildTestDepartmentDto() {
-        def testDepartmentCostDto = new DepartmentCostDto("IT", BigDecimal.TEN.setScale(2, RoundingMode.HALF_UP))
-        testDepartmentCostDto
+                .andExpect(content().json(
+                        """\
+                        {
+                            "id": "$dto.id",
+                            "firstName": "$dto.firstName",
+                            "lastName": "$dto.lastName",
+                            "email": "$dto.email",
+                            "salary": $dto.salary,
+                            "departments": [
+                                "${dto.departments[0]}"
+                            ]
+                        }
+                        """.stripIndent()
+                ))
     }
 }
