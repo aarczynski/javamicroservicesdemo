@@ -12,49 +12,57 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 
-public class DataFileWriter {
+public class DataWriter {
     private final DepartmentGenerator departmentGenerator = new DepartmentGenerator();
     private final EmployeeGenerator employeeGenerator = new EmployeeGenerator();
     private final DepartmentEmployeeMatcher matcher = new DepartmentEmployeeMatcher();
 
     private final SqlFileWriter sqlFileWriter = new SqlFileWriter();
-    private final JsonFileWriter jsonFileWriter = new JsonFileWriter();
 
     private static final int EMPLOYEES_BATCH_SIZE = 1_000;
 
     public void writeRandomData(int departmentsCount, int employeesCount) throws IOException {
-        Path path = findNextSqlDataFile();
-        Files.createDirectories(path.getParent());
-        Files.createFile(path);
+        Path outputDir = createDir("data-generator/output");
+
+        Path departmentsFile = outputDir.resolve("departments.sql");
+        safeCreateFile(departmentsFile);
 
         Department[] departments = departmentGenerator.randomDepartments(departmentsCount);
-        sqlFileWriter.writeDepartmentsToFile(departments, path);
-        jsonFileWriter.writeToFile(departments, Paths.get("data-generator/output/departments.json"));
+        sqlFileWriter.writeDepartmentsToFile(departments, departmentsFile);
+        System.out.println("Wrote " + departments.length + " departments");
+
+        Path employeesFile = outputDir.resolve("employees.sql");
+        safeCreateFile(employeesFile);
+
+        Path employeesDepartmentsFile = outputDir.resolve("employeesDepartments.sql");
+        safeCreateFile(employeesDepartmentsFile);
 
         int employeesGenerated = 0;
         int employeesToGenerate = employeesCount;
         while (employeesGenerated < employeesCount) {
             Employee[] employees = employeeGenerator.randomEmployees(Math.min(EMPLOYEES_BATCH_SIZE, employeesToGenerate));
-            sqlFileWriter.writeEmployeesToFile(employees, path);
+            sqlFileWriter.writeEmployeesToFile(employees, employeesFile);
 
             Map<Employee, Department[]> employeeDepartments = matcher.assignEmployeesToDepartments(employees, departments);
-            sqlFileWriter.writeEmployeesDepartmentsAssignments(employeeDepartments, path);
+            sqlFileWriter.writeEmployeesDepartmentsAssignments(employeeDepartments, employeesDepartmentsFile);
 
             employeesToGenerate -= employees.length;
             employeesGenerated += employees.length;
             System.out.printf("Employees generating progress: %.2f%%%n", 100 * employeesGenerated / (double) employeesCount);
         }
-        System.out.println("Generated " + employeesGenerated + " employees");
+        System.out.println("Written " + employeesGenerated + " employees");
     }
 
-    private Path findNextSqlDataFile() {
-        String pathTemplate = "data-generator/output/%03d-generated-data.sql";
+    private static Path createDir(String dir) throws IOException {
+        Path outputDir = Paths.get(dir);
+        Files.createDirectories(outputDir);
+        return outputDir;
+    }
 
-        int i = 1;
-        while (Files.exists(Paths.get(String.format(pathTemplate, i)))) {
-            i++;
+    private static void safeCreateFile(Path path) throws IOException {
+        if (Files.exists(path)) {
+            Files.delete(path);
         }
-
-        return Paths.get(String.format(pathTemplate, i));
+        Files.createFile(path);
     }
 }

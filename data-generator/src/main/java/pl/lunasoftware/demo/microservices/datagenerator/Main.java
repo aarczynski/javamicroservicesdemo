@@ -1,7 +1,7 @@
 package pl.lunasoftware.demo.microservices.datagenerator;
 
 import pl.lunasoftware.demo.microservices.datagenerator.generator.DepartmentGenerator;
-import pl.lunasoftware.demo.microservices.datagenerator.writer.DataFileWriter;
+import pl.lunasoftware.demo.microservices.datagenerator.writer.DataWriter;
 
 import java.io.IOException;
 
@@ -21,7 +21,6 @@ public class Main {
             System.out.printf("No arguments provided. Using default (%d employees).%n", employees);
         }
 
-        new DataFileWriter().writeRandomData(departments, employees);
-
+        new DataWriter().writeRandomData(departments, employees);
     }
 }
