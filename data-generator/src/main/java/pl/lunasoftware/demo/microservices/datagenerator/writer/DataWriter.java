@@ -19,7 +19,7 @@ public class DataWriter {
 
     private final SqlFileWriter sqlFileWriter = new SqlFileWriter();
 
-    private static final int EMPLOYEES_BATCH_SIZE = 1_000;
+    private static final int EMPLOYEES_BATCH_SIZE = 10_000;
 
     public void writeRandomData(int departmentsCount, int employeesCount) throws IOException {
         Path outputDir = createDir("data-generator/output");
