@@ -18,7 +18,6 @@ public class EmployeeGenerator {
         for (int i = 0; i < count; i++) {
             result[i] = randomEmployee();
         }
-        System.out.println("Generated " + result.length + " employees");
         return result;
     }
 

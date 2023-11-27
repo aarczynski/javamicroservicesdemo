@@ -50,7 +50,7 @@ public class DataWriter {
             employeesGenerated += employees.length;
             System.out.printf("Employees generating progress: %.2f%%%n", 100 * employeesGenerated / (double) employeesCount);
         }
-        System.out.println("Written " + employeesGenerated + " employees");
+        System.out.println("Wrote " + employeesGenerated + " employees");
     }
 
     private static Path createDir(String dir) throws IOException {

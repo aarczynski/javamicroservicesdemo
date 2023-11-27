@@ -27,7 +27,6 @@ public class DepartmentGenerator {
             i++;
         }
 
-        System.out.println("Generated " + result.length + " departments");
         return result;
     }
 
