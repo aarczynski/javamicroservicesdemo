@@ -26,7 +26,8 @@ Run following command:
 Check `http/requests.http` file.
 
 ## Performance testing
-Gatling gradle plugin is used. Run following command:
+Gatling gradle plugin is used. Run following commands:
 ```shell
-./gradlew clean :load-test:gatlingRun
+./gradlew clean :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.DepartmentSimulation
+./gradlew clean :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation
 ```

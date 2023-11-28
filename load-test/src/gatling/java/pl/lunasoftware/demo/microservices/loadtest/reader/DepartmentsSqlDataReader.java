@@ -1,4 +1,4 @@
-package pl.lunasoftware.demo.microservices.loadtest.feeder;
+package pl.lunasoftware.demo.microservices.loadtest.reader;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -9,13 +9,11 @@ import java.util.concurrent.ThreadLocalRandom;
 public class DepartmentsSqlDataReader {
 
     private final Path path;
-    private final int firstLineOffset;
     private final long lastLineOffset;
 
     public DepartmentsSqlDataReader() {
         path = Paths.get("data-generator/output/departments.sql").toAbsolutePath();
         try (RandomAccessFile file = new RandomAccessFile(path.toFile(), "r")) {
-            firstLineOffset = firstLineOffset(file);
             lastLineOffset = lastLineOffset(file);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -24,7 +22,7 @@ public class DepartmentsSqlDataReader {
 
     public String readRandomDepartmentName() {
         try (RandomAccessFile file = new RandomAccessFile(path.toFile(), "r")) {
-            long randomPos = ThreadLocalRandom.current().nextLong(firstLineOffset, file.length() - lastLineOffset);
+            long randomPos = ThreadLocalRandom.current().nextLong(file.length() - lastLineOffset);
             file.seek(randomPos);
             file.readLine();
             String line = file.readLine().replaceAll("''", "'");
@@ -35,16 +33,15 @@ public class DepartmentsSqlDataReader {
     }
 
     private long lastLineOffset(RandomAccessFile file) throws IOException {
-        String l;
-        long lastLineOffset = 0;
-        while ((l = file.readLine()) != null) {
-            lastLineOffset = l.length();
+        long pos = file.length();
+        int currChar = 0;
+        while (currChar != (int)'(') {
+            file.seek(pos--);
+            currChar = file.read();
         }
-        return lastLineOffset;
-    }
 
-    private int firstLineOffset(RandomAccessFile file) throws IOException {
-        file.seek(0);
+        file.seek(++pos);
+
         return file.readLine().length();
     }
 }
