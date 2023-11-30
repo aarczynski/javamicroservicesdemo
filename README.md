@@ -1,8 +1,12 @@
 # Work In Progress
 App to analyze distributed microservices app and DB performance using Gatling and OpenTelemetry.
+
 ## Modules:
 * **company** - a simple CRUD microservice. Data model consists of two tables: department and employee. They are in many-to-many relationship (an employee can work in multiple departments, while a department may have multiple employees).
 * **data-generator** - an utility tool to generate SQL file(s) to populate test database with significant amount of data. This code does not use collections and streams for performance reasons.
+* **load-test** - a module running pre-defined load tests using Gatling.
+* **monitoring** - dashboards showing the company app performance in Grafana. Micrometer is used to gather data in Prometheus. (WiP)
+
 # Running locally
 Requires JDK17+, Docker, and Docker Compose installed on your machine.
 ## Generating test data
@@ -26,7 +30,7 @@ Run following command:
 Check `http/requests.http` file.
 
 ## Performance testing
-Gatling gradle plugin is used. Run following commands:
+Gatling gradle plugin is used. Run following command:
 ```shell
 ./gradlew clean :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.DepartmentSimulation
 ./gradlew clean :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation
