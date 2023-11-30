@@ -6,3 +6,8 @@ spring:
       ddl-auto: validate
   flyway:
     locations: db/migration/postgres
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ['prometheus']

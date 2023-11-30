@@ -25,6 +25,8 @@ services:
       - POSTGRES_DB=microservicesdemodb
     ports:
       - '5432:5432'
+    volumes:
+      - microservices-demo-company-db:/var/lib/postgresql/data
     networks:
       - microservices-demo-network
     healthcheck:
@@ -32,6 +34,32 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - microservices-demo-prometheus-db:/prometheus
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+#    networks:
+#      - microservices-demo-network
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+#    networks:
+#      - microservices-demo-network
+
+volumes:
+  microservices-demo-company-db:
+  microservices-demo-prometheus-db:
 
 networks:
   microservices-demo-network:
