@@ -43,8 +43,8 @@ services:
     volumes:
       - microservices-demo-prometheus-db:/prometheus
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-#    networks:
-#      - microservices-demo-network
+    networks:
+      - microservices-demo-network
 
   grafana:
     image: grafana/grafana:10.2.2
@@ -54,8 +54,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-#    networks:
-#      - microservices-demo-network
+    networks:
+      - microservices-demo-network
 
 volumes:
   microservices-demo-company-db:
