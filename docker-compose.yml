@@ -6,7 +6,7 @@ services:
     build:
       context: ./company
       dockerfile: docker/Dockerfile
-    command: ["java", "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005", "-jar", "./company-app.jar"]
+    command: [ "java", "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005", "-jar", "./company-app.jar" ]
     ports:
       - '8080:8080'
       - '5005:5005'
@@ -36,8 +36,8 @@ services:
       retries: 10
 
   prometheus:
+    container_name: company-prometheus
     image: prom/prometheus:v2.48.0
-    container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -47,8 +47,11 @@ services:
       - microservices-demo-network
 
   grafana:
+    container_name: company-grafana
     image: grafana/grafana:10.2.2
-    container_name: grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     ports:
       - "3000:3000"
     restart: unless-stopped

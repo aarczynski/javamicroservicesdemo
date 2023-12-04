@@ -19,8 +19,8 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class DepartmentSimulation extends Simulation {
 
-    private static final int RPS = 100;
-    private static final int LOAD_TEST_DURATION_SECS = 10;
+    private static final int RPS = 10;
+    private static final int LOAD_TEST_DURATION_SECS = 120;
 
     private final DepartmentsSqlDataReader departmentsReader = new DepartmentsSqlDataReader();
 
