@@ -31,7 +31,7 @@ class CompanyControllerSpec extends Specification {
         companyService.getAllDepartmentsCosts() >> dto
 
         when:
-        def response = mockMvc.perform(get('/departments/costs'))
+        def response = mockMvc.perform(get('/api/v1/departments/costs'))
 
         then:
         response.andExpect(status().isOk())
@@ -47,7 +47,7 @@ class CompanyControllerSpec extends Specification {
         companyService.getDepartmentCost('it') >> dto
 
         when:
-        def response = mockMvc.perform(get('/departments/it/costs'))
+        def response = mockMvc.perform(get('/api/v1/departments/it/costs'))
 
         then:
         response.andExpect(status().isOk())
@@ -63,7 +63,7 @@ class CompanyControllerSpec extends Specification {
         companyService.findEmployee(dto.email) >> dto
 
         when:
-        def response = mockMvc.perform(get("/employees/$dto.email"))
+        def response = mockMvc.perform(get("/api/v1/employees/$dto.email"))
 
         then:
         response.andExpect(status().isOk())

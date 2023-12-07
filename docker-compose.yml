@@ -15,6 +15,10 @@ services:
     depends_on:
       company-app-db:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '6.00'
 
   company-app-db:
     container_name: company-db
@@ -25,8 +29,6 @@ services:
       - POSTGRES_DB=microservicesdemodb
     ports:
       - '5432:5432'
-    volumes:
-      - microservices-demo-company-db:/var/lib/postgresql/data
     networks:
       - microservices-demo-network
     healthcheck:
@@ -34,6 +36,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
 
   prometheus:
     container_name: company-prometheus
@@ -41,7 +47,6 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - microservices-demo-prometheus-db:/prometheus
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - microservices-demo-network
@@ -54,15 +59,10 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     ports:
       - "3000:3000"
-    restart: unless-stopped
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - microservices-demo-network
-
-volumes:
-  microservices-demo-company-db:
-  microservices-demo-prometheus-db:
 
 networks:
   microservices-demo-network:

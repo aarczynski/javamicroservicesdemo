@@ -19,7 +19,7 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class DepartmentSimulation extends Simulation {
 
-    private static final int RPS = 25;
+    private static final int RPS = 1;
     private static final int LOAD_TEST_DURATION_SECS = 600;
 
     private final DepartmentsSqlDataReader departmentsReader = new DepartmentsSqlDataReader();
@@ -34,7 +34,7 @@ public class DepartmentSimulation extends Simulation {
         return scenario("Load Test get departments costs")
                 .feed(departmentNameFeeder())
                 .exec(http("get departments costs")
-                        .get("/departments/#{departmentName}/costs")
+                        .get("/api/v1/departments/#{departmentName}/costs")
                         .header("Content-Type", "application/json")
                         .check(status().is(200))
                 );
