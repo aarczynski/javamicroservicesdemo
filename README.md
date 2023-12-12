@@ -5,7 +5,7 @@ App to analyze distributed microservices app and DB performance using Gatling an
 * **company** - a simple CRUD microservice. Data model consists of two tables: department and employee. They are in many-to-many relationship (an employee can work in multiple departments, while a department may have multiple employees).
 * **data-generator** - a utility tool to generate SQL file(s) to populate test database with significant amount of data. This code does not use collections and streams for performance reasons.
 * **load-test** - a module running pre-defined load tests using Gatling.
-* **monitoring** - dashboards showing the company app performance in Grafana. Micrometer is used to gather data in Prometheus. (WiP)
+* **observability** - dashboards showing the company app performance and logs in Grafana. Micrometer is used to gather data in Prometheus. Loki is used for aggregating logs.
 
 # Running locally
 Requires JDK17+, Docker, and Docker Compose installed on your machine.
@@ -38,8 +38,8 @@ Gatling gradle plugin is used. Run following commands:
 ```
 First one load tests endpoint that fids the given employee. Second one load tests endpoint that finds the given department and calculates its cost (computationally expensive).
 
-## Monitoring
-Company app serves Spring Boot Actuator data which are scrapped by Prometheus. Grafana dashboard is available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c).
+## Observability
+Company app serves Spring Boot Actuator data which are scrapped by Prometheus. Loki aggregates logs. The Grafana dashboards are available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c).
 ![](./readme-assets/img/grafana.png)
 
 ## Hints
@@ -51,7 +51,7 @@ Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the loa
 * Prometheus looses data when app is irresponsive.
 
 # Future plans
-* Add Tempo and Loki to Grafana Stack
+* Add Tempo to Grafana Stack
 * Add DB monitoring
 * Prepare local setup using Minikube
 * Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform
