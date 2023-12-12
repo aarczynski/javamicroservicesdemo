@@ -37,3 +37,6 @@ out/
 
 ### Generated SQLs
 /data-generator/output
+
+### OS files
+.DS_Store
