@@ -58,6 +58,8 @@ services:
     image: grafana/loki:2.9.2
     ports:
       - "3100:3100"
+    volumes:
+      - company-loki-data:/loki
     networks:
       - microservices-demo-network
     healthcheck:
@@ -75,9 +77,13 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      - ./observability/loki/local-setup.yml:/etc/loki/local-setup.yml
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - microservices-demo-network
 
 networks:
   microservices-demo-network:
+
+volumes:
+  company-loki-data:
