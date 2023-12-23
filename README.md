@@ -56,5 +56,5 @@ Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the loa
 * Prepare local setup using Minikube
 * Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform
 * Prepare CI/CD for above
-* Add another microservice to demo backpressure / circuit breaker
+* Add another microservice to demo backpressure / circuit breaker and distributed tracing.
 
