@@ -59,6 +59,7 @@ services:
     ports:
       - "3100:3100"
     volumes:
+      - ./observability/loki/loki.yml:/etc/loki/local-config.yaml
       - company-loki-data:/loki
     networks:
       - microservices-demo-network
@@ -77,7 +78,6 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./observability/loki/local-setup.yml:/etc/loki/local-setup.yml
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - microservices-demo-network
