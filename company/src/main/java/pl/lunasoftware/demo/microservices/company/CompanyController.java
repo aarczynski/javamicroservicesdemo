@@ -1,5 +1,6 @@
 package pl.lunasoftware.demo.microservices.company;
 
+import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,6 +32,7 @@ public class CompanyController {
         return companyService.getDepartmentCost(departmentName);
     }
 
+    @Observed
     @GetMapping("/employees/{email}")
     public EmployeeDto getEmployee(@PathVariable String email) {
         log.info("Received request for {} employee", email);

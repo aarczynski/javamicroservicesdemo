@@ -1,5 +1,6 @@
 package pl.lunasoftware.demo.microservices.company;
 
+import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -56,6 +57,7 @@ public class CompanyService {
         return new DepartmentCostDto(departmentName, cost);
     }
 
+    @Observed
     public EmployeeDto findEmployee(String email) {
         EmployeeDto employeeDto = employeeRepository.findEmployeeByEmail(email)
                 .map(e -> new EmployeeDto(

@@ -25,7 +25,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -149,10 +149,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({app=\"Company App\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({application=\"companyapp\"} |= `$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -164,7 +164,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8E80F9AEF21F6940"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 18,
@@ -187,10 +187,10 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8E80F9AEF21F6940"
+            "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{app=\"Company App\"} |= `$searchText`",
+          "expr": "{application=\"companyapp\"} |= `$searchText`",
           "queryType": "range",
           "refId": "A"
         }

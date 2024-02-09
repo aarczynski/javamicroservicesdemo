@@ -438,7 +438,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "rate(db_department_seconds_sum[$__rate_interval]) / rate(db_department_seconds_count[$__rate_interval]) * 1e3",
+          "expr": "rate(company_employee_db_seconds_sum[$__rate_interval]) / rate(company_employee_db_seconds_count[$__rate_interval]) * 1e3",
           "hide": false,
           "instant": false,
           "legendFormat": "find department by name",
@@ -1262,7 +1262,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "histogram_quantile(0.50, sum by (le, uri) (rate(db_department_seconds_bucket[1m0s]))) * 1e3 "
+              "options": "histogram_quantile(0.50, sum by (le, uri) (rate(company_employee_db_seconds_bucket[1m0s]))) * 1e3 "
             },
             "properties": [
               {
@@ -1277,7 +1277,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "histogram_quantile(0.75, sum by (le, uri) (rate(db_department_seconds_bucket[1m0s]))) * 1e3 "
+              "options": "histogram_quantile(0.75, sum by (le, uri) (rate(company_employee_db_seconds_bucket[1m0s]))) * 1e3 "
             },
             "properties": [
               {
@@ -1292,7 +1292,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "histogram_quantile(0.90, sum by (le, uri) (rate(db_department_seconds_bucket[1m0s]))) * 1e3 "
+              "options": "histogram_quantile(0.90, sum by (le, uri) (rate(company_employee_db_seconds_bucket[1m0s]))) * 1e3 "
             },
             "properties": [
               {
@@ -1307,7 +1307,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "histogram_quantile(0.95, sum by (le, uri) (rate(db_department_seconds_bucket[1m0s]))) * 1e3 "
+              "options": "histogram_quantile(0.95, sum by (le, uri) (rate(company_employee_db_seconds_bucket[1m0s]))) * 1e3 "
             },
             "properties": [
               {
@@ -1322,7 +1322,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "histogram_quantile(0.99, sum by (le, uri) (rate(db_department_seconds_bucket[1m0s]))) * 1e3 "
+              "options": "histogram_quantile(0.99, sum by (le, uri) (rate(company_employee_db_seconds_bucket[1m0s]))) * 1e3 "
             },
             "properties": [
               {
@@ -1512,7 +1512,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, uri) (rate(db_department_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.50, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "find department 50th percentile",
@@ -1525,7 +1525,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, uri) (rate(db_department_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.75, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "find department 75th percentile",
@@ -1538,7 +1538,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, uri) (rate(db_department_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.90, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "find department 90th percentile",
@@ -1551,7 +1551,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(db_department_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "find department 95th percentile",
@@ -1564,7 +1564,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(db_department_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "find department 99th percentile",
