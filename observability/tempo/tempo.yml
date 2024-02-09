@@ -1,0 +1,16 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    zipkin:
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/blocks
+
+compactor:
+  compaction:
+    block_retention: 168h # 7 days, 7d causes parse error

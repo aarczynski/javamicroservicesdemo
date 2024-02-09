@@ -1,9 +1,9 @@
 scrape_configs:
-  - job_name: 'CompanyAppMetrics'
+  - job_name: 'company-app'
     metrics_path: '/actuator/prometheus'
     scrape_interval: 15s
     scrape_timeout: 15s
     static_configs:
       - targets: ['company-app:8080']
         labels:
-          application: 'Company Application'
+          application: '${spring.application.name:}'

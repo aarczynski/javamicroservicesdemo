@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: companyapp
   jpa:
     open-in-view: false
     hibernate:
@@ -9,8 +11,22 @@ management:
   endpoints:
     web:
       exposure:
-        include: ['prometheus']
+        include: [ 'prometheus' ]
   metrics:
     distribution:
-      percentiles-histogram[http.server.requests]: true
-      percentiles[http.server.requests]: 0.5, 0.75, 0.9, 0.95, 0.99
+      percentiles:
+        http.server.requests: 0.5, 0.75, 0.9, 0.95, 0.99
+        company.employee.db: 0.5, 0.75, 0.9, 0.95, 0.99
+      percentiles-histogram:
+        http.server.requests: true
+        company.employee.db: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://tempo:9411/api/v2/spans
+logging:
+  pattern:
+    correlation: '[${spring.application.name:},%X{traceId:-},%X{spanId:-}]'
+

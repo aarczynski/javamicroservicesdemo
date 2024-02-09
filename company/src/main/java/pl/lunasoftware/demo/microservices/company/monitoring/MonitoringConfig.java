@@ -1,7 +1,7 @@
 package pl.lunasoftware.demo.microservices.company.monitoring;
 
-import io.micrometer.core.aop.TimedAspect;
-import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.observation.aop.ObservedAspect;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class MonitoringConfig {
 
     @Bean
-    public TimedAspect timedAspect(MeterRegistry registry) {
-        return new TimedAspect(registry);
+    public ObservedAspect observedAspect(ObservationRegistry registry) {
+        return new ObservedAspect(registry);
     }
 }
