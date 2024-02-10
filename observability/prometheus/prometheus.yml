@@ -6,4 +6,4 @@ scrape_configs:
     static_configs:
       - targets: ['company-app:8080']
         labels:
-          application: '${spring.application.name:}'
+          application: company-app

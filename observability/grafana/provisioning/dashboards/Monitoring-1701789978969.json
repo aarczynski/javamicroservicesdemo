@@ -425,25 +425,12 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "rate(db_employee_seconds_sum[$__rate_interval]) / rate(db_employee_seconds_count[$__rate_interval]) * 1e3",
+          "expr": "rate(company_db_seconds_sum[$__rate_interval]) / rate(company_db_seconds_count[$__rate_interval]) * 1e3",
           "instant": false,
           "interval": "",
-          "legendFormat": "find employee by email",
+          "legendFormat": "{{method}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "rate(company_employee_db_seconds_sum[$__rate_interval]) / rate(company_employee_db_seconds_count[$__rate_interval]) * 1e3",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "find department by name",
-          "range": true,
-          "refId": "B"
         }
       ],
       "title": "AVG DB Response Time [ms]",
@@ -1483,6 +1470,156 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findAllActiveEmployeesForDepartment 50th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findEmployeeByEmail 50th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findAllActiveEmployeesForDepartment 75th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findEmployeeByEmail 75th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findAllActiveEmployeesForDepartment 90th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findEmployeeByEmail 90th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findAllActiveEmployeesForDepartment 95th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "semi-dark-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findEmployeeByEmail 95th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "semi-dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findEmployeeByEmail 99th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "findAllActiveEmployeesForDepartment 99th percentile"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1512,10 +1649,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.50, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
-          "legendFormat": "find department 50th percentile",
+          "legendFormat": "{{method}} 50th percentile",
           "range": true,
           "refId": "A"
         },
@@ -1525,10 +1662,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.75, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
-          "legendFormat": "find department 75th percentile",
+          "legendFormat": "{{method}} 75th percentile",
           "range": true,
           "refId": "B"
         },
@@ -1538,10 +1675,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.90, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
-          "legendFormat": "find department 90th percentile",
+          "legendFormat": "{{method}} 90th percentile",
           "range": true,
           "refId": "C"
         },
@@ -1551,10 +1688,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.95, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
-          "legendFormat": "find department 95th percentile",
+          "legendFormat": "{{method}} 95th percentile",
           "range": true,
           "refId": "D"
         },
@@ -1564,77 +1701,12 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(company_employee_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.99, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
-          "legendFormat": "find department 99th percentile",
+          "legendFormat": "{{method}} 99th percentile",
           "range": true,
           "refId": "F"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le, uri) (rate(db_employee_seconds_bucket[$__rate_interval]))) * 1e3 ",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "find employee 50th percentile",
-          "range": true,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, uri) (rate(db_employee_seconds_bucket[$__rate_interval]))) * 1e3 ",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "find employee 75th percentile",
-          "range": true,
-          "refId": "G"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, uri) (rate(db_employee_seconds_bucket[$__rate_interval]))) * 1e3 ",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "find employee 90th percentile",
-          "range": true,
-          "refId": "H"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(db_employee_seconds_bucket[$__rate_interval]))) * 1e3 ",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "find employee 95th percentile",
-          "range": true,
-          "refId": "I"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(db_employee_seconds_bucket[$__rate_interval]))) * 1e3 ",
-          "hide": false,
-          "instant": false,
-          "legendFormat": "find employee 99th percentile",
-          "range": true,
-          "refId": "J"
         }
       ],
       "title": "DB Response Times [ms]",
@@ -1655,6 +1727,6 @@
   "timezone": "",
   "title": "Monitoring",
   "uid": "e1f890c5-2799-411b-b267-f344670afe6c",
-  "version": 2,
+  "version": 1,
   "weekStart": ""
 }
