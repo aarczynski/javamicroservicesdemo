@@ -19,15 +19,29 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class DepartmentSimulation extends Simulation {
 
-    private static final int RPS = 1;
+    private static final int RPS = 5;
     private static final int LOAD_TEST_DURATION_SECS = 600;
 
-    private final DepartmentsSqlDataReader departmentsReader = new DepartmentsSqlDataReader();
+    private DepartmentsSqlDataReader departmentsReader;
 
     public DepartmentSimulation() {
         this.setUp(departmentsCostsScenario()
                 .injectOpen(constantUsersPerSec(RPS).during(Duration.ofSeconds(LOAD_TEST_DURATION_SECS)))
                 .protocols(httpProtocolBuilder()));
+    }
+
+    @Override
+    public void before() {
+        departmentsReader = new DepartmentsSqlDataReader();
+    }
+
+    @Override
+    public void after() {
+        try {
+            departmentsReader.close();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private ScenarioBuilder departmentsCostsScenario() {

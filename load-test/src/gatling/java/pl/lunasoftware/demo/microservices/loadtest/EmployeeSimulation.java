@@ -19,15 +19,29 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class EmployeeSimulation extends Simulation {
 
-    private static final int RPS = 10;
+    private static final int RPS = 500;
     private static final int LOAD_TEST_DURATION_SECS = 600;
 
-    private final EmployeeSqlDataReader employeeReader = new EmployeeSqlDataReader();
+    private EmployeeSqlDataReader employeeReader;
 
     public EmployeeSimulation() {
         this.setUp(employeesDataScenario()
                 .injectOpen(constantUsersPerSec(RPS).during(Duration.ofSeconds(LOAD_TEST_DURATION_SECS)))
                 .protocols(httpProtocolBuilder()));
+    }
+
+    @Override
+    public void before() {
+        employeeReader = new EmployeeSqlDataReader();
+    }
+
+    @Override
+    public void after() {
+        try {
+            employeeReader.close();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private ScenarioBuilder employeesDataScenario() {

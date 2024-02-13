@@ -5,7 +5,7 @@ App to analyze distributed microservices app and DB performance using Gatling an
 * **company** - a simple CRUD microservice. Data model consists of two tables: department and employee. They are in many-to-many relationship (an employee can work in multiple departments, while a department may have multiple employees).
 * **data-generator** - a utility tool to generate SQL file(s) to populate test database with significant amount of data. This code does not use collections and streams for performance reasons.
 * **load-test** - a module running pre-defined load tests using Gatling.
-* **observability** - dashboards showing the company app performance and logs in Grafana. Micrometer is used to gather data in Prometheus. Loki is used for aggregating logs.
+* **observability** - dashboards showing the company app performance and logs in Grafana. Micrometer is used to gather data in Prometheus. Loki is used for aggregating logs. Tempo gathers data for traces
 
 # Running locally
 Requires JDK17+, Docker, and Docker Compose installed on your machine.
@@ -46,13 +46,10 @@ Company app serves Spring Boot Actuator data which are scrapped by Prometheus. L
 Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested Company App. Default configuration limits app to 6 cores + another 2 cores for its DB.
 
 # Known issues
-* Load test module reads generated data from SQL file in an ineffective way and will fail for around 500+ RPS. 250 is currently safe.
 * There are occasional 404s during load tests that should not happen as SQL file imported into DB is used to generate random requests.
-* Prometheus looses data when app is irresponsive.
+* Prometheus looses data when app is unresponsive.
 
 # Future plans
-* Add Tempo to Grafana Stack
-* Add DB monitoring
 * Prepare local setup using Minikube
 * Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform
 * Prepare CI/CD for above

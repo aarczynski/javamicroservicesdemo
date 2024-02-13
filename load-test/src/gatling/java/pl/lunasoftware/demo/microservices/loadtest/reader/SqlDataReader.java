@@ -5,22 +5,27 @@ import java.io.RandomAccessFile;
 import java.nio.file.Path;
 import java.util.concurrent.ThreadLocalRandom;
 
-public abstract class SqlDataReader {
+public abstract class SqlDataReader implements AutoCloseable {
 
-    protected final Path path;
+    protected final RandomAccessFile file;
     protected final long lastLineOffset;
 
     public SqlDataReader(Path path) {
-        this.path = path.toAbsolutePath();
-        try (RandomAccessFile file = new RandomAccessFile(this.path.toFile(), "r")) {
+        try {
+            this.file = new RandomAccessFile(path.toAbsolutePath().toFile(), "r");
             lastLineOffset = lastLineOffset(file);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
+    @Override
+    public void close() throws Exception {
+        file.close();
+    }
+
     protected String readDataInternal() {
-        try (RandomAccessFile file = new RandomAccessFile(path.toFile(), "r")) {
+        try {
             long randomPos = ThreadLocalRandom.current().nextLong(file.length() - lastLineOffset);
             file.seek(randomPos);
             file.readLine();
