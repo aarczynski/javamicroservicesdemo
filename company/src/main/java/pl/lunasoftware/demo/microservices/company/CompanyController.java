@@ -11,6 +11,7 @@ import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto;
 import pl.lunasoftware.demo.microservices.company.employee.EmployeeDto;
 
 @Slf4j
+@Observed
 @RestController
 @RequestMapping("/api/v1")
 public class CompanyController {
@@ -32,7 +33,6 @@ public class CompanyController {
         return companyService.getDepartmentCost(departmentName);
     }
 
-    @Observed
     @GetMapping("/employees/{email}")
     public EmployeeDto getEmployee(@PathVariable String email) {
         log.info("Received request for {} employee", email);

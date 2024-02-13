@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Slf4j
+@Observed
 @Service
 public class CompanyService {
 
@@ -57,7 +58,6 @@ public class CompanyService {
         return new DepartmentCostDto(departmentName, cost);
     }
 
-    @Observed
     public EmployeeDto findEmployee(String email) {
         EmployeeDto employeeDto = employeeRepository.findEmployeeByEmail(email)
                 .map(e -> new EmployeeDto(
