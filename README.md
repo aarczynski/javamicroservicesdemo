@@ -5,7 +5,7 @@ App to analyze distributed microservices app and DB performance using Gatling an
 * **company** - a simple CRUD microservice. Data model consists of two tables: department and employee. They are in many-to-many relationship (an employee can work in multiple departments, while a department may have multiple employees).
 * **data-generator** - a utility tool to generate SQL file(s) to populate test database with significant amount of data. This code does not use collections and streams for performance reasons.
 * **load-test** - a module running pre-defined load tests using Gatling.
-* **observability** - dashboards showing the company app performance and logs in Grafana. Micrometer is used to gather data in Prometheus. Loki is used for aggregating logs. Tempo gathers data for traces
+* **observability** - dashboards showing the company app performance and logs in Grafana. Micrometer is used to gather data in Prometheus. Loki is used for aggregating logs. Tempo gathers traces about methods time execution.
 
 # Running locally
 Requires JDK17+, Docker, and Docker Compose installed on your machine.
