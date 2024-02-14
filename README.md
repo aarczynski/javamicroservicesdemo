@@ -33,8 +33,8 @@ Check `http/requests.http` file.
 ## Performance testing
 Gatling gradle plugin is used. Run following commands:
 ```shell
-./gradlew clean :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.DepartmentSimulation
-./gradlew clean :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation
+./gradlew :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.DepartmentSimulation
+./gradlew :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation
 ```
 First one load tests endpoint that fids the given employee. Second one load tests endpoint that finds the given department and calculates its cost (computationally expensive).
 
