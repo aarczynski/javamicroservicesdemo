@@ -113,6 +113,21 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": " "
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "transparent",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -156,6 +171,18 @@
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "vector(0)",
+          "hide": false,
+          "legendFormat": " ",
+          "queryType": "range",
+          "refId": "B"
         }
       ],
       "title": "Logs Volume",
@@ -234,6 +261,6 @@
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 20,
+  "version": 1,
   "weekStart": ""
 }
