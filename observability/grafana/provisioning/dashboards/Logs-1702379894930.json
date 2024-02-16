@@ -117,14 +117,15 @@
           {
             "matcher": {
               "id": "byName",
-              "options": " "
+              "options": "fillerQuery"
             },
             "properties": [
               {
-                "id": "color",
+                "id": "custom.hideFrom",
                 "value": {
-                  "fixedColor": "transparent",
-                  "mode": "fixed"
+                  "legend": true,
+                  "tooltip": true,
+                  "viz": true
                 }
               }
             ]
@@ -151,7 +152,7 @@
         },
         "orientation": "auto",
         "showValue": "never",
-        "stacking": "normal",
+        "stacking": "none",
         "tooltip": {
           "mode": "multi",
           "sort": "none"
@@ -180,7 +181,7 @@
           "editorMode": "code",
           "expr": "vector(0)",
           "hide": false,
-          "legendFormat": " ",
+          "legendFormat": "fillerQuery",
           "queryType": "range",
           "refId": "B"
         }
@@ -254,13 +255,13 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 1,
+  "version": 4,
   "weekStart": ""
 }
