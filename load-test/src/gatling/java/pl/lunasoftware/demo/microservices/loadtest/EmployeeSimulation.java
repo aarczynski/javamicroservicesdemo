@@ -13,20 +13,27 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static io.gatling.javaapi.core.CoreDsl.constantUsersPerSec;
+import static io.gatling.javaapi.core.CoreDsl.rampUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class EmployeeSimulation extends Simulation {
 
-    private static final int RPS = 500;
-    private static final int LOAD_TEST_DURATION_SECS = 600;
+    private static final int MAX_RPS = 100;
+    private static final Duration A_MINUTE = Duration.ofSeconds(60);
 
     private EmployeeSqlDataReader employeeReader;
 
     public EmployeeSimulation() {
         this.setUp(employeesDataScenario()
-                .injectOpen(constantUsersPerSec(RPS).during(Duration.ofSeconds(LOAD_TEST_DURATION_SECS)))
+                .injectOpen(
+                        rampUsersPerSec(0).to(MAX_RPS / 2.0).during(A_MINUTE).randomized(),
+                        constantUsersPerSec(MAX_RPS / 2.0).during(A_MINUTE).randomized(),
+                        rampUsersPerSec(MAX_RPS / 2.0).to(MAX_RPS).during(A_MINUTE).randomized(),
+                        constantUsersPerSec(MAX_RPS).during(A_MINUTE).randomized(),
+                        rampUsersPerSec(MAX_RPS).to(0).during(A_MINUTE).randomized()
+                )
                 .protocols(httpProtocolBuilder()));
     }
 

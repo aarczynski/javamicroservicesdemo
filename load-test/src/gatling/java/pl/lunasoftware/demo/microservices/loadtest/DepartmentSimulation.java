@@ -12,21 +12,27 @@ import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static io.gatling.javaapi.core.CoreDsl.constantUsersPerSec;
+import static io.gatling.javaapi.core.CoreDsl.incrementUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class DepartmentSimulation extends Simulation {
 
-    private static final int RPS = 5;
-    private static final int LOAD_TEST_DURATION_SECS = 600;
+    private static final int RPS = 1;
+    private static final Duration A_MINUTE = Duration.ofSeconds(60);
 
     private DepartmentsSqlDataReader departmentsReader;
 
     public DepartmentSimulation() {
         this.setUp(departmentsCostsScenario()
-                .injectOpen(constantUsersPerSec(RPS).during(Duration.ofSeconds(LOAD_TEST_DURATION_SECS)))
+                .injectOpen(
+                        incrementUsersPerSec(RPS)
+                                .times(4)
+                                .eachLevelLasting(A_MINUTE)
+                                .separatedByRampsLasting(A_MINUTE)
+                                .startingFrom(RPS)
+                )
                 .protocols(httpProtocolBuilder()));
     }
 
