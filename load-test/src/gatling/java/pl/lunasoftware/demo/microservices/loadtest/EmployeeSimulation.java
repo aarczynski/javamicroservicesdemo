@@ -20,8 +20,8 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class EmployeeSimulation extends Simulation {
 
-    private static final int MAX_RPS = 100;
-    private static final Duration A_MINUTE = Duration.ofSeconds(60);
+    private static final int MAX_RPS = 500;
+    private static final Duration A_MINUTE = Duration.ofSeconds(600);
 
     private EmployeeSqlDataReader employeeReader;
 
@@ -52,9 +52,9 @@ public class EmployeeSimulation extends Simulation {
     }
 
     private ScenarioBuilder employeesDataScenario() {
-        return scenario("Load Test get employees data")
+        return scenario("Load Test get employee data")
                 .feed(employeeEmailFeeder())
-                .exec(http("get employees data")
+                .exec(http("get employee data")
                         .get("/api/v1/employees/#{email}")
                         .header("Content-Type", "application/json")
                         .check(status().is(200))
