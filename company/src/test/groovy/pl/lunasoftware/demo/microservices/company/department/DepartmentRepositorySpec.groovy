@@ -18,14 +18,6 @@ class DepartmentRepositorySpec extends Specification {
         departments*.name as Set == ['IT', 'Finances'] as Set
     }
 
-    def "should find department by name"() {
-        when:
-        def department = departmentRepository.findByNameIgnoringCase('IT')
-
-        then:
-        department.get().name == 'IT'
-    }
-
     def "should find department by name ignoring case"() {
         when:
         def department = departmentRepository.findByNameIgnoringCase('it')
