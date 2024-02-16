@@ -90,7 +90,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "green",
+                  "fixedColor": "yellow",
                   "mode": "fixed"
                 }
               }
@@ -105,7 +105,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "yellow",
+                  "fixedColor": "green",
                   "mode": "fixed"
                 }
               }
@@ -647,7 +647,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "rate(company_db_seconds_sum[$__rate_interval]) / rate(company_db_seconds_count[$__rate_interval]) * 1e3",
+          "expr": "irate(company_db_seconds_sum[$__rate_interval]) / irate(company_db_seconds_count[$__rate_interval]) * 1e3",
           "instant": false,
           "interval": "",
           "legendFormat": "{{method}}",
@@ -894,7 +894,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, uri) (rate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.50, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
           "hide": false,
           "instant": false,
           "legendFormat": "{{uri}} 50th percentile",
@@ -908,7 +908,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.75, sum by (le, uri) (rate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.75, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
           "format": "time_series",
           "hide": false,
           "instant": false,
@@ -923,7 +923,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum by (le, uri) (rate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.9, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
           "hide": false,
           "instant": false,
           "legendFormat": "{{uri}} 90th percentile",
@@ -936,7 +936,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
           "hide": false,
           "instant": false,
           "legendFormat": "{{uri}} 95th percentile",
@@ -949,7 +949,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.99, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
           "hide": false,
           "instant": false,
           "legendFormat": "{{uri}} 99th percentile",
@@ -1196,7 +1196,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.50, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 50th percentile",
@@ -1209,7 +1209,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.75, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 75th percentile",
@@ -1222,7 +1222,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.90, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 90th percentile",
@@ -1235,7 +1235,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.95, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 95th percentile",
@@ -1248,7 +1248,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.99, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 99th percentile",
