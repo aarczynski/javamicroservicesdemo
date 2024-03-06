@@ -56,7 +56,6 @@ public class EmployeeSimulation extends Simulation {
                 .feed(employeeEmailFeeder())
                 .exec(http("get employee data")
                         .get("/api/v1/employees/#{email}")
-                        .header("Content-Type", "application/json")
                         .check(status().is(200))
                 );
     }
