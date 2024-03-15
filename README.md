@@ -39,8 +39,21 @@ Gatling gradle plugin is used. Run following commands:
 First one load tests endpoint that fids the given employee. Second one load tests endpoint that finds the given department and calculates its cost (computationally expensive).
 
 ## Observability
-Company app serves Spring Boot Actuator data which are scrapped by Prometheus. Loki aggregates logs. The Grafana dashboards are available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c).
-![](./readme-assets/img/grafana.png)
+Company app serves Spring Boot Actuator data which are scrapped by Prometheus.
+
+### Performance dashboard
+The dashboard is available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c).
+It shows response times, and errors count.
+![](./readme-assets/img/grafana-dashboard.png)
+
+### Logs dashboard
+The dashboard is available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b).
+It allows viewing and searching logs.
+![](./readme-assets/img/grafana-logs.png)
+
+### Traces
+Above dashboard has links to traces in Tempo. This allows to view detailed information about application performance when handling a particular HTTP request.
+![](./readme-assets/img/grafana-traces.png)
 
 ## Hints
 Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested Company App. Default configuration limits app to 6 cores + another 2 cores for its DB.
