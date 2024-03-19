@@ -47,7 +47,7 @@ It shows response times, and errors count.
 ![](./readme-assets/img/grafana-dashboard.png)
 
 ### Logs dashboard
-The dashboard is available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b).
+The dashboard is available under [http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b](http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b).
 It allows viewing and searching logs.
 ![](./readme-assets/img/grafana-logs.png)
 
