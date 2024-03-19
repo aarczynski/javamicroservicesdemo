@@ -76,7 +76,6 @@ services:
     command: [ "-config.file=/etc/tempo.yml" ]
     ports:
       - "3200:3200"
-      - "9411:9411" # Zipkin
     volumes:
       - ./observability/tempo/tempo.yml:/etc/tempo.yml
     networks:
