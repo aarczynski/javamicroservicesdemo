@@ -168,7 +168,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({application=\"companyapp\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({job=\"company-app\"} |= `$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -218,7 +218,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{application=\"companyapp\"} |= `$searchText`",
+          "expr": "{job=\"company-app\"} |= `$searchText`",
           "queryType": "range",
           "refId": "A"
         }
@@ -228,7 +228,7 @@
     }
   ],
   "refresh": "",
-  "schemaVersion": 38,
+  "schemaVersion": 39,
   "tags": [],
   "templating": {
     "list": [
@@ -262,6 +262,6 @@
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 4,
+  "version": 1,
   "weekStart": ""
 }
