@@ -61,6 +61,7 @@ Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the loa
 # Known issues
 * There are occasional 404s during load tests that should not happen as SQL file imported into DB is used to generate random requests.
 * Prometheus looses data when app is unresponsive.
+* Spring percentile metrics do not work with OTEL Agent.
 
 # Future plans
 * Prepare local setup using Minikube
