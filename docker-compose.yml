@@ -78,7 +78,7 @@ services:
 
   prometheus:
     container_name: company-prometheus
-    image: prom/prometheus:v2.51.0
+    image: prom/prometheus:v2.53.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-remote-write-receiver
@@ -111,7 +111,7 @@ services:
 
   tempo:
     container_name: company-tempo
-    image: grafana/tempo:2.4.1
+    image: grafana/tempo:2.5.0
     command:
       - -config.file=/etc/tempo.yml
     ports:
@@ -125,7 +125,7 @@ services:
 
   grafana:
     container_name: company-grafana
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:11.1.0
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
