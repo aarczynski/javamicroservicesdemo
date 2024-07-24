@@ -56,6 +56,7 @@ services:
   otel-collector:
     container_name: company-otel-collector
     image: otel/opentelemetry-collector-contrib:0.96.0
+#    image: otel/opentelemetry-collector-contrib:0.105.0
     command:
       - --config=/etc/otelcol-contrib/otel-collector.yml
     ports:
@@ -96,7 +97,7 @@ services:
 
   loki:
     container_name: company-loki
-    image: grafana/loki:2.9.5
+    image: grafana/loki:3.1.0
     command:
       - -config.file=/etc/loki/loki.yml
     ports:
