@@ -14,10 +14,6 @@ exporters:
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
 
-#  prometheus:
-#    endpoint: "0.0.0.0:8889"
-#    enable_open_metrics: true
-
   otlp/tempo:
     endpoint: "http://tempo:4317"
     tls:

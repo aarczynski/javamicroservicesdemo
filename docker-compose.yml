@@ -22,7 +22,7 @@ services:
       company-app-db:
         condition: service_healthy
 #      otel-collector:
-#        condition: service_healthy
+#        condition: service_healthy # # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
       prometheus:
         condition: service_healthy
       loki:
@@ -47,7 +47,7 @@ services:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 3s
-      retries: 60
+      retries: 10
     deploy:
       resources:
         limits:
@@ -58,9 +58,6 @@ services:
     image: otel/opentelemetry-collector-contrib:0.103.0
     command:
       - --config=/etc/otelcol-contrib/otel-collector.yml
-    ports:
-#      - "13133:13133" # health_check extension
-      - "8888:8888" # /metrics
     volumes:
       - ./observability/otel-collector/otel-collector.yml:/etc/otelcol-contrib/otel-collector.yml
     depends_on:
@@ -70,8 +67,8 @@ services:
         condition: service_healthy
       tempo:
         condition: service_healthy
-  #    healthcheck:
-#      test: [ "CMD", "wget", "--spider", "http://localhost:13133/ready" ]
+#    healthcheck:
+#      test: [ "CMD", "wget", "--spider", "http://localhost:8888" ]
 #      interval: 5s
 #      timeout: 3s
 #      retries: 10
@@ -84,15 +81,11 @@ services:
       - --web.enable-remote-write-receiver
     ports:
       - "9090:9090"
-#    volumes:
-#        - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     healthcheck:
       test: [ "CMD", "wget", "--spider", "http://localhost:9090" ]
       interval: 5s
       timeout: 3s
       retries: 10
-#    depends_on:
-#      - otel-collector
 
   loki:
     container_name: company-loki
