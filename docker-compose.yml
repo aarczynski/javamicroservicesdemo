@@ -10,10 +10,10 @@ services:
                "-jar", "./company-app.jar" ]
     environment:
       OTEL_SERVICE_NAME: "company-app"
-      OTEL_METRICS_EXPORTER: "otlp"
-      OTEL_TRACES_EXPORTER: "otlp"
-      OTEL_LOGS_EXPORTER: "otlp"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
     ports:
       - '8080:8080'
@@ -55,7 +55,6 @@ services:
 
   otel-collector:
     container_name: company-otel-collector
-#    image: otel/opentelemetry-collector-contrib:0.96.0
     image: otel/opentelemetry-collector-contrib:0.103.0
     command:
       - --config=/etc/otelcol-contrib/otel-collector.yml
