@@ -25,7 +25,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -160,7 +160,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "description": "",
       "fieldConfig": {
@@ -217,36 +217,6 @@
           }
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "/api/v1/departments/{departmentName}/costs"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "/api/v1/employees/{email}"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
           {
             "matcher": {
               "id": "byName",
@@ -384,7 +354,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -468,6 +438,30 @@
                 }
               }
             ]
+          },
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "/api/v1/employees/{email}"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
           }
         ]
       },
@@ -501,7 +495,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "(sum by (uri) (irate(http_server_requests_seconds_sum{uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (irate(http_server_requests_seconds_count{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "1000 * (sum by (uri) (irate(http_server_requests_seconds_sum{uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (irate(http_server_requests_seconds_count{uri=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "interval": "",
           "legendFormat": "__auto",
@@ -515,7 +509,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -614,6 +608,30 @@
                 }
               }
             ]
+          },
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "findEmployeeByEmail"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
           }
         ]
       },
@@ -661,7 +679,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -894,10 +912,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "{{uri}} 50th percentile",
+          "legendFormat": "{{http_route}} 50th percentile",
           "range": true,
           "refId": "A"
         },
@@ -908,12 +926,12 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "histogram_quantile(0.75, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "format": "time_series",
           "hide": false,
           "instant": false,
           "interval": "",
-          "legendFormat": "{{uri}} 75th percentile",
+          "legendFormat": "{{http_route}} 75th percentile",
           "range": true,
           "refId": "B"
         },
@@ -923,10 +941,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.9, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "1000 * histogram_quantile(0.9, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "{{uri}} 90th percentile",
+          "legendFormat": "{{http_route}} 90th percentile",
           "range": true,
           "refId": "C"
         },
@@ -936,10 +954,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "{{uri}} 95th percentile",
+          "legendFormat": "{{http_route}} 95th percentile",
           "range": true,
           "refId": "D"
         },
@@ -949,10 +967,10 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, uri) (irate(http_server_requests_seconds_bucket{uri=~\"/api.*\"}[$__rate_interval]))) * 1e3",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval]))) ",
           "hide": false,
           "instant": false,
-          "legendFormat": "{{uri}} 99th percentile",
+          "legendFormat": "{{http_route}} 99th percentile",
           "range": true,
           "refId": "E"
         }
@@ -963,7 +981,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -1261,19 +1279,19 @@
     }
   ],
   "refresh": "5s",
-  "schemaVersion": 38,
+  "schemaVersion": 39,
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Monitoring",
   "uid": "e1f890c5-2799-411b-b267-f344670afe6c",
-  "version": 9,
+  "version": 2,
   "weekStart": ""
 }

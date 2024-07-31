@@ -20,7 +20,7 @@ import static io.gatling.javaapi.http.HttpDsl.status;
 
 public class EmployeeSimulation extends Simulation {
 
-    private static final int MAX_RPS = 500;
+    private static final int MAX_RPS = 100;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
 
     private EmployeeSqlDataReader employeeReader;

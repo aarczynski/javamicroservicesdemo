@@ -1,19 +1,29 @@
-version: '3.9'
-
 services:
   company-app:
     container_name: company-app
     build:
       context: ./company
       dockerfile: docker/Dockerfile
-    command: [ "java", "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005", "-jar", "./company-app.jar" ]
+    command: [ "java",
+               "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005",
+               "-javaagent:./opentelemetry-javaagent.jar",
+               "-jar", "./company-app.jar" ]
+    environment:
+      OTEL_SERVICE_NAME: "company-app"
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_METRIC_EXPORT_INTERVAL: "1000"
     ports:
       - '8080:8080'
       - '5005:5005'
-    networks:
-      - microservices-demo-network
     depends_on:
       company-app-db:
+        condition: service_healthy
+#      otel-collector:
+#        condition: service_healthy # # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
+      prometheus:
         condition: service_healthy
       loki:
         condition: service_healthy
@@ -26,15 +36,13 @@ services:
 
   company-app-db:
     container_name: company-db
-    image: postgres:15.5
+    image: postgres:16.3
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=microservicesdemodb
     ports:
       - '5432:5432'
-    networks:
-      - microservices-demo-network
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
@@ -45,25 +53,49 @@ services:
         limits:
           cpus: '2.00'
 
+  otel-collector:
+    container_name: company-otel-collector
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    command:
+      - --config=/etc/otelcol-contrib/otel-collector.yml
+    volumes:
+      - ./observability/otel-collector/otel-collector.yml:/etc/otelcol-contrib/otel-collector.yml
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+#    healthcheck:
+#      test: [ "CMD", "wget", "--spider", "http://localhost:8888" ]
+#      interval: 5s
+#      timeout: 3s
+#      retries: 10
+
   prometheus:
     container_name: company-prometheus
-    image: prom/prometheus:v2.48.0
+    image: prom/prometheus:v2.53.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
     ports:
       - "9090:9090"
-    volumes:
-      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    networks:
-      - microservices-demo-network
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "http://localhost:9090" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   loki:
     container_name: company-loki
-    image: grafana/loki:2.9.2
+    image: grafana/loki:3.1.0
+    command:
+      - -config.file=/etc/loki/loki.yml
     ports:
       - "3100:3100"
     volumes:
-      - ./observability/loki/loki.yml:/etc/loki/local-config.yaml
-    networks:
-      - microservices-demo-network
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml
     healthcheck:
       test: [ "CMD", "wget", "--spider", "http://localhost:3100/ready" ]
       interval: 5s
@@ -72,22 +104,21 @@ services:
 
   tempo:
     container_name: company-tempo
-    image: grafana/tempo:2.3.1
-    command: [ "-config.file=/etc/tempo.yml" ]
+    image: grafana/tempo:2.5.0
+    command:
+      - -config.file=/etc/tempo.yml
     ports:
-      - "3200:3200"
+      - "3200:3200" # /metrics
     volumes:
       - ./observability/tempo/tempo.yml:/etc/tempo.yml
-    networks:
-      - microservices-demo-network
     healthcheck:
       interval: 5s
       retries: 10
-      test: [ "CMD", "wget", "--spider", "http://localhost:3200/status" ]
+      test: [ "CMD", "wget", "--spider", "http://localhost:3200/ready" ]
 
   grafana:
     container_name: company-grafana
-    image: grafana/grafana:10.2.2
+    image: grafana/grafana:11.1.0
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -96,8 +127,3 @@ services:
       - "3000:3000"
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
-    networks:
-      - microservices-demo-network
-
-networks:
-  microservices-demo-network:

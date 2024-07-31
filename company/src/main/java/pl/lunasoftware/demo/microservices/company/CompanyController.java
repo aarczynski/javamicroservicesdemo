@@ -1,6 +1,5 @@
 package pl.lunasoftware.demo.microservices.company;
 
-import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,7 +10,6 @@ import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto;
 import pl.lunasoftware.demo.microservices.company.employee.EmployeeDto;
 
 @Slf4j
-@Observed
 @RestController
 @RequestMapping("/api/v1")
 public class CompanyController {

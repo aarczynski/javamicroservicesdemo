@@ -33,8 +33,8 @@ Check `http/requests.http` file.
 ## Performance testing
 Gatling gradle plugin is used. Run following commands:
 ```shell
-./gradlew :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.DepartmentSimulation
-./gradlew :load-test:gatlingRun-pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation
+./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.DepartmentSimulation
+./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation
 ```
 First one load tests endpoint that fids the given employee. Second one load tests endpoint that finds the given department and calculates its cost (computationally expensive).
 
@@ -61,6 +61,7 @@ Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the loa
 # Known issues
 * There are occasional 404s during load tests that should not happen as SQL file imported into DB is used to generate random requests.
 * Prometheus looses data when app is unresponsive.
+* Spring percentile metrics do not work with OTEL Agent.
 
 # Future plans
 * Prepare local setup using Minikube

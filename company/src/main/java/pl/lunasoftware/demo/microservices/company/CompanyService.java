@@ -1,6 +1,6 @@
 package pl.lunasoftware.demo.microservices.company;
 
-import io.micrometer.observation.annotation.Observed;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Slf4j
-@Observed
 @Service
 public class CompanyService {
 
@@ -31,6 +30,7 @@ public class CompanyService {
         this.employeeRepository = employeeRepository;
     }
 
+    @WithSpan
     public DepartmentsCostDto getAllDepartmentsCosts() {
         List<DepartmentCostDto> departmentsCosts = departmentRepository.findAllActiveEmployees()
                 .stream()
@@ -46,6 +46,7 @@ public class CompanyService {
         return new DepartmentsCostDto(totalCost, departmentsCosts);
     }
 
+    @WithSpan
     public DepartmentCostDto getDepartmentCost(String departmentName) {
         BigDecimal cost = departmentRepository.findAllActiveEmployeesForDepartment(departmentName)
                 .map(DepartmentEntity::calculateTotalCost)
@@ -58,6 +59,7 @@ public class CompanyService {
         return new DepartmentCostDto(departmentName, cost);
     }
 
+    @WithSpan
     public EmployeeDto findEmployee(String email) {
         EmployeeDto employeeDto = employeeRepository.findEmployeeByEmail(email)
                 .map(e -> new EmployeeDto(

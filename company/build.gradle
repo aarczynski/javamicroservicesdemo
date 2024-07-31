@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'groovy'
-    id 'org.springframework.boot' version '3.2.2'
+    id 'org.springframework.boot' version '3.3.1'
     id 'io.spring.dependency-management' version '1.1.4'
 }
 
@@ -20,31 +20,42 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
+    agent
 }
 
 repositories {
     mavenCentral()
     maven { url 'https://repo.spring.io/milestone' }
     maven { url 'https://repo.spring.io/snapshot' }
+    tasks.register('copyOtelAgent', Copy) {
+
+        from configurations.agent {
+            rename "opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar"
+        }
+        into layout.buildDirectory.dir("otel-agent")
+    }
+}
+
+bootJar {
+    dependsOn copyOtelAgent
 }
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'org.flywaydb:flyway-core:9.22.3'
-    implementation 'org.postgresql:postgresql:42.7.1'
-    runtimeOnly 'com.github.loki4j:loki-logback-appender:1.4.2'
-    runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.12.0'
-    runtimeOnly 'io.micrometer:micrometer-tracing-bridge-brave:1.2.2'
-    runtimeOnly 'io.zipkin.reporter2:zipkin-reporter-brave:2.17.2' // do not use ver 3!
-    runtimeOnly 'net.ttddyy.observation:datasource-micrometer-spring-boot:1.0.1'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.6.0'
+    implementation "org.flywaydb:flyway-core:$flywayVer"
+    implementation 'org.postgresql:postgresql:42.7.3'
     compileOnly 'org.projectlombok:lombok'
+    runtimeOnly "org.flywaydb:flyway-database-postgresql:$flywayVer"
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.2'
     annotationProcessor 'org.projectlombok:lombok'
+    agent "io.opentelemetry.javaagent:opentelemetry-javaagent:2.6.0"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.spockframework:spock-spring:2.4-M1-groovy-4.0'
-    testImplementation 'com.h2database:h2:2.2.224'
-    testImplementation 'org.instancio:instancio-core:3.6.0'
+    testImplementation 'org.spockframework:spock-spring:2.4-M4-groovy-4.0'
+    testImplementation 'com.h2database:h2:2.3.230'
+    testImplementation 'org.instancio:instancio-core:4.8.1'
 }
 
 testing {

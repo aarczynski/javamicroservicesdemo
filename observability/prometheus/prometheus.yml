@@ -1,9 +1,0 @@
-scrape_configs:
-  - job_name: 'company-app'
-    metrics_path: '/actuator/prometheus'
-    scrape_interval: 1s
-    scrape_timeout: 1s
-    static_configs:
-      - targets: ['company-app:8080']
-        labels:
-          application: company-app
