@@ -1,15 +1,15 @@
 plugins {
     id 'java'
     id 'groovy'
-    id 'org.springframework.boot' version '3.3.1'
-    id 'io.spring.dependency-management' version '1.1.4'
+    id 'org.springframework.boot' version '3.3.2'
+    id 'io.spring.dependency-management' version '1.1.6'
 }
 
 group = 'pl.luna-software.demo.microservices'
 version = '0.0.1-SNAPSHOT'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
 }
 
 compileJava {
@@ -49,13 +49,13 @@ dependencies {
     implementation 'org.postgresql:postgresql:42.7.3'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly "org.flywaydb:flyway-database-postgresql:$flywayVer"
-    runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.2'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.3'
     annotationProcessor 'org.projectlombok:lombok'
     agent "io.opentelemetry.javaagent:opentelemetry-javaagent:2.6.0"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.spockframework:spock-spring:2.4-M4-groovy-4.0'
-    testImplementation 'com.h2database:h2:2.3.230'
-    testImplementation 'org.instancio:instancio-core:4.8.1'
+    testImplementation 'com.h2database:h2:2.3.232'
+    testImplementation 'org.instancio:instancio-core:5.0.1'
 }
 
 testing {
