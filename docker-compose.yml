@@ -10,11 +10,12 @@ services:
                "-jar", "./company-app.jar" ]
     environment:
       OTEL_SERVICE_NAME: "company-app"
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
-      OTEL_METRIC_EXPORT_INTERVAL: "1000"
     ports:
       - '8080:8080'
       - '5005:5005'
@@ -108,7 +109,7 @@ services:
     command:
       - -config.file=/etc/tempo.yml
     ports:
-      - "3200:3200" # /metrics
+      - "3200:3200"
     volumes:
       - ./observability/tempo/tempo.yml:/etc/tempo.yml
     healthcheck:
