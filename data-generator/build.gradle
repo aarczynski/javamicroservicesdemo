@@ -4,14 +4,10 @@ plugins {
 }
 
 group = 'pl.luna-software.demo.microservices'
-version = '0.0.1-SNAPSHOT'
+version = '1.0.0'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-}
-
-compileJava {
-    options.compilerArgs << '--enable-preview'
+    sourceCompatibility = JavaVersion.VERSION_21
 }
 
 jar {
@@ -30,9 +26,9 @@ repositories {
 
 dependencies {
     implementation 'com.github.javafaker:javafaker:1.0.2'
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.0'
-    testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
-    testImplementation 'org.instancio:instancio-core:3.6.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+    testImplementation 'org.spockframework:spock-core:2.4-M4-groovy-4.0'
+    testImplementation 'org.instancio:instancio-core:5.0.1'
 }
 
 testing {

@@ -12,10 +12,6 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
 }
 
-compileJava {
-    options.compilerArgs << '--enable-preview'
-}
-
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
