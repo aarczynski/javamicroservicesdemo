@@ -1,10 +1,10 @@
-CREATE TABLE department
+CREATE TABLE IF NOT EXISTS department
 (
     id   UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL
 );
 
-CREATE TABLE employee
+CREATE TABLE IF NOT EXISTS employee
 (
     id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     first_name VARCHAR(100)        NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE employee
     status     VARCHAR(50)         NOT NULL
 );
 
-CREATE TABLE employee_department
+CREATE TABLE IF NOT EXISTS employee_department
 (
     employee_id   UUID,
     department_id UUID,

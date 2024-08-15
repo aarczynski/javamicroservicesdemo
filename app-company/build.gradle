@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'pl.luna-software.demo.microservices'
-version = '0.0.1-SNAPSHOT'
+version = '1.0.0'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -19,21 +19,25 @@ configurations {
     agent
 }
 
-repositories {
-    mavenCentral()
-    maven { url 'https://repo.spring.io/milestone' }
-    maven { url 'https://repo.spring.io/snapshot' }
-    tasks.register('copyOtelAgent', Copy) {
-
-        from configurations.agent {
-            rename "opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar"
-        }
-        into layout.buildDirectory.dir("otel-agent")
+tasks.register('copyOtelAgent', Copy) {
+    from configurations.agent {
+        rename "opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar"
     }
+    into layout.buildDirectory.dir("otel-agent")
 }
 
 bootJar {
     dependsOn copyOtelAgent
+}
+
+jar {
+    enabled = false
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+    maven { url 'https://repo.spring.io/snapshot' }
 }
 
 dependencies {

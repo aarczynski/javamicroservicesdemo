@@ -168,7 +168,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({job=\"company-app\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({job=\"app-company\"} |= `$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -218,7 +218,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{job=\"company-app\"} |= `$searchText`",
+          "expr": "{job=\"app-company\"} |= `$searchText`",
           "queryType": "range",
           "refId": "A"
         }

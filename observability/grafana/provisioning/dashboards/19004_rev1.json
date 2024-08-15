@@ -3124,8 +3124,8 @@
       {
         "current": {
           "selected": false,
-          "text": "company-app:8080",
-          "value": "company-app:8080"
+          "text": "app-company:8080",
+          "value": "app-company:8080"
         },
         "datasource": {
           "type": "prometheus",

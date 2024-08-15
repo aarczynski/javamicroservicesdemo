@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://company-app-db:5432/microservicesdemodb
+    url: jdbc:postgresql://postgres:5432/app-company-db
     username: postgres
     password: password
 #  jpa:
