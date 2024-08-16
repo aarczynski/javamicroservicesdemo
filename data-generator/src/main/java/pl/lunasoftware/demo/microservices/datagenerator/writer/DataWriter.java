@@ -34,7 +34,7 @@ public class DataWriter {
         Path employeesFile = outputDir.resolve("employees.sql");
         safeCreateFile(employeesFile);
 
-        Path employeesDepartmentsFile = outputDir.resolve("employeesDepartments.sql");
+        Path employeesDepartmentsFile = outputDir.resolve("employees-departments.sql");
         safeCreateFile(employeesDepartmentsFile);
 
         int employeesGenerated = 0;

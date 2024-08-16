@@ -1,11 +1,11 @@
 package pl.lunasoftware.demo.microservices.loadtest.reader;
 
-import java.nio.file.Paths;
+import java.nio.file.Path;
 
 public class DepartmentsSqlDataReader extends SqlDataReader {
 
-    public DepartmentsSqlDataReader() {
-        super(Paths.get("data-generator/output/departments.sql"));
+    public DepartmentsSqlDataReader(Path defaultDataFile) {
+        super(defaultDataFile);
     }
 
     public String readRandomDepartmentName() {

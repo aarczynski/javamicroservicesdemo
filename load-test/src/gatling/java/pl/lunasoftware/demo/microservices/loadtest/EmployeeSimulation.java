@@ -5,6 +5,7 @@ import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 import pl.lunasoftware.demo.microservices.loadtest.reader.EmployeeSqlDataReader;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Iterator;
@@ -39,7 +40,7 @@ public class EmployeeSimulation extends Simulation {
 
     @Override
     public void before() {
-        employeeReader = new EmployeeSqlDataReader();
+        employeeReader = new EmployeeSqlDataReader(Path.of("data-generator/output/employees.sql"));
     }
 
     @Override

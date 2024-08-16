@@ -1,8 +1,21 @@
 plugins {
     id 'java'
+    id 'groovy'
     id 'io.gatling.gradle' version '3.11.5.2'
 }
 
 repositories {
     mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.spockframework:spock-core:2.4-M4-groovy-4.0'
+}
+
+testing {
+    suites {
+        test {
+            useJUnitJupiter()
+        }
+    }
 }

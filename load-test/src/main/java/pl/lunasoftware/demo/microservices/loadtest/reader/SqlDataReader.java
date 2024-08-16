@@ -7,11 +7,17 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public abstract class SqlDataReader implements AutoCloseable {
 
+    static final String DATA_FILE_PARAM = "dataFile";
+
     protected final RandomAccessFile file;
     protected final long lastLineOffset;
 
-    public SqlDataReader(Path path) {
+    public SqlDataReader(Path defaultDataFile) {
         try {
+            String dataFile = System.getProperty(DATA_FILE_PARAM);
+            Path path = dataFile == null
+                    ? defaultDataFile
+                    : Path.of(dataFile.replaceFirst("^~", System.getProperty("user.home")));
             this.file = new RandomAccessFile(path.toAbsolutePath().toFile(), "r");
             lastLineOffset = lastLineOffset(file);
         } catch (IOException e) {
