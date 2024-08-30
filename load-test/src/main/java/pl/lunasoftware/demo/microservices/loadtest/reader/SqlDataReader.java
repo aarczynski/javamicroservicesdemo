@@ -5,16 +5,16 @@ import java.io.RandomAccessFile;
 import java.nio.file.Path;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.CLI_PARAM_PROVIDER;
-
 public abstract class SqlDataReader implements AutoCloseable {
+
+    static final String DATA_FILE_PARAM = "dataFile";
 
     protected final RandomAccessFile file;
     protected final long lastLineOffset;
 
     public SqlDataReader(Path defaultDataFile) {
         try {
-            String dataFile = CLI_PARAM_PROVIDER.readDataFile();
+            String dataFile = System.getProperty(DATA_FILE_PARAM);
             Path path = dataFile == null
                     ? defaultDataFile
                     : Path.of(dataFile.replaceFirst("^~", System.getProperty("user.home")));
@@ -32,10 +32,14 @@ public abstract class SqlDataReader implements AutoCloseable {
 
     protected String readDataInternal() {
         try {
-            long randomPos = ThreadLocalRandom.current().nextLong(file.length() - lastLineOffset);
+            long randomPos = ThreadLocalRandom.current().nextLong(file.length() - lastLineOffset - 1);
             file.seek(randomPos);
             file.readLine();
-            return getData(file.readLine());
+            String line = file.readLine();
+            if (line.startsWith("INSERT INTO")) {
+                line = file.readLine();
+            }
+            return getData(line);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
