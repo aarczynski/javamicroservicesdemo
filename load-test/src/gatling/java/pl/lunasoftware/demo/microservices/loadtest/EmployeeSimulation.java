@@ -1,8 +1,6 @@
 package pl.lunasoftware.demo.microservices.loadtest;
 
 import io.gatling.javaapi.core.ScenarioBuilder;
-import io.gatling.javaapi.core.Simulation;
-import io.gatling.javaapi.http.HttpProtocolBuilder;
 import pl.lunasoftware.demo.microservices.loadtest.reader.EmployeeSqlDataReader;
 
 import java.nio.file.Path;
@@ -19,7 +17,7 @@ import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
 
-public class EmployeeSimulation extends Simulation {
+public class EmployeeSimulation extends LoadSimulation {
 
     private static final int MAX_RPS = 100;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
@@ -59,13 +57,6 @@ public class EmployeeSimulation extends Simulation {
                         .get("/api/v1/employees/#{email}")
                         .check(status().is(200))
                 );
-    }
-
-    private HttpProtocolBuilder httpProtocolBuilder() {
-        return http
-                .baseUrl("http://localhost:8080")
-                .acceptHeader("application/json")
-                .userAgentHeader("Gatling/Performance Test");
     }
 
     private Iterator<Map<String, Object>> employeeEmailFeeder() {

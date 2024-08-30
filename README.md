@@ -47,6 +47,10 @@ Alternatively, you can specify other file with `dataFile` param. E.g.
 ```shell
 ./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation -DdataFile=/path/to/file.sql
 ```
+Default host under loaf test is `localhost:8080`. You can override it using `host` param, e.g.
+```shell
+./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation -Dhost=192.168.1.100:8080
+```
 
 ## Observability
 Company app uses OTEL agent to export metrics, traces and logs to OTEL collector. It pushes all data to designated backends. Spring Boot Actuator and Micrometer are enabled.

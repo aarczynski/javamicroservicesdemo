@@ -1,17 +1,15 @@
 package pl.lunasoftware.demo.microservices.loadtest.reader
 
-
 import spock.lang.Specification
 
 import java.nio.file.Path
 
 import static java.lang.System.clearProperty
-import static pl.lunasoftware.demo.microservices.loadtest.reader.SqlDataReader.DATA_FILE_PARAM
+import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.DATA_FILE_PARAM
 
 class EmployeeSqlDataReaderSpec extends Specification {
 
     private def reader = new EmployeeSqlDataReader(Path.of(getClass().getClassLoader().getResource("test-data/test-employees.sql").toURI()))
-
 
     void cleanup() {
         clearProperty(DATA_FILE_PARAM)

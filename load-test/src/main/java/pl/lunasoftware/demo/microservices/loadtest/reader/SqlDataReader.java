@@ -5,16 +5,16 @@ import java.io.RandomAccessFile;
 import java.nio.file.Path;
 import java.util.concurrent.ThreadLocalRandom;
 
-public abstract class SqlDataReader implements AutoCloseable {
+import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.CLI_PARAM_PROVIDER;
 
-    static final String DATA_FILE_PARAM = "dataFile";
+public abstract class SqlDataReader implements AutoCloseable {
 
     protected final RandomAccessFile file;
     protected final long lastLineOffset;
 
     public SqlDataReader(Path defaultDataFile) {
         try {
-            String dataFile = System.getProperty(DATA_FILE_PARAM);
+            String dataFile = CLI_PARAM_PROVIDER.readDataFile();
             Path path = dataFile == null
                     ? defaultDataFile
                     : Path.of(dataFile.replaceFirst("^~", System.getProperty("user.home")));

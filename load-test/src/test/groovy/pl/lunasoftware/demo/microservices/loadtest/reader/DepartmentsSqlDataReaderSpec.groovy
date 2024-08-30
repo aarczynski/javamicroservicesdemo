@@ -5,7 +5,8 @@ import spock.lang.Specification
 
 import java.nio.file.Path
 
-import static pl.lunasoftware.demo.microservices.loadtest.reader.SqlDataReader.DATA_FILE_PARAM
+import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.DATA_FILE_PARAM
+
 
 class DepartmentsSqlDataReaderSpec extends Specification {
 
