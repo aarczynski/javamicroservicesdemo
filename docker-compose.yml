@@ -37,7 +37,8 @@ services:
 
   postgres:
     container_name: app-company-db
-    image: postgres:16.4
+    image: postgres:17.0
+    platform: linux/amd64
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password

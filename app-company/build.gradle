@@ -46,7 +46,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$otelJavaAgentVer"
     implementation "org.flywaydb:flyway-core:$flywayVer"
-    implementation 'org.postgresql:postgresql:42.7.3'
+    implementation 'org.postgresql:postgresql:42.7.4'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly "org.flywaydb:flyway-database-postgresql:$flywayVer"
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.4'
