@@ -36,8 +36,6 @@ jar {
 
 repositories {
     mavenCentral()
-    maven { url 'https://repo.spring.io/milestone' }
-    maven { url 'https://repo.spring.io/snapshot' }
 }
 
 dependencies {
@@ -49,7 +47,7 @@ dependencies {
     implementation 'org.postgresql:postgresql:42.7.4'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly "org.flywaydb:flyway-database-postgresql:$flywayVer"
-    runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.4'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.6'
     annotationProcessor 'org.projectlombok:lombok'
     agent "io.opentelemetry.javaagent:opentelemetry-javaagent:$otelJavaAgentVer"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
