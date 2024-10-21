@@ -4,12 +4,14 @@ App to analyze distributed microservices app and DB performance using Gatling an
 ## Modules:
 * **app-company** - a simple CRUD microservice. Data model consists of two tables: department and employee.
 They are in many-to-many relationship (an employee can work in multiple departments, while a department may have multiple employees).
-* **data-generator** - an utility tool to generate SQL file(s) to populate test database with significant amount of data.
+* **app-company** - a client for app-company microservice to demo distributed tracing, circuit breaker and backpressure.
+* **data-generator** - an utility tool to generate SQL file(s) to populate app-company's test database with significant amount of data.
 This code does not use collections and streams for performance reasons.
 * **load-test** - a module running pre-defined load tests using Gatling.
 * **observability** - dashboards showing the company app performance and logs in Grafana. OTEL agent exports data to OTEL collector.
 It pushes data to proper backends. Prometheus gathers metrics from Spring Boot Actuator and Micrometer.
 Loki is used for aggregating logs. Tempo gathers traces about methods time execution.
+  ![](./readme-assets/img/c4-diagram.jpg)
 
 # Running locally
 Requires JDK21+, Docker, and Docker Compose installed on your machine.
@@ -17,7 +19,7 @@ Requires JDK21+, Docker, and Docker Compose installed on your machine.
 ## Generating test data
 Run following commands:
 ```shell
-./gradlew clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar 100000
+./gradlew clean :data-generator:build :app-company-client:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar 100000
 ```
 This generates SQL scripts that inserts 10 000 departments (fixed value), 100 000 employees (configurable), and generates random relations between them.
 Generated files are put in `data-generator` module under `output` directory. Import them into application database (check [docker-compose.yml](docker-compose.yml) for credentials).
@@ -47,7 +49,7 @@ Alternatively, you can specify other file with `dataFile` param. E.g.
 ```shell
 ./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation -DdataFile=/path/to/file.sql
 ```
-Default host under loaf test is `localhost:8080`. You can override it using `host` param, e.g.
+Default host under loaf test is `localhost:8081`. You can override it using `host` param, e.g.
 ```shell
 ./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.EmployeeSimulation -Dhost=192.168.1.100:8080
 ```
@@ -70,7 +72,7 @@ Above dashboard has links to traces in Tempo. This allows to view detailed infor
 ![](./readme-assets/img/grafana-traces.png)
 
 ## Hints
-Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested Company App. Default configuration limits app to 6 cores + another 2 cores for its DB.
+Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested Company App. Default configuration limits app to 3 cores + another 2 cores for its DB.
 
 # Known issues
 * There are occasional 404s during load tests that should not happen as SQL file imported into DB is used to generate random requests.
@@ -81,5 +83,5 @@ Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the loa
 * Prepare local setup using Minikube
 * Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform
 * Prepare CI/CD for above
-* Add another microservice to demo backpressure / circuit breaker and distributed tracing.
+* implement backpressure or circuit breaker.
 

@@ -1,0 +1,12 @@
+spring:
+  cloud:
+    openfeign:
+      client:
+        config:
+          CompanyAppClient:
+            url: http://app-company:8080
+management:
+  endpoints:
+    web:
+      exposure:
+        include: [ 'health', 'prometheus' ]

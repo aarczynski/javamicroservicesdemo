@@ -1,6 +1,4 @@
 spring:
-  application:
-    name: companyapp
   jpa:
     open-in-view: false
     hibernate:
@@ -11,7 +9,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: [ 'prometheus' ]
+        include: [ 'health', 'prometheus' ]
 #  metrics: #TODO: incompatible with OTEL collector
 #    distribution:
 #      percentiles:
