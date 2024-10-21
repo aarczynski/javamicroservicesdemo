@@ -23,7 +23,7 @@ services:
       postgres:
         condition: service_healthy
 #      otel-collector:
-#        condition: service_healthy # # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
+#        condition: service_healthy # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
       prometheus:
         condition: service_healthy
       loki:
@@ -33,7 +33,38 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '6.00'
+          cpus: '3.00'
+  app-company-client:
+    container_name: app-company-client
+    build:
+      context: ./app-company-client
+      dockerfile: docker/Dockerfile
+    command: [ "java",
+               "-javaagent:./opentelemetry-javaagent.jar",
+               "-jar", "./app-company-client.jar" ]
+    environment:
+      OTEL_SERVICE_NAME: "app-company-client"
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_METRIC_EXPORT_INTERVAL: "1000"
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+    ports:
+      - '8081:8080'
+    depends_on:
+#      otel-collector:
+#        condition: service_healthy # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '3.00'
 
   postgres:
     container_name: app-company-db

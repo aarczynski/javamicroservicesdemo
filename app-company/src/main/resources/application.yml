@@ -11,7 +11,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: [ 'prometheus' ]
+        include: [ 'health', 'prometheus' ]
 #  metrics: #TODO: incompatible with OTEL collector
 #    distribution:
 #      percentiles:

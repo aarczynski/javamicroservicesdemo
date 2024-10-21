@@ -17,7 +17,7 @@ Requires JDK21+, Docker, and Docker Compose installed on your machine.
 ## Generating test data
 Run following commands:
 ```shell
-./gradlew clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar 100000
+./gradlew clean :data-generator:build :app-company-client:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar 100000
 ```
 This generates SQL scripts that inserts 10 000 departments (fixed value), 100 000 employees (configurable), and generates random relations between them.
 Generated files are put in `data-generator` module under `output` directory. Import them into application database (check [docker-compose.yml](docker-compose.yml) for credentials).
