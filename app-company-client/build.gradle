@@ -14,25 +14,6 @@ java {
 	}
 }
 
-configurations {
-	agent
-}
-
-tasks.register('copyOtelAgent', Copy) {
-	from configurations.agent {
-		rename "opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar"
-	}
-	into layout.buildDirectory.dir("otel-agent")
-}
-
-bootJar {
-	dependsOn copyOtelAgent
-}
-
-jar {
-	enabled = false
-}
-
 repositories {
 	mavenCentral()
 }

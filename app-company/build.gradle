@@ -16,22 +16,6 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
-    agent
-}
-
-tasks.register('copyOtelAgent', Copy) {
-    from configurations.agent {
-        rename "opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar"
-    }
-    into layout.buildDirectory.dir("otel-agent")
-}
-
-bootJar {
-    dependsOn copyOtelAgent
-}
-
-jar {
-    enabled = false
 }
 
 repositories {
@@ -49,7 +33,6 @@ dependencies {
     runtimeOnly "org.flywaydb:flyway-database-postgresql:$flywayVer"
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.13.6'
     annotationProcessor 'org.projectlombok:lombok'
-    agent "io.opentelemetry.javaagent:opentelemetry-javaagent:$otelJavaAgentVer"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.spockframework:spock-spring:2.4-M4-groovy-4.0'
     testImplementation 'com.h2database:h2:2.3.232'
