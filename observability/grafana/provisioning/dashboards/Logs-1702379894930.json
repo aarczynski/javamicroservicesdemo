@@ -18,12 +18,12 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 2,
   "links": [],
   "liveNow": false,
   "panels": [
     {
       "datasource": {
+        "default": false,
         "type": "loki",
         "uid": "loki"
       },
@@ -168,7 +168,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({job=\"app-company\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({job=\"$app\"} |= `$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -191,6 +191,7 @@
     },
     {
       "datasource": {
+        "default": false,
         "type": "loki",
         "uid": "loki"
       },
@@ -218,7 +219,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{job=\"app-company\"} |= `$searchText`",
+          "expr": "{job=\"$app\"} |= `$searchText`",
           "queryType": "range",
           "refId": "A"
         }
@@ -232,6 +233,34 @@
   "tags": [],
   "templating": {
     "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "app-company-client",
+          "value": "app-company-client"
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "definition": "",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "app",
+        "options": [],
+        "query": {
+          "label": "service_name",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
       {
         "current": {
           "selected": false,

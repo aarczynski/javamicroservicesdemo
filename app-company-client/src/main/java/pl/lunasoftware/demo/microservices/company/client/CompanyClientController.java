@@ -46,6 +46,7 @@ public class CompanyClientController {
         @ResponseStatus(HttpStatus.NOT_FOUND)
         @ExceptionHandler(FeignException.NotFound.class)
         public ErrorResponse handleClientNotFound(FeignException.NotFound ex) {
+            LOG.info("Downstream returned 404: {}", ex.getLocalizedMessage());
             return new ErrorResponse(ex.getLocalizedMessage());
         }
 
