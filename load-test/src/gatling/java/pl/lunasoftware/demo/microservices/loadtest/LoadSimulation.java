@@ -9,7 +9,7 @@ import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvide
 public class LoadSimulation extends Simulation {
     protected HttpProtocolBuilder httpProtocolBuilder() {
         String targetHost = CLI_PARAM_PROVIDER.readHost() == null
-                ? "http://localhost:8080"
+                ? "http://localhost:8081"
                 : checkScheme(CLI_PARAM_PROVIDER.readHost());
         return http
                 .baseUrl(targetHost)

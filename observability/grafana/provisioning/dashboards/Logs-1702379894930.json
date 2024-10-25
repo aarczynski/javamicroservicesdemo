@@ -18,12 +18,13 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 2,
+  "id": 3,
   "links": [],
   "liveNow": false,
   "panels": [
     {
       "datasource": {
+        "default": false,
         "type": "loki",
         "uid": "loki"
       },
@@ -168,7 +169,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({job=\"app-company\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({service_name=~\"$app\"} |= `$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -191,6 +192,7 @@
     },
     {
       "datasource": {
+        "default": false,
         "type": "loki",
         "uid": "loki"
       },
@@ -218,7 +220,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{job=\"app-company\"} |= `$searchText`",
+          "expr": "{service_name=~\"$app\"} |= `$searchText` |= `body` | json | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .level }} {{ .body }}`",
           "queryType": "range",
           "refId": "A"
         }
@@ -232,6 +234,41 @@
   "tags": [],
   "templating": {
     "list": [
+      {
+        "allValue": "",
+        "current": {
+          "selected": true,
+          "text": [
+            "app-company-client",
+            "app-company"
+          ],
+          "value": [
+            "app-company-client",
+            "app-company"
+          ]
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "definition": "",
+        "hide": 0,
+        "includeAll": false,
+        "multi": true,
+        "name": "app",
+        "options": [],
+        "query": {
+          "label": "service_name",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 5,
+        "type": "query"
+      },
       {
         "current": {
           "selected": false,
@@ -262,6 +299,6 @@
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 1,
+  "version": 4,
   "weekStart": ""
 }

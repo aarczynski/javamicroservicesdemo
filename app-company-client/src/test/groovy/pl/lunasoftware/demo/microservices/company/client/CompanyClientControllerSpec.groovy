@@ -1,73 +1,58 @@
-package pl.lunasoftware.demo.microservices.company
+package pl.lunasoftware.demo.microservices.company.client
 
+import feign.FeignException
 import org.instancio.Instancio
 import org.spockframework.spring.SpringBean
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.test.web.servlet.MockMvc
-import org.springframework.web.server.ResponseStatusException
-import pl.lunasoftware.demo.microservices.company.department.DepartmentCostDto
-import pl.lunasoftware.demo.microservices.company.department.DepartmentsCostDto
-import pl.lunasoftware.demo.microservices.company.employee.EmployeeDto
 import spock.lang.Specification
 
 import static org.instancio.Select.field
-import static org.springframework.http.HttpStatus.NOT_FOUND
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
-@WebMvcTest(CompanyController)
-class CompanyControllerSpec extends Specification {
+@WebMvcTest(CompanyClientController)
+class CompanyClientControllerSpec extends Specification {
 
     @Autowired
     private MockMvc mockMvc
 
     @SpringBean
-    private CompanyService companyService = Mock()
-
-    def "should return json response for all departments costs"() {
-        given:
-        def dto = Instancio.of(DepartmentsCostDto)
-                .generate(field('departmentsCosts'), gen -> gen.collection().size(1))
-                .create()
-        companyService.getAllDepartmentsCosts() >> dto
-
-        when:
-        def response = mockMvc.perform(get('/api/v1/departments/costs'))
-
-        then:
-        response.andExpect(status().isOk())
-                .andExpect(jsonPath('$.total').value(dto.total()))
-                .andExpect(jsonPath('$.departmentsCosts.length()').value(1))
-                .andExpect(jsonPath('$.departmentsCosts[0].departmentName').value(dto.departmentsCosts[0].departmentName))
-                .andExpect(jsonPath('$.departmentsCosts[0].cost').value(dto.departmentsCosts[0].cost))
-    }
+    private CompanyClient companyClient = Mock()
 
     def "should return json response for specific department cost"() {
         given:
         DepartmentCostDto dto = Instancio.create(DepartmentCostDto)
-        companyService.getDepartmentCost('it') >> dto
+        companyClient.getDepartmentCost('it') >> dto
 
         when:
         def response = mockMvc.perform(get('/api/v1/departments/it/costs'))
 
         then:
         response.andExpect(status().isOk())
-                .andExpect(jsonPath('$.departmentName').value(dto.departmentName))
-                .andExpect(jsonPath('$.cost').value(dto.cost))
+                .andExpect(content().json(
+                        """\
+                        {
+                            "departmentName": "$dto.departmentName",
+                            "cost": "$dto.cost"
+                        }
+                        """.stripIndent()
+                ))
     }
 
-    def "should return 404 response when department is not found"() {
+    def "should return 404 response when department does not exist"() {
         given:
-        companyService.getDepartmentCost('dep') >> { throw new ResponseStatusException(NOT_FOUND, "dep not found") }
+        companyClient.getDepartmentCost('dep') >> { throw mockFeignNotFoundException('dep not found') }
 
         when:
         def response = mockMvc.perform(get('/api/v1/departments/dep/costs'))
 
         then:
         response.andExpect(status().isNotFound())
+                .andExpect(jsonPath('$.info').value('dep not found'))
     }
 
     def "should return json response for user"() {
@@ -75,7 +60,7 @@ class CompanyControllerSpec extends Specification {
         def dto = Instancio.of(EmployeeDto)
                 .generate(field('departments'), gen -> gen.collection().size(1))
                 .create()
-        companyService.findEmployee(dto.email) >> dto
+        companyClient.getEmployeeByEmail(dto.email) >> dto
 
         when:
         def response = mockMvc.perform(get("/api/v1/employees/$dto.email"))
@@ -98,14 +83,22 @@ class CompanyControllerSpec extends Specification {
                 ))
     }
 
-    def "should return 404 response when employee is not found"() {
+    def "should return 404 response when employee does not exist"() {
         given:
-        companyService.findEmployee('empl') >> { throw new ResponseStatusException(NOT_FOUND, "empl not found") }
+        companyClient.getEmployeeByEmail('empl') >> { throw mockFeignNotFoundException('empl not found') }
 
         when:
         def response = mockMvc.perform(get('/api/v1/employees/empl'))
 
         then:
         response.andExpect(status().isNotFound())
+                .andExpect(jsonPath('$.info').value("empl not found"))
+    }
+
+    private FeignException.NotFound mockFeignNotFoundException(String message) {
+        FeignException.NotFound feign404Exception = Mock(FeignException.NotFound)
+        feign404Exception.getLocalizedMessage() >> message
+        feign404Exception.status() >> 404
+        return feign404Exception
     }
 }

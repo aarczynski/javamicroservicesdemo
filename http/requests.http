@@ -1,3 +1,5 @@
+### Company App
+
 GET localhost:8080/api/v1/departments/costs
 
 ###
@@ -8,4 +10,10 @@ GET localhost:8080/api/v1/departments/IT/costs
 
 GET localhost:8080/api/v1/employees/jan.kowalski@company.com
 
+### Company App Client
+
+GET localhost:8081/api/v1/employees/jan.kowalski@company.com
+
 ###
+
+GET localhost:8081/api/v1/departments/IT/costs

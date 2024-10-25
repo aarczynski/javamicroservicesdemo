@@ -1,0 +1,28 @@
+subprojects { subproject ->
+    if (subproject.name ==~ /^app-.*/) {
+
+        configurations {
+            agent
+        }
+
+        tasks.register('copyOtelAgent', Copy) {
+            from configurations.agent {
+                rename "opentelemetry-javaagent-.*\\.jar", "opentelemetry-javaagent.jar"
+            }
+            into layout.buildDirectory.dir("otel-agent")
+        }
+
+        pluginManager.withPlugin('org.springframework.boot') {
+            tasks.named('bootJar') {
+                dependsOn 'copyOtelAgent'
+            }
+            tasks.named('jar') {
+                enabled = false
+            }
+        }
+
+        dependencies {
+            agent "io.opentelemetry.javaagent:opentelemetry-javaagent:$otelJavaAgentVer"
+        }
+    }
+}
