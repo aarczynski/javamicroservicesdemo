@@ -61,7 +61,7 @@ Company app uses OTEL agent to export metrics, traces and logs to OTEL collector
 ### Performance dashboard
 The dashboard is available under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c).
 It shows response times, and errors count.
-![](./readme-assets/img/grafana-dashboard.png)
+![](./readme-assets/img/grafana-monitoring.png)
 
 ### Logs dashboard
 The dashboard is available under [http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b](http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b).
