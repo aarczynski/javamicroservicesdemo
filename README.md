@@ -81,8 +81,8 @@ Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the loa
 * Spring percentile metrics do not work with OTEL Agent.
 
 # Future plans
-* Prepare local setup using Minikube
-* Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform
-* Prepare CI/CD for above
+* Prepare local setup using Minikube.
+* Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform.
+* Prepare CI/CD for above.
 * implement backpressure or circuit breaker.
 
