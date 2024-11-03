@@ -15,7 +15,7 @@ Loki is used for aggregating logs. Tempo gathers traces about methods time execu
 ![](./readme-assets/img/c4-diagram.jpg)
 
 # Running locally
-Requires JDK21+, Docker, and Docker Compose installed on your machine.
+Requires JDK21+, Docker (with Compose) installed on your machine.
 
 ## Generating test data
 Run following commands:
@@ -73,7 +73,10 @@ Above dashboard has links to traces in Tempo. This allows to view detailed infor
 ![](./readme-assets/img/grafana-traces.png)
 
 ## Hints
-Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested Company App. Default configuration limits app to 3 cores + another 2 cores for its DB.
+Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested Company App. Default configuration limits app-company to:
+* app-company-client: 2 cores.
+* app-company: 2 cores.
+* app-company DB: 2 cores.
 
 # Known issues
 * There are occasional 404s during load tests that should not happen as SQL file imported into DB is used to generate random requests.

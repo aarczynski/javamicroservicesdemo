@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 3,
+  "id": 1,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -169,7 +169,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({service_name=~\"$app\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({service_name=~\"$app\", level=~\"$level\"} |= `$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -220,7 +220,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{service_name=~\"$app\"} |= `$searchText` |= `body` | json | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .level }} {{ .body }}`",
+          "expr": "{service_name=~\"$app\", level=~\"$level\"} |= `$searchText` |= `body` | json | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .level }} {{ .body }}`",
           "queryType": "range",
           "refId": "A"
         }
@@ -235,16 +235,16 @@
   "templating": {
     "list": [
       {
-        "allValue": "",
+        "allValue": "All",
         "current": {
           "selected": true,
           "text": [
-            "app-company-client",
-            "app-company"
+            "app-company",
+            "app-company-client"
           ],
           "value": [
-            "app-company-client",
-            "app-company"
+            "app-company",
+            "app-company-client"
           ]
         },
         "datasource": {
@@ -253,7 +253,7 @@
         },
         "definition": "",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "multi": true,
         "name": "app",
         "options": [],
@@ -267,6 +267,43 @@
         "regex": "",
         "skipUrlSync": false,
         "sort": 5,
+        "type": "query"
+      },
+      {
+        "allValue": "All",
+        "current": {
+          "selected": true,
+          "text": [
+            "ERROR",
+            "INFO",
+            "WARN"
+          ],
+          "value": [
+            "ERROR",
+            "INFO",
+            "WARN"
+          ]
+        },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "level",
+        "options": [],
+        "query": {
+          "label": "level",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
         "type": "query"
       },
       {
@@ -299,6 +336,6 @@
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 4,
+  "version": 1,
   "weekStart": ""
 }

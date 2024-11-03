@@ -10,15 +10,15 @@ services:
                "-jar", "./app-company.jar" ]
     environment:
       OTEL_SERVICE_NAME: "app-company"
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
-      - '8080:8080'
-      - '5005:5005'
+      - "8080:8080"
+      - "5005:5005"
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,7 +33,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '3.00'
+          cpus: "2.00"
   app-company-client:
     container_name: app-company-client
     build:
@@ -51,7 +51,7 @@ services:
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
-      - '8081:8080'
+      - "8081:8080"
     depends_on:
 #      otel-collector:
 #        condition: service_healthy # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
@@ -64,7 +64,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '3.00'
+          cpus: "2.00"
 
   postgres:
     container_name: app-company-db
@@ -75,7 +75,7 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=app-company-db
     ports:
-      - '5432:5432'
+      - "5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
@@ -84,7 +84,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.00'
+          cpus: "2.00"
 
   otel-collector:
     container_name: otel-collector
