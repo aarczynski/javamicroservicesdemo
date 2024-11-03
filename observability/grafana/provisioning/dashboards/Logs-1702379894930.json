@@ -239,12 +239,10 @@
         "current": {
           "selected": true,
           "text": [
-            "app-company",
-            "app-company-client"
+            "All"
           ],
           "value": [
-            "app-company",
-            "app-company-client"
+            "$__all"
           ]
         },
         "datasource": {
@@ -274,10 +272,10 @@
         "current": {
           "selected": true,
           "text": [
-            "INFO"
+            "All"
           ],
           "value": [
-            "INFO"
+            "$__all"
           ]
         },
         "datasource": {
@@ -332,6 +330,6 @@
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
