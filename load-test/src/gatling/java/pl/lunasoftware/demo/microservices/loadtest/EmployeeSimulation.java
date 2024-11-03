@@ -30,7 +30,7 @@ public class EmployeeSimulation extends LoadSimulation {
                         rampUsersPerSec(0).to(MAX_RPS / 2.0).during(A_MINUTE).randomized(),
                         constantUsersPerSec(MAX_RPS / 2.0).during(A_MINUTE).randomized(),
                         rampUsersPerSec(MAX_RPS / 2.0).to(MAX_RPS).during(A_MINUTE).randomized(),
-                        constantUsersPerSec(MAX_RPS).during(A_MINUTE.multipliedBy(1000)).randomized(),
+                        constantUsersPerSec(MAX_RPS).during(A_MINUTE).randomized(),
                         rampUsersPerSec(MAX_RPS).to(0).during(A_MINUTE).randomized()
                 )
                 .protocols(httpProtocolBuilder()));
