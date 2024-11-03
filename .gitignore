@@ -40,3 +40,7 @@ out/
 
 ### OS files
 .DS_Store
+
+### RPi setup
+compose-override.yml
+compose-override.yaml
