@@ -169,7 +169,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({service_name=~\"$app\", level=~\"$level\"} |= `$searchText` [$__auto]))",
+          "expr": "sum by(level) (count_over_time({service_name=~\"$app\", level=~\"$level\"} |~ `(?i)$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -220,7 +220,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{service_name=~\"$app\", level=~\"$level\"} |= `$searchText` |= `body` | json | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .level }} {{ .body }}`",
+          "expr": "{service_name=~\"$app\", level=~\"$level\"} |~ `(?i)$searchText` |= `body` | json | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .level }} {{ .body }}`",
           "queryType": "range",
           "refId": "A"
         }
@@ -235,7 +235,7 @@
   "templating": {
     "list": [
       {
-        "allValue": "All",
+        "allValue": "",
         "current": {
           "selected": true,
           "text": [
@@ -270,18 +270,14 @@
         "type": "query"
       },
       {
-        "allValue": "All",
+        "allValue": "",
         "current": {
           "selected": true,
           "text": [
-            "ERROR",
-            "INFO",
-            "WARN"
+            "INFO"
           ],
           "value": [
-            "ERROR",
-            "INFO",
-            "WARN"
+            "INFO"
           ]
         },
         "datasource": {
@@ -336,6 +332,6 @@
   "timezone": "",
   "title": "Logs",
   "uid": "ea015f6f-9746-431d-9113-a2e247c2207b",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
