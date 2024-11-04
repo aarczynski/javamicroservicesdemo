@@ -2,7 +2,6 @@ subprojects { subproject ->
     if (subproject.name ==~ /^app-.*/) {
 
         configurations {
-            implementation
             agent
         }
 
@@ -23,7 +22,6 @@ subprojects { subproject ->
         }
 
         dependencies {
-            implementation "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$otelJavaAgentVer"
             agent "io.opentelemetry.javaagent:opentelemetry-javaagent:$otelJavaAgentVer"
         }
     }

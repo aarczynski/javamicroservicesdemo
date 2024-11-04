@@ -26,6 +26,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$otelJavaAgentVer"
     implementation "org.flywaydb:flyway-core:$flywayVer"
     implementation 'org.postgresql:postgresql:42.7.4'
     compileOnly 'org.projectlombok:lombok'
