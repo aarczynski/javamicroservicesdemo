@@ -12,11 +12,17 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 @RestController
 @RequestMapping("/api/v1")
 public class CompanyClientController {
 
     private final static Logger LOG = LoggerFactory.getLogger(CompanyClientController.class);
+    private final Executor executor = Executors.newFixedThreadPool(4);
 
     private final CompanyClient companyClient;
 
@@ -25,9 +31,9 @@ public class CompanyClientController {
     }
 
     @GetMapping("/employees/{email}")
-    public EmployeeDto getEmployeeByEmail(@PathVariable String email) {
+    public EmployeeDto getEmployeeByEmail(@PathVariable String email) throws ExecutionException, InterruptedException {
         LOG.info("Received request for employee with email {}, forwarding to Company App", email);
-        EmployeeDto employee = companyClient.getEmployeeByEmail(email);
+        EmployeeDto employee = CompletableFuture.supplyAsync(() -> companyClient.getEmployeeByEmail(email), executor).get();
         LOG.info("Received response from Company App for employee with email {}", email);
         return employee;
     }
