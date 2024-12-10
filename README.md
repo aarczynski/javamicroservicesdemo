@@ -32,7 +32,7 @@ These files may be extremely large (several GB), thus they are not tracked in Gi
 ## Starting microservices locally
 Run following command:
 ```shell
-./gradlew clean :app-company:build :app-company-client:build && docker-compose up --build
+./gradlew clean :app-company:build :app-company-client:build && docker compose up --build
 ```
 
 ## Sample HTTP requests
