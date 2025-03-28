@@ -68,7 +68,7 @@ services:
 
   postgres:
     container_name: app-company-db
-    image: postgres:17.0
+    image: postgres:17.4
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
@@ -107,7 +107,7 @@ services:
 
   prometheus:
     container_name: prometheus
-    image: prom/prometheus:v3.0.1
+    image: prom/prometheus:v3.2.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-remote-write-receiver
@@ -121,7 +121,7 @@ services:
 
   loki:
     container_name: loki
-    image: grafana/loki:3.3.1
+    image: grafana/loki:3.4.2
     command:
       - -config.file=/etc/loki/loki.yml
     ports:
@@ -136,7 +136,7 @@ services:
 
   tempo:
     container_name: tempo
-    image: grafana/tempo:2.6.1
+    image: grafana/tempo:2.7.2
     command:
       - -config.file=/etc/tempo.yml
     ports:
@@ -150,7 +150,7 @@ services:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:11.6.0
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
