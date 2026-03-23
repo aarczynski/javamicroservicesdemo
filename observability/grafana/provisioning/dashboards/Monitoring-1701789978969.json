@@ -162,7 +162,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (uri) (irate(http_server_requests_seconds_count{job=\"app-company-client\", uri=~\"/api.*\"}[$__rate_interval]))",
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"app-company-client\", uri=~\"/api.*\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -358,7 +358,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (status, method, uri) (irate(http_server_requests_seconds_count{job=\"app-company-client\", uri=~\"/api.*\", status!~\"2..\"}[$__rate_interval]))",
+          "expr": "sum by (status, method, uri) (rate(http_server_requests_seconds_count{job=\"app-company-client\", uri=~\"/api.*\", status!~\"2..\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "{{status}} - ({{method}}) {{uri}}",
           "range": true,
@@ -489,7 +489,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * (sum by (uri) (irate(http_server_requests_seconds_sum{uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (irate(http_server_requests_seconds_count{uri=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * (sum by (uri) (rate(http_server_requests_seconds_sum{uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (rate(http_server_requests_seconds_count{uri=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "interval": "",
           "legendFormat": "__auto",
@@ -737,7 +737,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 50th percentile",
@@ -751,7 +751,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "format": "time_series",
           "hide": false,
           "instant": false,
@@ -766,7 +766,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.9, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.9, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 90th percentile",
@@ -779,7 +779,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 95th percentile",
@@ -792,7 +792,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval]))) ",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval]))) ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 99th percentile",
@@ -943,7 +943,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (uri) (irate(http_server_requests_seconds_count{job=\"app-company\" ,uri=~\"/api.*\"}[$__rate_interval]))",
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"app-company\" ,uri=~\"/api.*\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -1139,7 +1139,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (status, method, uri) (irate(http_server_requests_seconds_count{job=\"app-company\", uri=~\"/api.*\", status!~\"2..\"}[$__rate_interval]))",
+          "expr": "sum by (status, method, uri) (rate(http_server_requests_seconds_count{job=\"app-company\", uri=~\"/api.*\", status!~\"2..\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "{{status}} - ({{method}}) {{uri}}",
           "range": true,
@@ -1270,7 +1270,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * (sum by (uri) (irate(http_server_requests_seconds_sum{uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (irate(http_server_requests_seconds_count{uri=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * (sum by (uri) (rate(http_server_requests_seconds_sum{uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (rate(http_server_requests_seconds_count{uri=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "interval": "",
           "legendFormat": "__auto",
@@ -1518,7 +1518,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 50th percentile",
@@ -1532,7 +1532,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "format": "time_series",
           "hide": false,
           "instant": false,
@@ -1547,7 +1547,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.9, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.9, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 90th percentile",
@@ -1560,7 +1560,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 95th percentile",
@@ -1573,7 +1573,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (irate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval]))) ",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{http_route=~\"/api.*\"}[$__rate_interval]))) ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{http_route}} 99th percentile",
@@ -1720,7 +1720,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (method) (irate(company_db_seconds_sum[$__rate_interval])) / sum by (method) (irate(company_db_seconds_count[$__rate_interval])) * 1e3",
+          "expr": "sum by (method) (rate(company_db_seconds_sum[$__rate_interval])) / sum by (method) (rate(company_db_seconds_count[$__rate_interval])) * 1e3",
           "instant": false,
           "interval": "",
           "legendFormat": "__auto",
@@ -1967,7 +1967,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.50, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 50th percentile",
@@ -1980,7 +1980,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.75, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 75th percentile",
@@ -1993,7 +1993,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.90, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 90th percentile",
@@ -2006,7 +2006,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.95, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 95th percentile",
@@ -2019,7 +2019,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, method) (irate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
+          "expr": "histogram_quantile(0.99, sum by (le, method) (rate(company_db_seconds_bucket[$__rate_interval]))) * 1e3 ",
           "hide": false,
           "instant": false,
           "legendFormat": "{{method}} 99th percentile",
