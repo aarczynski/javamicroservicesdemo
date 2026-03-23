@@ -1,4 +1,4 @@
-FROM openjdk:21-jdk
+FROM eclipse-temurin:21-jdk-jammy
 WORKDIR /app
 COPY ./build/libs/app-company-client-*.jar ./app-company-client.jar
 COPY ./build/otel-agent/opentelemetry-javaagent.jar ./
