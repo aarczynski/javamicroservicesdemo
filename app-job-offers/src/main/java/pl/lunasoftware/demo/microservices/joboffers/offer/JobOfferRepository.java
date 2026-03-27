@@ -1,0 +1,47 @@
+package pl.lunasoftware.demo.microservices.joboffers.offer;
+
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+public interface JobOfferRepository extends JpaRepository<JobOfferEntity, UUID> {
+
+    @EntityGraph("JobOffer.withEmploymentTypes")
+    List<JobOfferEntity> findByStatus(JobOfferStatus status);
+
+    @EntityGraph("JobOffer.withEmploymentTypes")
+    List<JobOfferEntity> findByCompanyId(UUID companyId);
+
+    @EntityGraph("JobOffer.withEmploymentTypes")
+    @Query("""
+            SELECT DISTINCT o FROM JobOffer o
+            JOIN o.offeredEmploymentTypes t
+            JOIN o.company c
+            WHERE o.status = 'ACTIVE'
+            AND c.geoLat BETWEEN :latMin AND :latMax
+            AND c.geoLon BETWEEN :lonMin AND :lonMax
+            AND o.salaryTo >= :expectedSalary
+            AND t IN :employmentTypes
+            AND EXISTS (
+                SELECT s FROM JobOfferSkill s
+                WHERE s.jobOfferId = o.id
+                AND s.skillId IN :skillIds
+            )
+            """)
+    List<JobOfferEntity> findCandidateMatches(
+            double latMin,
+            double latMax,
+            double lonMin,
+            double lonMax,
+            BigDecimal expectedSalary,
+            Collection<EmploymentType> employmentTypes,
+            Collection<UUID> skillIds
+    );
+}

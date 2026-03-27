@@ -117,7 +117,7 @@ Suggested endpoint:
 - Accept candidate search criteria:
     - Candidate skills (`list` or `set`)
     - Candidate years of experience (global candidate experience, not per skill)
-    - Candidate location (`geoX`, `geoY`)
+    - Candidate location (`geoLat`, `geoLon`)
     - Candidate expected salary
     - Candidate preferred employment types
     - Search radius in kilometers
@@ -142,8 +142,8 @@ At this stage, `app-job-offers` should focus on:
 Fields:
 - `id` (UUID)
 - `name`
-- `geoX`
-- `geoY`
+- `geoLat`
+- `geoLon`
 - `createdAt`
 - `updatedAt`
 
@@ -164,8 +164,8 @@ Fields:
 - `salaryTo`
 - `currency`
 - `offeredEmploymentTypes` (set of EmploymentType)
-- `geoX`
-- `geoY`
+- `geoLat`
+- `geoLon`
 - `status`
 - `createdAt`
 - `updatedAt`
@@ -237,8 +237,8 @@ Fields:
 - `lastName`
 - `email`
 - `phone`
-- `geoX`
-- `geoY`
+- `geoLat`
+- `geoLon`
 - `yearsOfExperience`
 - `expectedSalary`
 - `expectedSalaryCurrency`
@@ -295,7 +295,7 @@ Claude must follow these modeling rules:
 - Use UUID as primary keys in all entities.
 - Use explicit join entities for many-to-many relationships.
 - Do not use plain `@ManyToMany`.
-- Model geo coordinates as `geoX` and `geoY`.
+- Model geo coordinates as `geoLat` and `geoLon`.
 - `email` in Candidate must be unique.
 - Treat join entities as first-class domain objects.
 - Keep DTOs separate from entities.
@@ -308,12 +308,24 @@ Claude must follow these modeling rules:
 ### JobOfferSkill
 - `requiredSeniorityLevel` — expected level of the skill for the offer.
 - `isMandatory` — whether the skill is mandatory or optional.
-- `weight` — importance of the skill in the context of the offer.
+- `weight` — importance of the skill in the context of the offer. Ranges from 0.00 to 1.00.
 
 ### CandidateSkill
 - `seniorityLevel` — candidate’s declared level in the skill
 - `isPrimary` — whether this is one of the candidate’s primary skills
 - `lastUsedAt` — when the skill was last actively used
+
+## Logging
+
+All services must produce structured logs.
+
+Rules:
+- Log important business actions.
+- Log errors with context (input data, identifiers).
+- Avoid logging sensitive data.
+- Use consistent log format and structure.
+
+Logging is mandatory for every new service and major operation.
 
 ## Development Phases
 
