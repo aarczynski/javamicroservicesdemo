@@ -3,6 +3,9 @@ package pl.lunasoftware.demo.microservices.joboffers.offer
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import pl.lunasoftware.demo.microservices.joboffers.company.CompanyRepository
+import pl.lunasoftware.demo.microservices.joboffers.offer.EmploymentType
+import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferRepository
+import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferStatus
 import pl.lunasoftware.demo.microservices.joboffers.skill.SkillRepository
 import spock.lang.Specification
 
@@ -18,7 +21,6 @@ class JobOfferRepositorySpec extends Specification {
     @Autowired
     private SkillRepository skillRepository
 
-    // Warsaw coordinates (same as test data)
     static final double WARSAW_LAT = 52.2297
     static final double WARSAW_LON = 21.0122
 

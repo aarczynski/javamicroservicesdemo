@@ -352,7 +352,7 @@ Claude must work strictly step by step.
 
 ---
 
-### Phase 3 — Services
+### Phase 3 — Services ✅ (app-job-offers)
 - implement service layer
 - add business logic
 - enforce domain rules
@@ -361,9 +361,13 @@ Claude must work strictly step by step.
 - keep logic out of controllers
 - add service tests (Spock)
 
+#### app-job-offers — implemented services
+- `JobOfferService.search(CandidateSearchRequest)` — resolwuje nazwy skillów do ID, filtruje przez `findCandidateMatches`, liczy score = `∑ wag dopasowanych skillów / ∑ wag wszystkich skillów oferty`, sortuje malejąco po score
+- Wyjątki domenowe: `ResourceNotFoundException` (404), `BadRequestException` (400) — gotowe do użycia w kolejnych fazach
+
 ---
 
-### Phase 4 — Controllers
+### Phase 4 — Controllers ✅ (app-job-offers)
 - implement REST controllers
 - create request DTOs
 - create response DTOs
@@ -371,6 +375,16 @@ Claude must work strictly step by step.
 - use proper HTTP status codes
 - implement exception handling
 - add controller tests (Spock)
+
+#### app-job-offers — implemented controllers
+- `JobOfferController` — `@RestController` na `/api/v1/job-offers`
+  - `POST /api/v1/job-offers/search` — wyszukiwanie ofert wg kryteriów kandydata; zwraca `JobOfferMatchDto[]` posortowane malejąco po `score`
+- `GlobalExceptionHandler` (`@RestControllerAdvice`) w pakiecie `error`:
+  - `ResourceNotFoundException` → 404 + `{"message": "..."}`
+  - `BadRequestException` → 400 + `{"message": "..."}`
+  - `MethodArgumentNotValidException` (Bean Validation) → 400 + lista błędów pól
+- Bean Validation na `CandidateSearchRequest`: `@NotEmpty skillNames`, `@Positive radiusKm`, `@NotNull expectedSalary`, `@NotEmpty preferredEmploymentTypes`
+- Testy kontrolera: `@WebMvcTest` + `MockMvc` + `@MockitoBean` (Mockito) w Spocku
 
 ---
 

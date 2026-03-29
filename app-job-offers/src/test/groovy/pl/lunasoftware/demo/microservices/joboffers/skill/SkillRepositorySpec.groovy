@@ -2,6 +2,7 @@ package pl.lunasoftware.demo.microservices.joboffers.skill
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
+import pl.lunasoftware.demo.microservices.joboffers.skill.SkillRepository
 import spock.lang.Specification
 
 @DataJpaTest
