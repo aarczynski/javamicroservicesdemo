@@ -1,70 +1,67 @@
 services:
-  app-company:
-    container_name: app-company
-    build:
-      context: ./app-company
-      dockerfile: docker/Dockerfile
-    command: [ "java",
-               "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005",
-               "-javaagent:./opentelemetry-javaagent.jar",
-               "-jar", "./app-company.jar" ]
-    environment:
-      OTEL_SERVICE_NAME: "app-company"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
-      OTEL_METRIC_EXPORT_INTERVAL: "1000"
-      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
-      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
-    ports:
-      - "8080:8080"
-      - "5005:5005"
-    depends_on:
-      postgres:
-        condition: service_healthy
-#      otel-collector:
-#        condition: service_healthy # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
-      prometheus:
-        condition: service_healthy
-      loki:
-        condition: service_healthy
-      tempo:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: "2.00"
-  app-company-client:
-    container_name: app-company-client
-    build:
-      context: ./app-company-client
-      dockerfile: docker/Dockerfile
-    command: [ "java",
-               "-javaagent:./opentelemetry-javaagent.jar",
-               "-jar", "./app-company-client.jar" ]
-    environment:
-      OTEL_SERVICE_NAME: "app-company-client"
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
-      OTEL_METRIC_EXPORT_INTERVAL: "1000"
-      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
-      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
-    ports:
-      - "8081:8080"
-    depends_on:
-#      otel-collector:
-#        condition: service_healthy # TODO: replace prometheus, loki, tempo deps when OTEL collector healthcheck is fixed
-      prometheus:
-        condition: service_healthy
-      loki:
-        condition: service_healthy
-      tempo:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: "2.00"
+#  app-company:
+#    container_name: app-company
+#    build:
+#      context: ./app-company
+#      dockerfile: docker/Dockerfile
+#    command: [ "java",
+#               "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005",
+#               "-javaagent:./opentelemetry-javaagent.jar",
+#               "-jar", "./app-company.jar" ]
+#    environment:
+#      OTEL_SERVICE_NAME: "app-company"
+#      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+#      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+#      OTEL_METRIC_EXPORT_INTERVAL: "1000"
+#      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+#      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+#      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+#    ports:
+#      - "8080:8080"
+#      - "5005:5005"
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#      prometheus:
+#        condition: service_healthy
+#      loki:
+#        condition: service_healthy
+#      tempo:
+#        condition: service_healthy
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: "2.00"
+
+#  app-company-client:
+#    container_name: app-company-client
+#    build:
+#      context: ./app-company-client
+#      dockerfile: docker/Dockerfile
+#    command: [ "java",
+#               "-javaagent:./opentelemetry-javaagent.jar",
+#               "-jar", "./app-company-client.jar" ]
+#    environment:
+#      OTEL_SERVICE_NAME: "app-company-client"
+#      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+#      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+#      OTEL_METRIC_EXPORT_INTERVAL: "1000"
+#      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+#      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+#      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+#    ports:
+#      - "8081:8080"
+#    depends_on:
+#      prometheus:
+#        condition: service_healthy
+#      loki:
+#        condition: service_healthy
+#      tempo:
+#        condition: service_healthy
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: "2.00"
 
   app-job-offers:
     container_name: app-job-offers
@@ -84,11 +81,48 @@ services:
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
-      - "8082:8080"
+      - "8080:8080"
       - "5006:5006"
     depends_on:
       postgres-job-offers:
         condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+
+  app-candidates:
+    container_name: app-candidates
+    build:
+      context: ./app-candidates
+      dockerfile: docker/Dockerfile
+    command: [ "java",
+               "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5007",
+               "-javaagent:./opentelemetry-javaagent.jar",
+               "-jar", "./app-candidates.jar" ]
+    environment:
+      OTEL_SERVICE_NAME: "app-candidates"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_METRIC_EXPORT_INTERVAL: "1000"
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+      JOB_OFFERS_URL: "http://app-job-offers:8080"
+    ports:
+      - "8081:8080"
+      - "5007:5007"
+    depends_on:
+      postgres-candidates:
+        condition: service_healthy
+      app-job-offers:
+        condition: service_started
       prometheus:
         condition: service_healthy
       loki:
@@ -119,15 +153,15 @@ services:
         limits:
           cpus: "2.00"
 
-  postgres:
-    container_name: app-company-db
+  postgres-candidates:
+    container_name: app-candidates-db
     image: postgres:17.4
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=app-company-db
-#    ports:
-#      - "5432:5432"
+      - POSTGRES_DB=app-candidates-db
+    ports:
+      - "5433:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
@@ -137,6 +171,23 @@ services:
       resources:
         limits:
           cpus: "2.00"
+
+#  postgres:
+#    container_name: app-company-db
+#    image: postgres:17.4
+#    environment:
+#      - POSTGRES_USER=postgres
+#      - POSTGRES_PASSWORD=password
+#      - POSTGRES_DB=app-company-db
+#    healthcheck:
+#      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+#      interval: 5s
+#      timeout: 3s
+#      retries: 10
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: "2.00"
 
   otel-collector:
     container_name: otel-collector
