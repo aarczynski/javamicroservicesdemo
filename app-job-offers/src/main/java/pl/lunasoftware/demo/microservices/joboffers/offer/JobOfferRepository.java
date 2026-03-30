@@ -19,7 +19,7 @@ public interface JobOfferRepository extends JpaRepository<JobOfferEntity, UUID> 
     @EntityGraph("JobOffer.withEmploymentTypes")
     List<JobOfferEntity> findByCompanyId(UUID companyId);
 
-    @EntityGraph("JobOffer.withEmploymentTypes")
+    @EntityGraph("JobOffer.withEmploymentTypesAndCompany")
     @Query("""
             SELECT DISTINCT o FROM JobOffer o
             JOIN o.offeredEmploymentTypes t
