@@ -8,6 +8,7 @@ import pl.lunasoftware.demo.microservices.joboffers.offer.api.JobOfferMatchDto;
 import pl.lunasoftware.demo.microservices.joboffers.skill.SkillEntity;
 import pl.lunasoftware.demo.microservices.joboffers.skill.SkillRepository;
 
+import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -89,8 +90,8 @@ public class JobOfferService {
                 companyName,
                 e.getTitle(),
                 e.getDescription(),
-                e.getSalaryFrom(),
-                e.getSalaryTo(),
+                e.getSalaryFrom().setScale(2, RoundingMode.HALF_UP),
+                e.getSalaryTo().setScale(2, RoundingMode.HALF_UP),
                 e.getCurrency(),
                 e.getOfferedEmploymentTypes(),
                 e.getStatus(),
