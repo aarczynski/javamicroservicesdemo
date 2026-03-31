@@ -10,10 +10,10 @@ SELECT id, 'B2B'          FROM candidate WHERE email = 'anna.nowak@example.com' 
 SELECT id, 'EMPLOYMENT'   FROM candidate WHERE email = 'piotr.wisniewski@example.com';
 
 INSERT INTO candidate_skill (candidate_id, skill_name, seniority_level, created_at, updated_at)
-SELECT id, 'Java',        'SENIOR', NOW(), NOW() FROM candidate WHERE email = 'jan.kowalski@example.com' UNION ALL
-SELECT id, 'Spring Boot', 'SENIOR', NOW(), NOW() FROM candidate WHERE email = 'jan.kowalski@example.com' UNION ALL
-SELECT id, 'Java',        'MID',    NOW(), NOW() FROM candidate WHERE email = 'anna.nowak@example.com'   UNION ALL
-SELECT id, 'React',       'MID',    NOW(), NOW() FROM candidate WHERE email = 'anna.nowak@example.com'   UNION ALL
-SELECT id, 'Java',        'LEAD',   NOW(), NOW() FROM candidate WHERE email = 'piotr.wisniewski@example.com' UNION ALL
-SELECT id, 'Spring Boot', 'SENIOR', NOW(), NOW() FROM candidate WHERE email = 'piotr.wisniewski@example.com' UNION ALL
-SELECT id, 'PostgreSQL',  'MID',    NOW(), NOW() FROM candidate WHERE email = 'piotr.wisniewski@example.com';
+SELECT id, 'Communication',  'SENIOR', NOW(), NOW() FROM candidate WHERE email = 'jan.kowalski@example.com' UNION ALL
+SELECT id, 'Leadership',     'SENIOR', NOW(), NOW() FROM candidate WHERE email = 'jan.kowalski@example.com' UNION ALL
+SELECT id, 'Agile',          'MID',    NOW(), NOW() FROM candidate WHERE email = 'anna.nowak@example.com'   UNION ALL
+SELECT id, 'Scrum',          'MID',    NOW(), NOW() FROM candidate WHERE email = 'anna.nowak@example.com'   UNION ALL
+SELECT id, 'Leadership',     'LEAD',   NOW(), NOW() FROM candidate WHERE email = 'piotr.wisniewski@example.com' UNION ALL
+SELECT id, 'Communication',  'SENIOR', NOW(), NOW() FROM candidate WHERE email = 'piotr.wisniewski@example.com' UNION ALL
+SELECT id, 'Problem Solving','MID',    NOW(), NOW() FROM candidate WHERE email = 'piotr.wisniewski@example.com';
