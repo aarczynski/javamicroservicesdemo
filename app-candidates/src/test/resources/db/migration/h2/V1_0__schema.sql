@@ -8,8 +8,8 @@ CREATE TABLE candidate
     geo_lon           DOUBLE PRECISION NOT NULL,
     radius_km         DOUBLE PRECISION NOT NULL,
     expected_salary   NUMERIC(12, 2)  NOT NULL,
-    created_at        TIMESTAMP       NOT NULL,
-    updated_at        TIMESTAMP       NOT NULL
+    created_at        TIMESTAMP       NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP       NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE candidate_preferred_employment_type
@@ -26,8 +26,8 @@ CREATE TABLE candidate_skill
     candidate_id    UUID         NOT NULL,
     skill_name      VARCHAR(255) NOT NULL,
     seniority_level VARCHAR(50)  NOT NULL,
-    created_at      TIMESTAMP    NOT NULL,
-    updated_at      TIMESTAMP    NOT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
     FOREIGN KEY (candidate_id) REFERENCES candidate (id),
     UNIQUE (candidate_id, skill_name)
 );

@@ -4,16 +4,16 @@ CREATE TABLE company
     name       VARCHAR(255) UNIQUE NOT NULL,
     geo_lat      DOUBLE PRECISION    NOT NULL,
     geo_lon      DOUBLE PRECISION    NOT NULL,
-    created_at TIMESTAMP           NOT NULL,
-    updated_at TIMESTAMP           NOT NULL
+    created_at TIMESTAMP           NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP           NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE skill
 (
     id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name       VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMP           NOT NULL,
-    updated_at TIMESTAMP           NOT NULL
+    created_at TIMESTAMP           NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP           NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE job_offer
@@ -26,8 +26,8 @@ CREATE TABLE job_offer
     salary_to   NUMERIC(12, 2),
     currency    VARCHAR(10),
     status      VARCHAR(50)    NOT NULL,
-    created_at  TIMESTAMP      NOT NULL,
-    updated_at  TIMESTAMP      NOT NULL,
+    created_at  TIMESTAMP      NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP      NOT NULL DEFAULT NOW(),
     FOREIGN KEY (company_id) REFERENCES company (id)
 );
 
@@ -47,8 +47,8 @@ CREATE TABLE job_offer_skill
     required_seniority_level VARCHAR(50)    NOT NULL,
     mandatory                BOOLEAN        NOT NULL,
     weight                   NUMERIC(4, 2)  NOT NULL,
-    created_at               TIMESTAMP      NOT NULL,
-    updated_at               TIMESTAMP      NOT NULL,
+    created_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
+    updated_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
     FOREIGN KEY (job_offer_id) REFERENCES job_offer (id),
     FOREIGN KEY (skill_id) REFERENCES skill (id),
     UNIQUE (job_offer_id, skill_id)

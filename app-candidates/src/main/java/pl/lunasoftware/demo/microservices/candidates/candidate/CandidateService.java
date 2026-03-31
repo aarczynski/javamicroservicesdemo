@@ -36,7 +36,7 @@ public class CandidateService {
     @WithSpan
     public List<JobOfferMatchDto> findMatchingOffers(UUID candidateId) {
         CandidateEntity candidate = candidateRepository.findById(candidateId)
-                .orElseThrow(() -> new ResourceNotFoundException("Candidate not found: " + candidateId));
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate " + candidateId + " not found"));
 
         List<CandidateSkillEntity> skills = candidateSkillRepository.findByCandidateId(candidateId);
         if (skills.isEmpty()) {

@@ -1,7 +1,7 @@
 package pl.lunasoftware.demo.microservices.loadtest;
 
 import io.gatling.javaapi.core.ScenarioBuilder;
-import pl.lunasoftware.demo.microservices.loadtest.reader.DepartmentsSqlDataReader;
+import pl.lunasoftware.demo.microservices.loadtest.reader.CandidateSqlDataReader;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -16,15 +16,15 @@ import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
 
-public class DepartmentSimulation extends LoadSimulation {
+public class CandidateSimulation extends LoadSimulation {
 
-    private static final int RPS = 1;
+    private static final int RPS = 10;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
 
-    private DepartmentsSqlDataReader departmentsReader;
+    private CandidateSqlDataReader candidateReader;
 
-    public DepartmentSimulation() {
-        this.setUp(departmentsCostsScenario()
+    public CandidateSimulation() {
+        this.setUp(candidateMatchingOffersScenario()
                 .injectOpen(
                         incrementUsersPerSec(RPS)
                                 .times(4)
@@ -37,31 +37,30 @@ public class DepartmentSimulation extends LoadSimulation {
 
     @Override
     public void before() {
-        departmentsReader = new DepartmentsSqlDataReader(Path.of("data-generator/output/departments.sql"));
+        candidateReader = new CandidateSqlDataReader(Path.of("data-generator/output/candidates/01-candidates.sql"));
     }
 
     @Override
     public void after() {
         try {
-            departmentsReader.close();
+            candidateReader.close();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private ScenarioBuilder departmentsCostsScenario() {
-        return scenario("Load Test get departments costs")
-                .feed(departmentNameFeeder())
-                .exec(http("get departments costs")
-                        .get("/api/v1/departments/#{departmentName}/costs")
-                        .header("Content-Type", "application/json")
+    private ScenarioBuilder candidateMatchingOffersScenario() {
+        return scenario("Load Test get candidate matching offers")
+                .feed(candidateIdFeeder())
+                .exec(http("get candidate matching offers")
+                        .get("/api/v1/candidates/#{candidateId}/matching-offers")
                         .check(status().is(200))
                 );
     }
 
-    private Iterator<Map<String, Object>> departmentNameFeeder() {
+    private Iterator<Map<String, Object>> candidateIdFeeder() {
         return Stream.generate(
-                (Supplier<Map<String, Object>>) () -> Collections.singletonMap("departmentName", departmentsReader.readRandomDepartmentName())
+                (Supplier<Map<String, Object>>) () -> Collections.singletonMap("candidateId", candidateReader.readRandomCandidateId())
         ).iterator();
     }
 }
