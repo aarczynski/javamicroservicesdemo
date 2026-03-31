@@ -16,10 +16,14 @@ Claude must act as a Staff-level Java/Spring engineer:
 - Work step by step.
 - Respect existing project conventions.
 - Avoid overengineering.
+- Run tests after implementing changes.
+- When in doubt, ask whether application code, or tests should be adjusted.
 
 ## Project Context
 
-This repository is a microservices demo using:
+This is a multi-microservice demo Java project using Spring Boot, JPA/Hibernate, Spock tests, Flyway migrations, Feign clients, and Docker Compose. Each microservice may need its own Postgres instance in Docker.
+
+Technologies used:
 - Java
 - Spring Boot
 - Spring Data JPA / Hibernate
