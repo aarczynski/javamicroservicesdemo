@@ -33,4 +33,15 @@ class CandidateSqlDataReaderSpec extends Specification {
         then:
         actual == 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
     }
+
+    def "should read candidate id from file with trailing newline"() {
+        given:
+        def readerWithTrailingNewline = new CandidateSqlDataReader(Path.of(getClass().getClassLoader().getResource("test-data/test-candidates-trailing-newline.sql").toURI()))
+
+        when:
+        def actual = readerWithTrailingNewline.readRandomCandidateId()
+
+        then:
+        actual == 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+    }
 }

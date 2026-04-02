@@ -12,6 +12,7 @@ The ultimate goal is to get rid of current `app-company` and `app-company-client
 Claude must act as a Staff-level Java/Spring engineer:
 - Write clean, production-grade code.
 - Follow SOLID, KISS, and YAGNI principles.
+- Do not describe code in comments. Extract methods with meaningful names, instead.
 - Keep architecture simple, explicit, and maintainable.
 - Work step by step.
 - Respect existing project conventions.
