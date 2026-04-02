@@ -6,9 +6,7 @@ pluginManagement {
     }
 }
 rootProject.name = 'javamicroservicesdemo'
-include 'app-company'
-include 'app-company-client'
-include 'app-job-offers'
 include 'app-candidates'
+include 'app-job-offers'
 include 'data-generator'
 include 'load-test'
