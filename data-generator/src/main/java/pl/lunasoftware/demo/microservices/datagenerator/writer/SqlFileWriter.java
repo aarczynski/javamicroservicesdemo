@@ -1,32 +1,57 @@
 package pl.lunasoftware.demo.microservices.datagenerator.writer;
 
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Department;
-import pl.lunasoftware.demo.microservices.datagenerator.generator.Employee;
-import pl.lunasoftware.demo.microservices.datagenerator.sql.SqlGenerator;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.candidate.Candidate;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.candidate.CandidateSkillAssignment;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.company.Company;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.offer.JobOffer;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.offer.JobOfferSkillAssignment;
+import pl.lunasoftware.demo.microservices.datagenerator.generator.skill.Skill;
+import pl.lunasoftware.demo.microservices.datagenerator.sql.CandidatesSqlGenerator;
+import pl.lunasoftware.demo.microservices.datagenerator.sql.JobOffersSqlGenerator;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Collection;
-import java.util.Map;
-import java.util.Set;
 
 public class SqlFileWriter {
-    private final SqlGenerator sqlGenerator = new SqlGenerator();
 
-    public void writeDepartmentsToFile(Department[] departments, Path path) throws IOException {
-        String departmentsSql = sqlGenerator.generateDepartmentsBatchSql(departments);
-        Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
+    private final JobOffersSqlGenerator jobOffersGenerator = new JobOffersSqlGenerator();
+    private final CandidatesSqlGenerator candidatesGenerator = new CandidatesSqlGenerator();
+
+    public void writeCompaniesToFile(Company[] companies, Path path) throws IOException {
+        append(jobOffersGenerator.generateCompaniesBatchSql(companies), path);
     }
 
-    public void writeEmployeesToFile(Employee[] employees, Path path) throws IOException {
-        String departmentsSql = sqlGenerator.generateEmployeesBatchSql(employees);
-        Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
+    public void writeSkillsToFile(Skill[] skills, Path path) throws IOException {
+        append(jobOffersGenerator.generateSkillsBatchSql(skills), path);
     }
 
-    public void writeEmployeesDepartmentsAssignments(Map<Employee, Department[]> employeeDepartments, Path path) throws IOException {
-        String departmentsSql = sqlGenerator.generateDepartmentsEmployeesAssignmentSql(employeeDepartments);
-        Files.write(path, departmentsSql.getBytes(), StandardOpenOption.APPEND);
+    public void writeJobOffersToFile(JobOffer[] jobOffers, Path path) throws IOException {
+        append(jobOffersGenerator.generateJobOffersBatchSql(jobOffers), path);
+    }
+
+    public void writeJobOfferEmploymentTypesToFile(JobOffer[] jobOffers, Path path) throws IOException {
+        append(jobOffersGenerator.generateJobOfferEmploymentTypesBatchSql(jobOffers), path);
+    }
+
+    public void writeJobOfferSkillAssignmentsToFile(JobOfferSkillAssignment[] assignments, Path path) throws IOException {
+        append(jobOffersGenerator.generateJobOfferSkillAssignmentsBatchSql(assignments), path);
+    }
+
+    public void writeCandidatesToFile(Candidate[] candidates, Path path) throws IOException {
+        append(candidatesGenerator.generateCandidatesBatchSql(candidates), path);
+    }
+
+    public void writeCandidatePreferredEmploymentTypesToFile(Candidate[] candidates, Path path) throws IOException {
+        append(candidatesGenerator.generateCandidatePreferredEmploymentTypesBatchSql(candidates), path);
+    }
+
+    public void writeCandidateSkillAssignmentsToFile(CandidateSkillAssignment[] assignments, Path path) throws IOException {
+        append(candidatesGenerator.generateCandidateSkillAssignmentsBatchSql(assignments), path);
+    }
+
+    private void append(String sql, Path path) throws IOException {
+        Files.write(path, sql.getBytes(), StandardOpenOption.APPEND);
     }
 }

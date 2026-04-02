@@ -1,7 +1,0 @@
-spring:
-  cloud:
-    openfeign:
-      client:
-        config:
-          CompanyAppClient:
-            url: http://app-company:8080

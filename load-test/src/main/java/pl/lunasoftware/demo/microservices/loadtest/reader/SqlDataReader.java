@@ -48,15 +48,28 @@ public abstract class SqlDataReader implements AutoCloseable {
     protected abstract String getData(String line);
 
     private long lastLineOffset(RandomAccessFile file) throws IOException {
-        long pos = file.length();
-        int currChar = 0;
-        while (currChar != (int)'(') {
-            file.seek(pos--);
-            currChar = file.read();
-        }
-
-        file.seek(++pos);
-
+        long posBeforeTrailingNewlines = skipTrailingNewlines(file);
+        long lastLineStart = findLineStart(file, posBeforeTrailingNewlines);
+        file.seek(lastLineStart);
         return file.readLine().length();
+    }
+
+    private long skipTrailingNewlines(RandomAccessFile file) throws IOException {
+        long pos = file.length() - 1;
+        int ch;
+        do {
+            file.seek(pos--);
+            ch = file.read();
+        } while (ch == '\n' || ch == '\r');
+        return pos;
+    }
+
+    private long findLineStart(RandomAccessFile file, long pos) throws IOException {
+        int ch;
+        do {
+            file.seek(pos--);
+            ch = file.read();
+        } while (ch != '\n');
+        return pos + 2;
     }
 }

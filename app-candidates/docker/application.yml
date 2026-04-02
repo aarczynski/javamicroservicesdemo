@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres-candidates:5432/app-candidates-db
+    username: postgres
+    password: password
+  cloud:
+    openfeign:
+      client:
+        config:
+          job-offers:
+            url: http://app-job-offers:8080
+#  jpa:
+#    show-sql: true
+#    properties:
+#      hibernate:
+#        format_sql: true
