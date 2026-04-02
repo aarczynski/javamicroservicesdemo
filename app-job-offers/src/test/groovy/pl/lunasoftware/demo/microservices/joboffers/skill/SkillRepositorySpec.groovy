@@ -19,23 +19,6 @@ class SkillRepositorySpec extends Specification {
         skills*.name as Set == ['Java', 'Spring Boot', 'React'] as Set
     }
 
-    def "should find skill by name ignoring case"() {
-        when:
-        def skill = skillRepository.findByNameIgnoreCase('java')
-
-        then:
-        skill.isPresent()
-        skill.get().name == 'Java'
-    }
-
-    def "should return empty when skill not found"() {
-        when:
-        def skill = skillRepository.findByNameIgnoreCase('Python')
-
-        then:
-        skill.isEmpty()
-    }
-
     def "should find skills by names"() {
         when:
         def skills = skillRepository.findByNameIn(['Java', 'React'])

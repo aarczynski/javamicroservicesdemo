@@ -14,7 +14,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedAttributeNode;
 import jakarta.persistence.NamedEntityGraph;
-import jakarta.persistence.NamedEntityGraphs;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -28,15 +27,11 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-@NamedEntityGraphs({
-        @NamedEntityGraph(name = "JobOffer.withEmploymentTypes",
-                attributeNodes = @NamedAttributeNode("offeredEmploymentTypes")),
-        @NamedEntityGraph(name = "JobOffer.withEmploymentTypesAndCompany",
-                attributeNodes = {
-                        @NamedAttributeNode("offeredEmploymentTypes"),
-                        @NamedAttributeNode("company")
-                })
-})
+@NamedEntityGraph(name = "JobOffer.withEmploymentTypesAndCompany",
+        attributeNodes = {
+                @NamedAttributeNode("offeredEmploymentTypes"),
+                @NamedAttributeNode("company")
+        })
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @Entity(name = "JobOffer")

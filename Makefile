@@ -1,5 +1,5 @@
 host ?= http://localhost:8081
-candidatesDataFile ?= ./data-generator/output/candidates/01-candidates.sql
+candidatesDataFile ?= $(shell pwd)/data-generator/output/candidates/01-candidates.sql
 
 start: clean_build compose_up
 

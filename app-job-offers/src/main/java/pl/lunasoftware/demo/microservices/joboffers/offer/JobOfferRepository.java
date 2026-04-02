@@ -15,12 +15,6 @@ import java.util.UUID;
 @Repository
 public interface JobOfferRepository extends JpaRepository<JobOfferEntity, UUID> {
 
-    @EntityGraph("JobOffer.withEmploymentTypes")
-    List<JobOfferEntity> findByStatus(JobOfferStatus status);
-
-    @EntityGraph("JobOffer.withEmploymentTypes")
-    List<JobOfferEntity> findByCompanyId(UUID companyId);
-
     @EntityGraph("JobOffer.withEmploymentTypesAndCompany")
     @Query("""
             SELECT DISTINCT o FROM JobOffer o

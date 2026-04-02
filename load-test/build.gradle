@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'groovy'
-    id 'io.gatling.gradle' version '3.13.1'
+    id 'io.gatling.gradle' version '3.15.0.1'
 }
 
 repositories {

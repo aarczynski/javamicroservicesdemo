@@ -22,30 +22,4 @@ class CandidateRepositorySpec extends Specification {
         then:
         candidates*.email as Set == ['jan.kowalski@example.com', 'anna.nowak@example.com'] as Set
     }
-
-    def "should find candidate by email"() {
-        when:
-        def candidate = candidateRepository.findByEmail('jan.kowalski@example.com')
-
-        then:
-        candidate.isPresent()
-        candidate.get().firstName == 'Jan'
-        candidate.get().lastName == 'Kowalski'
-    }
-
-    def "should return empty when email not found"() {
-        when:
-        def candidate = candidateRepository.findByEmail('unknown@example.com')
-
-        then:
-        candidate.isEmpty()
-    }
-
-    def "should load preferred employment types eagerly"() {
-        when:
-        def candidate = candidateRepository.findByEmail('jan.kowalski@example.com').get()
-
-        then:
-        candidate.preferredEmploymentTypes == [EmploymentType.B2B, EmploymentType.EMPLOYMENT] as Set
-    }
 }

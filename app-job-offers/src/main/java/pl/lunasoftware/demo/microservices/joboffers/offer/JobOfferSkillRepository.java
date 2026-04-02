@@ -13,5 +13,5 @@ public interface JobOfferSkillRepository extends JpaRepository<JobOfferSkillEnti
 
     List<JobOfferSkillEntity> findByJobOfferId(UUID jobOfferId);
 
-    List<JobOfferSkillEntity> findBySkillId(UUID skillId);
+
 }

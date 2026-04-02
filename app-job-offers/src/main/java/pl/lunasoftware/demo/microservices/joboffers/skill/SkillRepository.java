@@ -13,7 +13,5 @@ import java.util.UUID;
 @Repository
 public interface SkillRepository extends JpaRepository<SkillEntity, UUID> {
 
-    Optional<SkillEntity> findByNameIgnoreCase(String name);
-
     List<SkillEntity> findByNameIn(Collection<String> names);
 }

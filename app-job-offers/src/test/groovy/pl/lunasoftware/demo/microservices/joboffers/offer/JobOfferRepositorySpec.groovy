@@ -2,10 +2,8 @@ package pl.lunasoftware.demo.microservices.joboffers.offer
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
-import pl.lunasoftware.demo.microservices.joboffers.company.CompanyRepository
 import pl.lunasoftware.demo.microservices.joboffers.offer.EmploymentType
 import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferRepository
-import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferStatus
 import pl.lunasoftware.demo.microservices.joboffers.skill.SkillRepository
 import spock.lang.Specification
 
@@ -16,47 +14,14 @@ class JobOfferRepositorySpec extends Specification {
     private JobOfferRepository jobOfferRepository
 
     @Autowired
-    private CompanyRepository companyRepository
-
-    @Autowired
     private SkillRepository skillRepository
 
     static final double WARSAW_LAT = 52.2297
     static final double WARSAW_LON = 21.0122
 
-    def "should find all active offers"() {
-        when:
-        def offers = jobOfferRepository.findByStatus(JobOfferStatus.ACTIVE)
-
-        then:
-        offers.size() == 3
-        offers*.status.every { it == JobOfferStatus.ACTIVE }
-    }
-
-    def "should find offers by company"() {
-        given:
-        def company = companyRepository.findByName('TechCorp Poland sp. z o.o.').get()
-
-        when:
-        def offers = jobOfferRepository.findByCompanyId(company.id)
-
-        then:
-        offers.size() == 2
-        offers*.title as Set == ['Senior Java Developer', 'Full Stack Developer'] as Set
-    }
-
-    def "should find employment types for offer"() {
-        when:
-        def offer = jobOfferRepository.findByStatus(JobOfferStatus.ACTIVE)
-                .find { it.title == 'Senior Java Developer' }
-
-        then:
-        offer.offeredEmploymentTypes == [EmploymentType.B2B, EmploymentType.EMPLOYMENT] as Set
-    }
-
     def "should find candidate matches within 100km from Warsaw with B2B and Java skill"() {
         given:
-        def javaSkill = skillRepository.findByNameIgnoreCase('Java').get()
+        def javaSkill = skillRepository.findByNameIn(['Java']).first()
         def (latMin, latMax, lonMin, lonMax) = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
@@ -73,7 +38,7 @@ class JobOfferRepositorySpec extends Specification {
 
     def "should exclude offers where salaryTo is below expected salary"() {
         given:
-        def javaSkill = skillRepository.findByNameIgnoreCase('Java').get()
+        def javaSkill = skillRepository.findByNameIn(['Java']).first()
         def (latMin, latMax, lonMin, lonMax) = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
@@ -90,7 +55,7 @@ class JobOfferRepositorySpec extends Specification {
 
     def "should exclude offers outside radius"() {
         given:
-        def javaSkill = skillRepository.findByNameIgnoreCase('Java').get()
+        def javaSkill = skillRepository.findByNameIn(['Java']).first()
         def (latMin, latMax, lonMin, lonMax) = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
@@ -107,7 +72,7 @@ class JobOfferRepositorySpec extends Specification {
 
     def "should include Krakow offer when radius is large enough"() {
         given:
-        def javaSkill = skillRepository.findByNameIgnoreCase('Java').get()
+        def javaSkill = skillRepository.findByNameIn(['Java']).first()
         def (latMin, latMax, lonMin, lonMax) = boundingBox(WARSAW_LAT, WARSAW_LON, 300)
 
         when:
@@ -124,7 +89,7 @@ class JobOfferRepositorySpec extends Specification {
 
     def "should return empty when no employment type matches"() {
         given:
-        def javaSkill = skillRepository.findByNameIgnoreCase('Java').get()
+        def javaSkill = skillRepository.findByNameIn(['Java']).first()
         def (latMin, latMax, lonMin, lonMax) = boundingBox(WARSAW_LAT, WARSAW_LON, 300)
 
         when:
@@ -157,7 +122,7 @@ class JobOfferRepositorySpec extends Specification {
 
     def "should load offeredEmploymentTypes eagerly via entity graph in findCandidateMatches"() {
         given:
-        def javaSkill = skillRepository.findByNameIgnoreCase('Java').get()
+        def javaSkill = skillRepository.findByNameIn(['Java']).first()
         def (latMin, latMax, lonMin, lonMax) = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:

@@ -22,7 +22,7 @@ class CandidateSkillRepositorySpec extends Specification {
 
     def "should find skills for candidate"() {
         given:
-        def candidate = candidateRepository.findByEmail('jan.kowalski@example.com').get()
+        def candidate = candidateRepository.findAll().find { it.email == 'jan.kowalski@example.com' }
 
         when:
         def skills = candidateSkillRepository.findByCandidateId(candidate.id)
@@ -33,36 +33,12 @@ class CandidateSkillRepositorySpec extends Specification {
 
     def "should find skills with seniority level"() {
         given:
-        def candidate = candidateRepository.findByEmail('jan.kowalski@example.com').get()
+        def candidate = candidateRepository.findAll().find { it.email == 'jan.kowalski@example.com' }
 
         when:
         def skills = candidateSkillRepository.findByCandidateId(candidate.id)
 
         then:
         skills.every { it.seniorityLevel == SeniorityLevel.SENIOR }
-    }
-
-    def "should delete all skills for candidate"() {
-        given:
-        def candidate = candidateRepository.findByEmail('jan.kowalski@example.com').get()
-
-        when:
-        candidateSkillRepository.deleteAllByCandidateId(candidate.id)
-        def skills = candidateSkillRepository.findByCandidateId(candidate.id)
-
-        then:
-        skills.isEmpty()
-    }
-
-    def "should not affect other candidate's skills when deleting"() {
-        given:
-        def jan = candidateRepository.findByEmail('jan.kowalski@example.com').get()
-        def anna = candidateRepository.findByEmail('anna.nowak@example.com').get()
-
-        when:
-        candidateSkillRepository.deleteAllByCandidateId(jan.id)
-
-        then:
-        candidateSkillRepository.findByCandidateId(anna.id).size() == 2
     }
 }

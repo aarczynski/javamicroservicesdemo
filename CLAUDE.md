@@ -17,6 +17,7 @@ Claude must act as a Staff-level Java/Spring engineer:
 - Work step by step.
 - Respect existing project conventions.
 - Avoid overengineering.
+- Check for unused code, methods, classes, and tests when implementing changes. Remove unused code.
 - Run tests after implementing changes.
 - When in doubt, ask whether application code, or tests should be adjusted.
 
