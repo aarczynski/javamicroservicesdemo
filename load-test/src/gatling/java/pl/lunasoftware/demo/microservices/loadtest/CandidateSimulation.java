@@ -21,7 +21,7 @@ import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvide
 
 public class CandidateSimulation extends Simulation {
 
-    private static final int RPS = 10;
+    private static final int RPS = 100;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
 
     private CandidateSqlDataReader candidateReader;
