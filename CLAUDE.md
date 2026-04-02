@@ -74,6 +74,7 @@ Within each feature package:
 - Controller handles HTTP only.
 - Service contains business logic.
 - Repository handles persistence.
+- Prefer `FetchType.LAZY` and handle `LazyInitializationExceptions` by `NamedEntityGraph`s. 
 - DTOs are separate from entities.
 - Exceptions should stay close to the feature when possible.
 

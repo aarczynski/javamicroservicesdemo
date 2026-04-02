@@ -14,6 +14,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedAttributeNode;
 import jakarta.persistence.NamedEntityGraph;
+import jakarta.persistence.NamedSubgraph;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -23,15 +25,22 @@ import pl.lunasoftware.demo.microservices.joboffers.company.CompanyEntity;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-@NamedEntityGraph(name = "JobOffer.withEmploymentTypesAndCompany",
+@NamedEntityGraph(name = "JobOffer.withAllRelations",
         attributeNodes = {
                 @NamedAttributeNode("offeredEmploymentTypes"),
-                @NamedAttributeNode("company")
-        })
+                @NamedAttributeNode("company"),
+                @NamedAttributeNode(value = "skills", subgraph = "skills-subgraph")
+        },
+        subgraphs = @NamedSubgraph(
+                name = "skills-subgraph",
+                attributeNodes = @NamedAttributeNode("skill")
+        ))
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @Entity(name = "JobOffer")
@@ -54,7 +63,7 @@ public class JobOfferEntity {
     private BigDecimal salaryTo;
     private String currency;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "job_offer_employment_type", joinColumns = @JoinColumn(name = "job_offer_id"))
     @Column(name = "employment_type")
     @Enumerated(EnumType.STRING)
@@ -63,6 +72,9 @@ public class JobOfferEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", insertable = false, updatable = false)
     private CompanyEntity company;
+
+    @OneToMany(mappedBy = "jobOffer", fetch = FetchType.LAZY)
+    private List<JobOfferSkillEntity> skills = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     private JobOfferStatus status;

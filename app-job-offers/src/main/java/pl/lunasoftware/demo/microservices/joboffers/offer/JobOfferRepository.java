@@ -15,7 +15,7 @@ import java.util.UUID;
 @Repository
 public interface JobOfferRepository extends JpaRepository<JobOfferEntity, UUID> {
 
-    @EntityGraph("JobOffer.withEmploymentTypesAndCompany")
+    @EntityGraph("JobOffer.withAllRelations")
     @Query("""
             SELECT DISTINCT o FROM JobOffer o
             JOIN o.offeredEmploymentTypes t
@@ -26,9 +26,9 @@ public interface JobOfferRepository extends JpaRepository<JobOfferEntity, UUID> 
             AND o.salaryTo >= :expectedSalary
             AND t IN :employmentTypes
             AND EXISTS (
-                SELECT s FROM JobOfferSkill s
-                WHERE s.jobOfferId = o.id
-                AND s.skillId IN :skillIds
+                SELECT jos FROM JobOfferSkill jos
+                WHERE jos.jobOffer = o
+                AND jos.skill.name IN :skillNames
             )
             """)
     List<JobOfferEntity> findCandidateMatches(
@@ -38,6 +38,6 @@ public interface JobOfferRepository extends JpaRepository<JobOfferEntity, UUID> 
             double lonMax,
             BigDecimal expectedSalary,
             Collection<EmploymentType> employmentTypes,
-            Collection<UUID> skillIds
+            Collection<String> skillNames
     );
 }

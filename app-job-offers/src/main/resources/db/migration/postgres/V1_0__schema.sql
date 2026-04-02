@@ -16,6 +16,8 @@ CREATE TABLE skill
     updated_at TIMESTAMP           NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX idx_skill_name ON skill (name);
+
 CREATE TABLE job_offer
 (
     id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,

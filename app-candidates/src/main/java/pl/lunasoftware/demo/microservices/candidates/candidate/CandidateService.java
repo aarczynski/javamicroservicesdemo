@@ -8,7 +8,6 @@ import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersClient;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersSearchRequest;
 import pl.lunasoftware.demo.microservices.candidates.skill.CandidateSkillEntity;
-import pl.lunasoftware.demo.microservices.candidates.skill.CandidateSkillRepository;
 
 import java.util.List;
 import java.util.Set;
@@ -20,16 +19,10 @@ import java.util.stream.Collectors;
 public class CandidateService {
 
     private final CandidateRepository candidateRepository;
-    private final CandidateSkillRepository candidateSkillRepository;
     private final JobOffersClient jobOffersClient;
 
-    public CandidateService(
-            CandidateRepository candidateRepository,
-            CandidateSkillRepository candidateSkillRepository,
-            JobOffersClient jobOffersClient
-    ) {
+    public CandidateService(CandidateRepository candidateRepository, JobOffersClient jobOffersClient) {
         this.candidateRepository = candidateRepository;
-        this.candidateSkillRepository = candidateSkillRepository;
         this.jobOffersClient = jobOffersClient;
     }
 
@@ -38,7 +31,7 @@ public class CandidateService {
         CandidateEntity candidate = candidateRepository.findById(candidateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate " + candidateId + " not found"));
 
-        List<CandidateSkillEntity> skills = candidateSkillRepository.findByCandidateId(candidateId);
+        List<CandidateSkillEntity> skills = candidate.getSkills();
         if (skills.isEmpty()) {
             log.info("Candidate {} has no skills, returning empty results", candidateId);
             return List.of();
