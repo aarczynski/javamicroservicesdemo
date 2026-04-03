@@ -1,13 +1,6 @@
-# Claude Code Guide — javamicroservicesdemo Extension
+# Claude Code Guide — javamicroservicesdemo
 
-## Goal
-
-Extend this multi-module Gradle microservices repository into a recruitment system by adding two new microservices:
-
-- `app-job-offers`
-- `app-candidates`
-
-The ultimate goal is to get rid of current `app-company` and `app-company-client` as they are too trivial.
+## Claude role
 
 Claude must act as a Staff-level Java/Spring engineer:
 - Write clean, production-grade code.
@@ -20,6 +13,16 @@ Claude must act as a Staff-level Java/Spring engineer:
 - Check for unused code, methods, classes, and tests when implementing changes. Remove unused code.
 - Run tests after implementing changes.
 - When in doubt, ask whether application code, or tests should be adjusted.
+
+## Goal
+
+Build multi-module Gradle microservices recruitment system consisting of:
+- Two microservices:
+  - `app-candidates`.
+  - `app-job-offers`.
+- `observability` (Grafana stack) showing microservices performance.
+- `data-generator` building SQL files containing big amount of data.
+- `load-test` (Gatling) sending high volume of requests
 
 ## Project Context
 
@@ -35,21 +38,6 @@ Technologies used:
 - Grafana, Prometheus, Loki, Tempo
 - Groovy + Spock tests
 - OpenFeign
-
-Existing modules include:
-- `app-company`
-- `app-company-client`
-- `data-generator`
-- `load-test`
-- `observability`
-
-At this stage:
-- Keep Docker and Docker Compose unchanged.
-- Do not upgrade Java.
-- Do not upgrade library versions.
-- Do not introduce Kubernetes yet.
-
-Kubernetes will be added later, after the new microservices are implemented and after version upgrades.
 
 ## Base Package
 
@@ -110,7 +98,7 @@ Claude must not:
 - Introduce Kubernetes.
 - Introduce messaging systems such as Kafka or RabbitMQ.
 
-## New Microservices
+## Microservices
 
 ### app-job-offers
 
@@ -333,92 +321,3 @@ Rules:
 - Use consistent log format and structure.
 
 Logging is mandatory for every new service and major operation.
-
-## Development Phases
-
-Claude must work strictly step by step.
-
-### Phase 1 — Skeleton modules
-- create `app-job-offers`
-- create `app-candidates`
-- add modules to `settings.gradle`
-- create Gradle build files
-- create minimal Spring Boot application classes
-- create base package: `pl.lunasoftware.demo.microservices`
-- create domain-based (feature-based) package structure
-- add basic smoke tests in Groovy + Spock
-
----
-
-### Phase 2 — Entities, repositories, and Flyway migrations
-- implement JPA entities
-- implement repositories (Spring Data JPA)
-- create Flyway migrations for PostgreSQL
-- ensure each service has its own schema/migrations
-- add repository tests (Spock)
-
----
-
-### Phase 3 — Services ✅ (app-job-offers)
-- implement service layer
-- add business logic
-- enforce domain rules
-- add validation
-- introduce domain exceptions
-- keep logic out of controllers
-- add service tests (Spock)
-
-#### app-job-offers — implemented services
-- `JobOfferService.search(CandidateSearchRequest)` — resolwuje nazwy skillów do ID, filtruje przez `findCandidateMatches`, liczy score = `∑ wag dopasowanych skillów / ∑ wag wszystkich skillów oferty`, sortuje malejąco po score
-- Wyjątki domenowe: `ResourceNotFoundException` (404), `BadRequestException` (400) — gotowe do użycia w kolejnych fazach
-
----
-
-### Phase 4 — Controllers ✅ (app-job-offers)
-- implement REST controllers
-- create request DTOs
-- create response DTOs
-- add validation annotations
-- use proper HTTP status codes
-- implement exception handling
-- add controller tests (Spock)
-
-#### app-job-offers — implemented controllers
-- `JobOfferController` — `@RestController` na `/api/v1/job-offers`
-  - `POST /api/v1/job-offers/search` — wyszukiwanie ofert wg kryteriów kandydata; zwraca `JobOfferMatchDto[]` posortowane malejąco po `score`
-- `GlobalExceptionHandler` (`@RestControllerAdvice`) w pakiecie `error`:
-  - `ResourceNotFoundException` → 404 + `{"message": "..."}`
-  - `BadRequestException` → 400 + `{"message": "..."}`
-  - `MethodArgumentNotValidException` (Bean Validation) → 400 + lista błędów pól
-- Bean Validation na `CandidateSearchRequest`: `@NotEmpty skillNames`, `@Positive radiusKm`, `@NotNull expectedSalary`, `@NotEmpty preferredEmploymentTypes`
-- Testy kontrolera: `@WebMvcTest` + `MockMvc` + `@MockitoBean` (Mockito) w Spocku
-
----
-
-### Phase 5 — Feign integration
-- add Feign client in `app-candidates`
-- create separate client DTOs
-- fetch candidate data and map it to job-offers search request
-- call `app-job-offers` search endpoint
-- keep orchestration logic in service layer
-- add tests for Feign-related logic
-
----
-
-### Phase 6 — Observability alignment
-- add Spring Boot Actuator
-- expose health and metrics endpoints
-- align with existing Prometheus/Grafana setup
-- keep Docker Compose unchanged
-- follow conventions from existing services
-
----
-
-### Phase 7 — Later (not now)
-- upgrade Java version
-- upgrade Spring Boot and dependencies
-- upgrade build tools
-- introduce Kubernetes (K8S)
-- add advanced scalability and resilience patterns
-
-
