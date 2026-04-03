@@ -321,3 +321,31 @@ Rules:
 - Use consistent log format and structure.
 
 Logging is mandatory for every new service and major operation.
+
+## Checking latest dependency versions
+
+When upgrading versions, use `WebFetch` directly on the release pages — do not delegate to an agent and do not rely on search results.
+
+| Dependency | URL |
+|---|---|
+| Java (LTS releases) | https://www.java.com/releases/ |
+| Java (Docker base image) | https://hub.docker.com/_/eclipse-temurin/tags |
+| Gradle | https://gradle.org/releases/ |
+| Flyway | https://mvnrepository.com/artifact/org.flywaydb/flyway-core |
+| PostgreSQL JDBC | https://mvnrepository.com/artifact/org.postgresql/postgresql |
+| PostgreSQL (Docker) | https://www.postgresql.org/docs/release/ |
+| Spring Boot | https://mvnrepository.com/artifact/org.springframework.boot/spring-boot |
+| Spring Cloud | https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-dependencies |
+| OTEL Java Agent | https://mvnrepository.com/artifact/io.opentelemetry.javaagent/opentelemetry-javaagent |
+| Spock | https://mvnrepository.com/artifact/org.spockframework/spock-core |
+| Instancio | https://mvnrepository.com/artifact/org.instancio/instancio-core |
+| Gatling | https://plugins.gradle.org/plugin/io.gatling.gradle |
+| Grafana | https://hub.docker.com/r/grafana/grafana/tags |
+| Loki | https://hub.docker.com/r/grafana/loki/tags |
+| Tempo | https://hub.docker.com/r/grafana/tempo/tags |
+| Prometheus | https://hub.docker.com/r/prom/prometheus/tags |
+| OTEL Collector | https://hub.docker.com/r/otel/opentelemetry-collector-contrib/tags |
+
+When upgrading observability components (Grafana, Loki, Tempo, Prometheus, OTEL Collector), a version bump is not enough.
+Always check the official release notes and migration guides for breaking changes — ports, protocols, configuration file format, and YAML structure can change between versions.
+Blindly bumping the image tag without reviewing the changelog may result in a broken setup.
