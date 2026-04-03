@@ -17,14 +17,14 @@ App to analyze distributed microservices system and DB performance using Gatling
 flowchart LR
     gatling["Gatling\nLoad test"]
 
-    subgraph microservices["Microservices"]
-        candidates["app-candidates\n(port 8081)"]
-        joboffers["app-job-offers\n(port 8080)"]
+    subgraph candidates_svc["app-candidates (port 8081)"]
+        candidates["app-candidates"]
+        candidatesdb[("app-candidates-db\ncandidate\ncandidate_skill\ncandidate_preferred_employment_type")]
     end
 
-    subgraph databases["PostgreSQL Databases"]
-        candidatesdb[("app-candidates-db\ncandidate\ncandidate_skill\ncandidate_preferred_employment_type")]
-        joboffersdb[("app-job-offers-db\ncompany · skill\njob_offer · job_offer_skill\njob_offer_employment_type")]
+    subgraph joboffers_svc["app-job-offers (port 8080)"]
+        joboffers["app-job-offers"]
+        joboffersdb[("app-job-offers-db\ncompany\nskill\njob_offer\njob_offer_skill\njob_offer_employment_type")]
     end
 
     subgraph observability["Observability"]
