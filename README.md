@@ -2,7 +2,7 @@
 App to analyze distributed microservices system and DB performance using Gatling and OpenTelemetry.
 
 ## Modules:
-* **app-job-offers** - a microservice managing job offers. Data model consists of four tables: company, skill, job_offer, and job_offer_skill.
+* **app-job-offers** - a microservice managing job offers. Data model consists of five tables: company, skill, job_offer, job_offer_skill, and job_offer_employment_type.
   A job offer belongs to one company and may require multiple skills at specific seniority levels.
 * **app-candidates** - a microservice managing candidates, acting as a client for app-job-offers to find matching offers.
   Data model consists of three tables: candidate, candidate_skill, and candidate_preferred_employment_type.

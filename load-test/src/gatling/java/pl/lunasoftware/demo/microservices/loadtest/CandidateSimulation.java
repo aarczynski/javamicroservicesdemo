@@ -24,6 +24,7 @@ import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvide
 public class CandidateSimulation extends Simulation {
 
     private static final int RPS = 100;
+    public static final int RAMPS = 5;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
     private static final int NOT_FOUND_RATE_PER_MILLE = 1;
 
@@ -33,7 +34,7 @@ public class CandidateSimulation extends Simulation {
         this.setUp(candidateMatchingOffersScenario()
                 .injectOpen(
                         incrementUsersPerSec(RPS)
-                                .times(4)
+                                .times(RAMPS)
                                 .eachLevelLasting(A_MINUTE)
                                 .separatedByRampsLasting(A_MINUTE)
                                 .startingFrom(RPS)
