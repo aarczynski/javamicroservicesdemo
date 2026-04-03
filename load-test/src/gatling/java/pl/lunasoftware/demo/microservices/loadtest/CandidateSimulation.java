@@ -10,6 +10,8 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -23,6 +25,7 @@ public class CandidateSimulation extends Simulation {
 
     private static final int RPS = 100;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
+    private static final int NOT_FOUND_RATE_PER_MILLE = 1;
 
     private CandidateSqlDataReader candidateReader;
 
@@ -57,13 +60,19 @@ public class CandidateSimulation extends Simulation {
                 .feed(candidateIdFeeder())
                 .exec(http("get candidate matching offers")
                         .get("/api/v1/candidates/#{candidateId}/matching-offers")
-                        .check(status().is(200))
+                        .check(status().in(200, 404))
                 );
     }
 
     private Iterator<Map<String, Object>> candidateIdFeeder() {
         return Stream.generate(
-                (Supplier<Map<String, Object>>) () -> Collections.singletonMap("candidateId", candidateReader.readRandomCandidateId())
+                (Supplier<Map<String, Object>>) () -> {
+                    boolean triggerNotFound = ThreadLocalRandom.current().nextInt(1000) < NOT_FOUND_RATE_PER_MILLE;
+                    String candidateId = triggerNotFound
+                            ? UUID.randomUUID().toString()
+                            : candidateReader.readRandomCandidateId();
+                    return Collections.singletonMap("candidateId", candidateId);
+                }
         ).iterator();
     }
 
