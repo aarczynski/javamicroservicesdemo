@@ -76,7 +76,7 @@ services:
 
   postgres-job-offers:
     container_name: app-job-offers-db
-    image: postgres:17.4
+    image: postgres:18.3
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
@@ -95,7 +95,7 @@ services:
 
   postgres-candidates:
     container_name: app-candidates-db
-    image: postgres:17.4
+    image: postgres:18.3
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password

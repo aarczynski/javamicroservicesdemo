@@ -328,14 +328,14 @@ When upgrading versions, use `WebFetch` directly on the release pages — do not
 
 | Dependency | URL |
 |---|---|
+| Gradle | https://gradle.org/releases/ |
 | Java (LTS releases) | https://www.java.com/releases/ |
 | Java (Docker base image) | https://hub.docker.com/_/eclipse-temurin/tags |
-| Gradle | https://gradle.org/releases/ |
+| Spring Boot | https://mvnrepository.com/artifact/org.springframework.boot/spring-boot |
+| Spring Cloud | https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-dependencies |
 | Flyway | https://mvnrepository.com/artifact/org.flywaydb/flyway-core |
 | PostgreSQL JDBC | https://mvnrepository.com/artifact/org.postgresql/postgresql |
 | PostgreSQL (Docker) | https://www.postgresql.org/docs/release/ |
-| Spring Boot | https://mvnrepository.com/artifact/org.springframework.boot/spring-boot |
-| Spring Cloud | https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-dependencies |
 | OTEL Java Agent | https://mvnrepository.com/artifact/io.opentelemetry.javaagent/opentelemetry-javaagent |
 | Spock | https://mvnrepository.com/artifact/org.spockframework/spock-core |
 | Instancio | https://mvnrepository.com/artifact/org.instancio/instancio-core |
@@ -345,6 +345,12 @@ When upgrading versions, use `WebFetch` directly on the release pages — do not
 | Tempo | https://hub.docker.com/r/grafana/tempo/tags |
 | Prometheus | https://hub.docker.com/r/prom/prometheus/tags |
 | OTEL Collector | https://hub.docker.com/r/otel/opentelemetry-collector-contrib/tags |
+
+When upgrading Java or Spring Boot, a version bump is not enough:
+- Read the official release notes and migration guide.
+- Search the codebase for deprecated APIs, annotations, and configuration properties — remove or replace them.
+- Update configuration files (application.yml, etc.) if property names or structure changed.
+- Verify that all dependencies are compatible with the new version before and after the upgrade.
 
 When upgrading observability components (Grafana, Loki, Tempo, Prometheus, OTEL Collector), a version bump is not enough.
 Always check the official release notes and migration guides for breaking changes — ports, protocols, configuration file format, and YAML structure can change between versions.

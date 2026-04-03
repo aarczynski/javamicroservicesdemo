@@ -6,6 +6,9 @@ spring:
   flyway:
     locations: db/migration/postgres
 management:
+  observations:
+    annotations:
+      enabled: true
   endpoints:
     web:
       exposure:

@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'groovy'
-    id 'org.springframework.boot' version '3.4.4'
+    id 'org.springframework.boot' version '3.5.13'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -29,7 +29,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$otelJavaAgentVer"
     implementation "org.flywaydb:flyway-core:$flywayVer"
-    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.postgresql:postgresql:42.7.10'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly "org.flywaydb:flyway-database-postgresql:$flywayVer"
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus:1.14.5'
