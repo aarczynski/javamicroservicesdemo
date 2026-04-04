@@ -50,7 +50,7 @@ flowchart LR
 ```
 
 # Running locally
-Requires JDK21+, Docker (with Compose) installed on your machine.
+Requires JDK25+, Docker (with Compose) installed on your machine.
 
 ## Generating test data
 Run following command:
