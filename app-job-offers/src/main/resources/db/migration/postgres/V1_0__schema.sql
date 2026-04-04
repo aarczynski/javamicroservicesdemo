@@ -17,6 +17,7 @@ CREATE TABLE skill
 );
 
 CREATE INDEX idx_skill_name ON skill (name);
+CREATE INDEX idx_company_geo ON company (geo_lat, geo_lon);
 
 CREATE TABLE job_offer
 (
@@ -41,6 +42,11 @@ CREATE TABLE job_offer_employment_type
     UNIQUE (job_offer_id, employment_type)
 );
 
+CREATE INDEX idx_job_offer_company_id ON job_offer (company_id);
+CREATE INDEX idx_job_offer_status_salary ON job_offer (status, salary_to);
+CREATE INDEX idx_job_offer_employment_type_job_offer_id ON job_offer_employment_type (job_offer_id);
+CREATE INDEX idx_job_offer_employment_type ON job_offer_employment_type (employment_type);
+
 CREATE TABLE job_offer_skill
 (
     id                       UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -55,3 +61,6 @@ CREATE TABLE job_offer_skill
     FOREIGN KEY (skill_id) REFERENCES skill (id),
     UNIQUE (job_offer_id, skill_id)
 );
+
+CREATE INDEX idx_job_offer_skill_job_offer_id ON job_offer_skill (job_offer_id);
+CREATE INDEX idx_job_offer_skill_skill_id ON job_offer_skill (skill_id);

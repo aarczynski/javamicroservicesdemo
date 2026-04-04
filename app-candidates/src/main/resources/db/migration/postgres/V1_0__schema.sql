@@ -31,3 +31,6 @@ CREATE TABLE candidate_skill
     FOREIGN KEY (candidate_id) REFERENCES candidate (id),
     UNIQUE (candidate_id, skill_name)
 );
+
+CREATE INDEX idx_candidate_skill_candidate_id ON candidate_skill (candidate_id);
+CREATE INDEX idx_candidate_employment_type_candidate_id ON candidate_preferred_employment_type (candidate_id);
