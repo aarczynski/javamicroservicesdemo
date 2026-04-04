@@ -64,7 +64,7 @@ All arguments are optional. Defaults:
 
 Example generating 200 000 candidates, 100 000 job offers and 20 000 companies:
 ```shell
-./gradlew clean :data-generator:build &&  java -jar data-generator/build/libs/data-generator-1.0.0.jar 200000 100000 20000
+./gradlew clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar 200000 100000 20000
 ```
 
 This generates SQL scripts that insert companies, skills (52 predefined technology names), job offers with their required skills, employment types and offered salaries, and candidates with their preferred skills, employment types and expected salaries. Both Job offers and candidates have unique geographical locations (latitude and longitude).
