@@ -4,15 +4,16 @@ import spock.lang.Specification
 
 import java.nio.file.Path
 
-import static java.lang.System.clearProperty
 import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.DATA_FILE_PARAM
 
 class CandidateSqlDataReaderSpec extends Specification {
 
-    private def reader = new CandidateSqlDataReader(Path.of(getClass().getClassLoader().getResource("test-data/test-candidates.sql").toURI()))
+    private def reader = new CandidateSqlDataReader(
+            Path.of(getClass().classLoader.getResource('test-data/test-candidates.sql').toURI())
+    )
 
-    void cleanup() {
-        clearProperty(DATA_FILE_PARAM)
+    def cleanup() {
+        System.clearProperty(DATA_FILE_PARAM)
     }
 
     def "should read candidate id from default candidates data file"() {
@@ -25,7 +26,7 @@ class CandidateSqlDataReaderSpec extends Specification {
 
     def "should read candidate id from parametrized candidates data file"() {
         given:
-        System.setProperty(DATA_FILE_PARAM, getClass().getClassLoader().getResource("test-data/test-candidates.sql").getFile())
+        System.setProperty(DATA_FILE_PARAM, getClass().classLoader.getResource('test-data/test-candidates.sql').file)
 
         when:
         def actual = reader.readRandomCandidateId()
@@ -36,7 +37,9 @@ class CandidateSqlDataReaderSpec extends Specification {
 
     def "should read candidate id from file with trailing newline"() {
         given:
-        def readerWithTrailingNewline = new CandidateSqlDataReader(Path.of(getClass().getClassLoader().getResource("test-data/test-candidates-trailing-newline.sql").toURI()))
+        def readerWithTrailingNewline = new CandidateSqlDataReader(
+                Path.of(getClass().classLoader.getResource('test-data/test-candidates-trailing-newline.sql').toURI())
+        )
 
         when:
         def actual = readerWithTrailingNewline.readRandomCandidateId()

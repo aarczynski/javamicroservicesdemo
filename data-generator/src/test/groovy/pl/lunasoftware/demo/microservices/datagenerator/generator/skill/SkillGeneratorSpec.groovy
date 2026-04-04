@@ -4,15 +4,15 @@ import spock.lang.Specification
 
 class SkillGeneratorSpec extends Specification {
 
-    private SkillGenerator gen = new SkillGenerator()
+    private def gen = new SkillGenerator()
 
     def "should return a skill for every predefined skill name"() {
         when:
         def actual = gen.skills()
 
         then:
-        actual.size() == SkillGenerator.SKILL_NAMES.length
-        (actual*.name() as Set) == (SkillGenerator.SKILL_NAMES as Set)
+        actual.length == SkillGenerator.SKILL_NAMES.length
+        actual.collect { it.name() }.toSet().containsAll(SkillGenerator.SKILL_NAMES)
     }
 
     def "should generate skills with unique ids"() {
@@ -20,6 +20,6 @@ class SkillGeneratorSpec extends Specification {
         def actual = gen.skills()
 
         then:
-        (actual*.id() as Set).size() == actual.size()
+        actual.collect { it.id() }.toSet().size() == actual.length
     }
 }

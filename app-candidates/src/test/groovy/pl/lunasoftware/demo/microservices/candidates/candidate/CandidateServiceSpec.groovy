@@ -28,7 +28,7 @@ class CandidateServiceSpec extends Specification {
         thrown(ResourceNotFoundException)
     }
 
-    def "should return empty list when candidate has no skills"() {
+    def "should return empty list and not call job offers client when candidate has no skills"() {
         given:
         def id = UUID.randomUUID()
         def entity = Instancio.of(CandidateEntity)
@@ -58,7 +58,6 @@ class CandidateServiceSpec extends Specification {
                 .set(field(CandidateEntity, 'preferredEmploymentTypes'), [EmploymentType.B2B] as Set)
                 .create()
         def match = Instancio.of(JobOfferMatchDto).create()
-
         candidateRepository.findById(id) >> Optional.of(entity)
 
         when:

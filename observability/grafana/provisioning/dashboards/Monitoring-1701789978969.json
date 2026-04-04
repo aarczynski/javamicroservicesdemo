@@ -131,7 +131,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"app-candidates\", uri=~\"/api.*\"}[$__rate_interval]))",
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -216,6 +216,21 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/500.*/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -253,9 +268,9 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (status, method, uri) (rate(http_server_requests_seconds_count{job=\"app-candidates\", uri=~\"/api.*\", status!~\"2..\"}[$__rate_interval]))",
+          "expr": "sum by (http_response_status_code, http_request_method, http_route) (rate(http_server_request_duration_seconds_count{job=\"app-candidates\", http_route=~\"/api.*\", http_response_status_code!~\"2..\"}[$__rate_interval]))",
           "instant": false,
-          "legendFormat": "{{status}} - ({{method}}) {{uri}}",
+          "legendFormat": "{{http_response_status_code}} - ({{http_request_method}}) {{http_route}}",
           "range": true,
           "refId": "A"
         }
@@ -503,10 +518,10 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * (sum by (uri) (rate(http_server_requests_seconds_sum{job=\"app-candidates\", uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (rate(http_server_requests_seconds_count{job=\"app-candidates\", uri=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "{{uri}} average",
+          "legendFormat": "{{http_route}} average",
           "range": true,
           "refId": "F"
         }
@@ -606,7 +621,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (method) (rate(candidates_db_seconds_sum[$__rate_interval])) / sum by (method) (rate(candidates_db_seconds_count[$__rate_interval])) * 1e3",
+          "expr": "sum by (code_function) (rate(candidates_db_seconds_sum[$__rate_interval])) / sum by (code_function) (rate(candidates_db_seconds_count[$__rate_interval])) * 1e3",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -791,7 +806,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, method) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.75, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 75th percentile",
           "range": true,
@@ -803,7 +818,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, method) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.90, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 90th percentile",
           "range": true,
@@ -815,7 +830,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, method) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.95, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 95th percentile",
           "range": true,
@@ -827,7 +842,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, method) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.99, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 99th percentile",
           "range": true,
@@ -947,7 +962,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"app-job-offers\", uri=~\"/api.*\"}[$__rate_interval]))",
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -1195,10 +1210,10 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * (sum by (uri) (rate(http_server_requests_seconds_sum{job=\"app-job-offers\", uri=~\"/api.*\"}[$__rate_interval]))) / (sum by (uri) (rate(http_server_requests_seconds_count{job=\"app-job-offers\", uri=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "hide": false,
           "instant": false,
-          "legendFormat": "{{uri}} average",
+          "legendFormat": "{{http_route}} average",
           "range": true,
           "refId": "F"
         }
@@ -1298,7 +1313,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by (method) (rate(job_offers_db_seconds_sum[$__rate_interval])) / sum by (method) (rate(job_offers_db_seconds_count[$__rate_interval])) * 1e3",
+          "expr": "sum by (code_function) (rate(job_offers_db_seconds_sum[$__rate_interval])) / sum by (code_function) (rate(job_offers_db_seconds_count[$__rate_interval])) * 1e3",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -1471,7 +1486,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, method) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.50, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 50th percentile",
           "range": true,
@@ -1483,7 +1498,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, method) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.75, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 75th percentile",
           "range": true,
@@ -1495,7 +1510,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, method) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.90, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 90th percentile",
           "range": true,
@@ -1507,7 +1522,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, method) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.95, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 95th percentile",
           "range": true,
@@ -1519,7 +1534,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, method) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.99, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
           "instant": false,
           "legendFormat": "{{method}} 99th percentile",
           "range": true,
@@ -1545,5 +1560,5 @@
   "timezone": "",
   "title": "Monitoring",
   "uid": "e1f890c5-2799-411b-b267-f344670afe6c",
-  "version": 3
+  "version": 9
 }

@@ -1,18 +1,17 @@
 package pl.lunasoftware.demo.microservices.joboffers.offer.api
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import pl.lunasoftware.demo.microservices.joboffers.offer.EmploymentType
-import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferStatus
 import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferService
+import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferStatus
 import spock.lang.Specification
 
 import static org.mockito.ArgumentMatchers.any
+import static org.mockito.Mockito.when
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -21,144 +20,68 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class JobOfferControllerSpec extends Specification {
 
     @Autowired
-    MockMvc mockMvc
-
-    @Autowired
-    ObjectMapper objectMapper
+    private MockMvc mockMvc
 
     @MockitoBean
-    JobOfferService jobOfferService
+    private JobOfferService jobOfferService
 
-    def "POST /search returns 200 with ranked results and formatted salaries"() {
+    def "POST search returns 200 with ranked results and formatted salaries"() {
         given:
         def matches = [
                 new JobOfferMatchDto(
-                        UUID.fromString("a1ffcd00-9c0b-4ef8-bb6d-6bb9bd380a11"),
-                        UUID.fromString("b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22"),
-                        "TechCorp", "Senior Java Dev", null,
-                        18000.00G, 24000.00G, "PLN", [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 1.0
+                        UUID.fromString('a1ffcd00-9c0b-4ef8-bb6d-6bb9bd380a11'),
+                        UUID.fromString('b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22'),
+                        'TechCorp', 'Senior Java Dev', null,
+                        new BigDecimal('18000.00'), new BigDecimal('24000.00'),
+                        'PLN', [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 1.0
                 ),
                 new JobOfferMatchDto(
-                        UUID.fromString("c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33"),
-                        UUID.fromString("d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44"),
-                        "FinTech", "Backend Dev", null,
-                        16000.00G, 22000.00G, "PLN", [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 0.56
+                        UUID.fromString('c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33'),
+                        UUID.fromString('d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44'),
+                        'FinTech', 'Backend Dev', null,
+                        new BigDecimal('16000.00'), new BigDecimal('22000.00'),
+                        'PLN', [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 0.56
                 )
         ]
-        Mockito.when(jobOfferService.search(any())).thenReturn(matches)
-
-        def request = [
-                skillNames              : ["Java", "Spring Boot"],
-                geoLat                  : 52.2297,
-                geoLon                  : 21.0122,
-                radiusKm                : 100,
-                expectedSalary          : 15000,
-                preferredEmploymentTypes: ["B2B"]
-        ]
+        when(jobOfferService.search(any())).thenReturn(matches)
 
         expect:
-        mockMvc.perform(post("/api/v1/job-offers/search")
+        mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content('{"skillNames":["Java","Spring Boot"],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"]}'))
                 .andExpect(status().isOk())
-                .andExpect(content().json("""
+                .andExpect(content().json('''
                     [
-                      {
-                        "id": "a1ffcd00-9c0b-4ef8-bb6d-6bb9bd380a11",
-                        "companyId": "b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22",
-                        "companyName": "TechCorp",
-                        "title": "Senior Java Dev",
-                        "description": null,
-                        "salaryFrom": "18000.00",
-                        "salaryTo": "24000.00",
-                        "currency": "PLN",
-                        "employmentTypes": ["B2B"],
-                        "status": "ACTIVE",
-                        "score": 1.0
-                      },
-                      {
-                        "id": "c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33",
-                        "companyId": "d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44",
-                        "companyName": "FinTech",
-                        "title": "Backend Dev",
-                        "description": null,
-                        "salaryFrom": "16000.00",
-                        "salaryTo": "22000.00",
-                        "currency": "PLN",
-                        "employmentTypes": ["B2B"],
-                        "status": "ACTIVE",
-                        "score": 0.56
-                      }
+                      {"id":"a1ffcd00-9c0b-4ef8-bb6d-6bb9bd380a11","companyId":"b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22","companyName":"TechCorp","title":"Senior Java Dev","description":null,"salaryFrom":"18000.00","salaryTo":"24000.00","currency":"PLN","employmentTypes":["B2B"],"status":"ACTIVE","score":1.0},
+                      {"id":"c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33","companyId":"d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44","companyName":"FinTech","title":"Backend Dev","description":null,"salaryFrom":"16000.00","salaryTo":"22000.00","currency":"PLN","employmentTypes":["B2B"],"status":"ACTIVE","score":0.56}
                     ]
-                """))
+                '''))
     }
 
-    def "POST /search returns 400 when skillNames is empty"() {
-        given:
-        def request = [
-                skillNames              : [],
-                geoLat                  : 52.2297,
-                geoLon                  : 21.0122,
-                radiusKm                : 100,
-                expectedSalary          : 15000,
-                preferredEmploymentTypes: ["B2B"]
-        ]
-
+    def "POST search returns 400 when skillNames is empty"() {
         expect:
-        mockMvc.perform(post("/api/v1/job-offers/search")
+        mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content('{"skillNames":[],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"]}'))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().json("""
-                    {
-                      "message": "skillNames: must not be empty"
-                    }
-                """))
+                .andExpect(content().json('{"message":"skillNames: must not be empty"}'))
     }
 
-    def "POST /search returns 400 when radiusKm is not positive"() {
-        given:
-        def request = [
-                skillNames              : ["Java"],
-                geoLat                  : 52.2297,
-                geoLon                  : 21.0122,
-                radiusKm                : -10,
-                expectedSalary          : 15000,
-                preferredEmploymentTypes: ["B2B"]
-        ]
-
+    def "POST search returns 400 when radiusKm is not positive"() {
         expect:
-        mockMvc.perform(post("/api/v1/job-offers/search")
+        mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content('{"skillNames":["Java"],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"]}'))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().json("""
-                    {
-                      "message": "radiusKm: must be greater than 0"
-                    }
-                """))
+                .andExpect(content().json('{"message":"radiusKm: must be greater than 0"}'))
     }
 
-    def "POST /search returns 400 when preferredEmploymentTypes is empty"() {
-        given:
-        def request = [
-                skillNames              : ["Java"],
-                geoLat                  : 52.2297,
-                geoLon                  : 21.0122,
-                radiusKm                : 50,
-                expectedSalary          : 15000,
-                preferredEmploymentTypes: []
-        ]
-
+    def "POST search returns 400 when preferredEmploymentTypes is empty"() {
         expect:
-        mockMvc.perform(post("/api/v1/job-offers/search")
+        mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content('{"skillNames":["Java"],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":50,"expectedSalary":15000,"preferredEmploymentTypes":[]}'))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().json("""
-                    {
-                      "message": "preferredEmploymentTypes: must not be empty"
-                    }
-                """))
+                .andExpect(content().json('{"message":"preferredEmploymentTypes: must not be empty"}'))
     }
 }

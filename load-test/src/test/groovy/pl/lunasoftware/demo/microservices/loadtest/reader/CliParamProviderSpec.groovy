@@ -7,11 +7,12 @@ import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvide
 
 class CliParamProviderSpec extends Specification {
 
-    void cleanup() {
+    def cleanup() {
         System.clearProperty(DATA_FILE_PARAM)
+        System.clearProperty(HOST_PARAM)
     }
 
-    def "shouldReadTestDataFilePath"() {
+    def "should read test data file path"() {
         given:
         System.setProperty(DATA_FILE_PARAM, 'test.file')
 
@@ -22,7 +23,7 @@ class CliParamProviderSpec extends Specification {
         actual == 'test.file'
     }
 
-    def "shouldReadHost"() {
+    def "should read host"() {
         given:
         System.setProperty(HOST_PARAM, 'test:8080')
 

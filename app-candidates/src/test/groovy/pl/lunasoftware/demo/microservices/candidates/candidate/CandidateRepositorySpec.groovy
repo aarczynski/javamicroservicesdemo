@@ -1,7 +1,7 @@
 package pl.lunasoftware.demo.microservices.candidates.candidate
 
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersClient
 import pl.lunasoftware.demo.microservices.candidates.skill.SeniorityLevel
@@ -11,7 +11,7 @@ import spock.lang.Specification
 class CandidateRepositorySpec extends Specification {
 
     @MockitoBean
-    JobOffersClient jobOffersClient
+    private JobOffersClient jobOffersClient
 
     @Autowired
     private CandidateRepository candidateRepository

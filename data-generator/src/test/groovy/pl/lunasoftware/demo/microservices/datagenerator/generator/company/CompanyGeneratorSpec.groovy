@@ -4,18 +4,18 @@ import spock.lang.Specification
 
 class CompanyGeneratorSpec extends Specification {
 
-    private CompanyGenerator gen = new CompanyGenerator()
+    private def gen = new CompanyGenerator()
 
     def "should generate random companies with unique names"() {
         given:
-        def count = 100
+        int count = 100
 
         when:
         def actual = gen.randomCompanies(count)
 
         then:
-        actual.size() == count
-        (actual*.name() as Set).size() == count
+        actual.length == count
+        actual.collect { it.name() }.toSet().size() == count
     }
 
     def "should generate companies with geo coordinates within valid range"() {

@@ -10,12 +10,12 @@ import static pl.lunasoftware.demo.microservices.datagenerator.generator.offer.J
 
 class JobOfferSkillAssignerSpec extends Specification {
 
-    private JobOfferSkillAssigner assigner = new JobOfferSkillAssigner()
+    private def assigner = new JobOfferSkillAssigner()
 
     def "should assign skills to each job offer"() {
         given:
-        def jobOffers = Instancio.ofList(JobOffer).size(5).create().toArray() as JobOffer[]
-        def skills = Instancio.ofList(Skill).size(10).create().toArray() as Skill[]
+        def jobOffers = Instancio.ofList(JobOffer).size(5).create().toArray(new JobOffer[0])
+        def skills = Instancio.ofList(Skill).size(10).create().toArray(new Skill[0])
 
         when:
         def actual = assigner.assignSkillsToJobOffers(jobOffers, skills)
@@ -30,15 +30,15 @@ class JobOfferSkillAssignerSpec extends Specification {
 
     def "should not assign the same skill twice to one job offer"() {
         given:
-        def jobOffers = Instancio.ofList(JobOffer).size(20).create().toArray() as JobOffer[]
-        def skills = Instancio.ofList(Skill).size(10).create().toArray() as Skill[]
+        def jobOffers = Instancio.ofList(JobOffer).size(20).create().toArray(new JobOffer[0])
+        def skills = Instancio.ofList(Skill).size(10).create().toArray(new Skill[0])
 
         when:
         def actual = assigner.assignSkillsToJobOffers(jobOffers, skills)
 
         then:
-        actual.groupBy { it.jobOfferId() }.every { _, assignments ->
-            (assignments*.skillId() as Set).size() == assignments.size()
+        actual.groupBy { it.jobOfferId() }.every { jobOfferId, assignments ->
+            assignments.collect { it.skillId() }.toSet().size() == assignments.size()
         }
     }
 }

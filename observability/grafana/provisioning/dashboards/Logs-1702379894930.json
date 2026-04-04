@@ -163,7 +163,7 @@
           },
           "direction": "backward",
           "editorMode": "builder",
-          "expr": "sum by(level) (count_over_time({service_name=~\"$app\", level=~\"$level\"} |~ `(?i)$searchText` [$__auto]))",
+          "expr": "sum by(detected_level) (count_over_time({service_name=~\"$app\"} | detected_level=~\"$level\" |~ `(?i)$searchText` [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -208,7 +208,7 @@
             "uid": "loki"
           },
           "editorMode": "builder",
-          "expr": "{service_name=~\"$app\", level=~\"$level\"} |~ `(?i)$searchText` |= `body` | json | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .level }} {{ .body }}`",
+          "expr": "{service_name=~\"$app\"} | detected_level=~\"$level\" |~ `(?i)$searchText` | line_format `{{ alignRight 20 .service_name }}: {{ alignRight 5 .detected_level }} {{ __line__ }}`",
           "queryType": "range",
           "refId": "A"
         }
@@ -271,7 +271,7 @@
         "name": "level",
         "options": [],
         "query": {
-          "label": "level",
+          "label": "detected_level",
           "refId": "LokiVariableQueryEditor-VariableQuery",
           "stream": "",
           "type": 1
