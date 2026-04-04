@@ -18,7 +18,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 2,
   "links": [],
   "panels": [
     {
@@ -31,7 +30,7 @@
       },
       "id": 200,
       "panels": [],
-      "title": "app-candidates",
+      "title": "$service",
       "type": "row"
     },
     {
@@ -40,7 +39,6 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -70,6 +68,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -84,7 +83,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "red",
@@ -123,15 +123,15 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "11.6.0",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval]))",
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -147,7 +147,6 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -177,6 +176,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -192,7 +192,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "red",
@@ -260,15 +261,15 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "11.6.0",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (http_response_status_code, http_request_method, http_route) (rate(http_server_request_duration_seconds_count{job=\"app-candidates\", http_route=~\"/api.*\", http_response_status_code!~\"2..\"}[$__rate_interval]))",
+          "expr": "sum by (http_response_status_code, http_request_method, http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\", http_response_status_code!~\"2..\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "{{http_response_status_code}} - ({{http_request_method}}) {{http_route}}",
           "range": true,
@@ -288,6 +289,7 @@
           "color": {
             "mode": "palette-classic"
           },
+          "unit": "ms",
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -312,6 +314,7 @@
               "type": "linear"
             },
             "showPoints": "never",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -326,7 +329,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "red",
@@ -413,8 +417,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "/api/v1/candidates/{id}/matching-offers average"
+              "id": "byRegexp",
+              "options": ".* average"
             },
             "properties": [
               {
@@ -448,27 +452,27 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "11.6.0",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
-          "legendFormat": "{{http_route}} 50th percentile",
+          "legendFormat": "{{http_route}} 50th percentile (median)",
           "range": true,
           "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{http_route}} 75th percentile",
           "range": true,
@@ -477,10 +481,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.90, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.90, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{http_route}} 90th percentile",
           "range": true,
@@ -489,10 +493,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{http_route}} 95th percentile",
           "range": true,
@@ -501,11 +505,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{http_route}} 99th percentile",
           "range": true,
@@ -518,8 +522,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-candidates\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "hide": false,
+          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{http_route}} average",
           "range": true,
@@ -531,245 +534,39 @@
     },
     {
       "datasource": {
-        "default": true,
         "type": "prometheus",
         "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": { "mode": "palette-classic" },
+          "unit": "ms",
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text",
+            "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6,
+            "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 1, "pointSize": 5,
+            "scaleDistribution": { "type": "linear" }, "showPoints": "never", "showValues": false,
+            "spanNulls": false, "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 27
-      },
-      "id": 205,
-      "options": {
-        "legend": {
-          "calcs": [
-            "min",
-            "max",
-            "mean"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "11.6.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "sum by (code_function) (rate(candidates_db_seconds_sum[$__rate_interval])) / sum by (code_function) (rate(candidates_db_seconds_count[$__rate_interval])) * 1e3",
-          "instant": false,
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "AVG DB Response Time [ms]",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 80 }] }
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 50th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "super-light-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 75th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "light-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 90th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 95th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 99th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
+          { "matcher": { "id": "byName", "options": "50th percentile (median)" }, "properties": [{ "id": "color", "value": { "fixedColor": "super-light-green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "75th percentile" }, "properties": [{ "id": "color", "value": { "fixedColor": "light-green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "90th percentile" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "95th percentile" }, "properties": [{ "id": "color", "value": { "fixedColor": "semi-dark-green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "99th percentile" }, "properties": [{ "id": "color", "value": { "fixedColor": "dark-green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "average" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ffffff", "mode": "fixed" } }] }
         ]
       },
       "gridPos": {
         "h": 10,
-        "w": 12,
-        "x": 12,
+        "w": 24,
+        "x": 0,
         "y": 27
       },
       "id": 206,
@@ -786,421 +583,65 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "11.6.0",
+      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(candidates_db_seconds_bucket[10s])) by (le)) ",
+          "expr": "histogram_quantile(0.50, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
           "instant": false,
-          "legendFormat": "{{method}} 50th percentile",
+          "legendFormat": "50th percentile (median)",
           "range": true,
           "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.75, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
           "instant": false,
-          "legendFormat": "{{method}} 75th percentile",
+          "legendFormat": "75th percentile",
           "range": true,
           "refId": "B"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.90, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
           "instant": false,
-          "legendFormat": "{{method}} 90th percentile",
+          "legendFormat": "90th percentile",
           "range": true,
           "refId": "C"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.95, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
           "instant": false,
-          "legendFormat": "{{method}} 95th percentile",
+          "legendFormat": "95th percentile",
           "range": true,
           "refId": "D"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, code_function) (rate(candidates_db_seconds_bucket[$__rate_interval]))) * 1e3",
+          "expr": "histogram_quantile(0.99, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
           "instant": false,
-          "legendFormat": "{{method}} 99th percentile",
-          "range": true,
-          "refId": "E"
-        }
-      ],
-      "title": "DB Response Times [ms]",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 37
-      },
-      "id": 100,
-      "panels": [],
-      "title": "app-job-offers",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "default": true,
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 38
-      },
-      "id": 101,
-      "options": {
-        "legend": {
-          "calcs": [
-            "min",
-            "max",
-            "mean"
-          ],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "width": 500
-        },
-        "timezone": [
-          "browser"
-        ],
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "11.6.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval]))",
-          "instant": false,
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Requests per second",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 50th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "super-light-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 75th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "light-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 90th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 95th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 99th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "/api/v1/job-offers/search average"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#ffffff",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 46
-      },
-      "id": 104,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "11.6.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "instant": false,
-          "legendFormat": "{{http_route}} 50th percentile",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "instant": false,
-          "legendFormat": "{{http_route}} 75th percentile",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.90, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "instant": false,
-          "legendFormat": "{{http_route}} 90th percentile",
-          "range": true,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "instant": false,
-          "legendFormat": "{{http_route}} 95th percentile",
-          "range": true,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "instant": false,
-          "legendFormat": "{{http_route}} 99th percentile",
+          "legendFormat": "99th percentile",
           "range": true,
           "refId": "E"
         },
@@ -1210,335 +651,11 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"app-job-offers\", http_route=~\"/api.*\"}[$__rate_interval])))",
-          "hide": false,
+          "expr": "sum(rate(db_duration_milliseconds_sum{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval]))\n/\nsum(rate(db_duration_milliseconds_count{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval]))",
           "instant": false,
-          "legendFormat": "{{http_route}} average",
+          "legendFormat": "average",
           "range": true,
           "refId": "F"
-        }
-      ],
-      "title": "Web Response Times [ms]",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "default": true,
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 56
-      },
-      "id": 105,
-      "options": {
-        "legend": {
-          "calcs": [
-            "min",
-            "max",
-            "mean"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "11.6.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "sum by (code_function) (rate(job_offers_db_seconds_sum[$__rate_interval])) / sum by (code_function) (rate(job_offers_db_seconds_count[$__rate_interval])) * 1e3",
-          "instant": false,
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "AVG DB Response Time [ms]",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 50th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "super-light-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 75th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "light-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 90th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 95th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* 99th percentile"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 56
-      },
-      "id": 106,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "11.6.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
-          "instant": false,
-          "legendFormat": "{{method}} 50th percentile",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
-          "instant": false,
-          "legendFormat": "{{method}} 75th percentile",
-          "range": true,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
-          "instant": false,
-          "legendFormat": "{{method}} 90th percentile",
-          "range": true,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
-          "instant": false,
-          "legendFormat": "{{method}} 95th percentile",
-          "range": true,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, code_function) (rate(job_offers_db_seconds_bucket[$__rate_interval]))) * 1e3",
-          "instant": false,
-          "legendFormat": "{{method}} 99th percentile",
-          "range": true,
-          "refId": "E"
         }
       ],
       "title": "DB Response Times [ms]",
@@ -1547,18 +664,42 @@
   ],
   "preload": false,
   "refresh": "5s",
-  "schemaVersion": 41,
+  "schemaVersion": 42,
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(http_server_request_duration_seconds_count{job=~\"app-.*\"}, job)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Service",
+        "multi": false,
+        "name": "service",
+        "options": [],
+        "query": {
+          "query": "label_values(http_server_request_duration_seconds_count{job=~\"app-.*\"}, job)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
-  "timezone": "",
+  "timezone": "browser",
   "title": "Monitoring",
   "uid": "e1f890c5-2799-411b-b267-f344670afe6c",
-  "version": 9
+  "version": 5,
+  "weekStart": ""
 }

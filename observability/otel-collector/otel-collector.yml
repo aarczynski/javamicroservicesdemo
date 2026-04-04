@@ -7,11 +7,34 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
+connectors:
+  spanmetrics:
+    namespace: db
+    metrics_flush_interval: 1s
+    histogram:
+      explicit:
+        buckets: ["1ms", "5ms", "10ms", "25ms", "50ms", "100ms", "250ms", "500ms", "1s", "2500ms", "5s"]
+    dimensions:
+      - name: db.system
+      - name: db.system.name
+      - name: db.operation.name
+    exemplars:
+      enabled: true
+
 processors:
   batch:
     send_batch_max_size: 1000
     send_batch_size: 100
     timeout: 10s
+  batch/metrics:
+    send_batch_max_size: 1000
+    send_batch_size: 100
+    timeout: 2s
+  filter/db_spans:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["db.system"] == nil and attributes["db.system.name"] == nil'
 
 exporters:
   prometheusremotewrite:
@@ -29,13 +52,17 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [otlp]
-      processors: [batch]
+      receivers: [otlp, spanmetrics]
+      processors: [batch/metrics]
       exporters: [prometheusremotewrite]
     traces:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp_grpc/tempo]
+    traces/db_spans:
+      receivers: [otlp]
+      processors: [filter/db_spans]
+      exporters: [spanmetrics]
     logs:
       receivers: [otlp]
       processors: [batch]
