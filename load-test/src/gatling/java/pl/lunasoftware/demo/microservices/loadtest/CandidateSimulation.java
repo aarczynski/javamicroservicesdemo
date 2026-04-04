@@ -1,5 +1,6 @@
 package pl.lunasoftware.demo.microservices.loadtest;
 
+import io.gatling.javaapi.core.OpenInjectionStep;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
@@ -13,9 +14,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.gatling.javaapi.core.CoreDsl.incrementUsersPerSec;
+import static io.gatling.javaapi.core.CoreDsl.constantUsersPerSec;
+import static io.gatling.javaapi.core.CoreDsl.rampUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
@@ -32,13 +35,7 @@ public class CandidateSimulation extends Simulation {
 
     public CandidateSimulation() {
         this.setUp(candidateMatchingOffersScenario()
-                .injectOpen(
-                        incrementUsersPerSec(RPS)
-                                .times(RAMPS)
-                                .eachLevelLasting(A_MINUTE)
-                                .separatedByRampsLasting(A_MINUTE)
-                                .startingFrom(RPS)
-                )
+                .injectOpen(buildInjectionSteps())
                 .protocols(httpProtocolBuilder()));
     }
 
@@ -75,6 +72,16 @@ public class CandidateSimulation extends Simulation {
                     return Collections.singletonMap("candidateId", candidateId);
                 }
         ).iterator();
+    }
+
+    private OpenInjectionStep[] buildInjectionSteps() {
+        return IntStream.range(0, RAMPS)
+                .boxed()
+                .flatMap(i -> Stream.of(
+                        rampUsersPerSec((double) RPS * i).to((double) RPS * (i + 1)).during(A_MINUTE).randomized(),
+                        constantUsersPerSec((double) RPS * (i + 1)).during(A_MINUTE).randomized()
+                ))
+                .toArray(OpenInjectionStep[]::new);
     }
 
     private HttpProtocolBuilder httpProtocolBuilder() {

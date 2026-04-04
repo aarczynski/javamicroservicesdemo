@@ -7,6 +7,7 @@ Claude must act as a Staff-level Java/Spring engineer:
 - Follow SOLID, KISS, and YAGNI principles.
 - Do not describe code in comments. Extract methods with meaningful names, instead.
 - Keep architecture simple, explicit, and maintainable.
+- Do not use mutable collections built up in a loop — prefer `Stream`/`IntStream` pipelines with `flatMap` and `toArray`/`toList`.
 - Work step by step.
 - Respect existing project conventions.
 - Avoid overengineering.
@@ -92,11 +93,9 @@ Claude must:
 - Follow the current repository conventions.
 
 Claude must not:
-- Upgrade dependencies at this stage.
+- Upgrade dependencies without asking.
 - Introduce new frameworks without a strong reason.
-- Modify Docker or Docker Compose.
-- Introduce Kubernetes.
-- Introduce messaging systems such as Kafka or RabbitMQ.
+- Introduce messaging systems such as Kafka or RabbitMQ without being asked.
 
 ## Microservices
 
