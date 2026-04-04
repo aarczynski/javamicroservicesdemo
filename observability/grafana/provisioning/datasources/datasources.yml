@@ -20,9 +20,9 @@ datasources:
     jsonData:
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: traceid
+          matcherRegex: trace_id
           matcherType: label
-          name: traceid
+          name: trace_id
           url: $${__value.raw}
           urlDisplayLabel: View in Tempo
   - name: Tempo
