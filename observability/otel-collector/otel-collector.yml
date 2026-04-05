@@ -25,11 +25,11 @@ processors:
   batch:
     send_batch_max_size: 1000
     send_batch_size: 100
-    timeout: 10s
+    timeout: 5s
   batch/metrics:
     send_batch_max_size: 1000
     send_batch_size: 100
-    timeout: 2s
+    timeout: 5s
   filter/db_spans:
     error_mode: ignore
     traces:
