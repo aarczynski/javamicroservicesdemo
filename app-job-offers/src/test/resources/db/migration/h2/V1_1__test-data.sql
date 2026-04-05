@@ -7,24 +7,24 @@ VALUES ('Java', NOW(), NOW()),
        ('Spring Boot', NOW(), NOW()),
        ('React', NOW(), NOW());
 
-INSERT INTO job_offer (company_id, title, description, salary_from, salary_to, currency, status, created_at, updated_at)
+INSERT INTO job_offer (company_id, title, description, salary_from, salary_to, currency, required_years_of_experience, status, created_at, updated_at)
 VALUES (
     (SELECT id FROM company WHERE name = 'TechCorp Poland sp. z o.o.'),
     'Senior Java Developer',
     'Backend role focused on Java and Spring Boot.',
-    18000.00, 24000.00, 'PLN', 'ACTIVE', NOW(), NOW()
+    18000.00, 24000.00, 'PLN', 5, 'ACTIVE', NOW(), NOW()
 ),
 (
     (SELECT id FROM company WHERE name = 'TechCorp Poland sp. z o.o.'),
     'Full Stack Developer',
     'Full stack position with Java and React.',
-    15000.00, 20000.00, 'PLN', 'ACTIVE', NOW(), NOW()
+    15000.00, 20000.00, 'PLN', 3, 'ACTIVE', NOW(), NOW()
 ),
 (
     (SELECT id FROM company WHERE name = 'FinTech Kraków sp. z o.o.'),
     'Backend Engineer',
     'Backend role in a fintech environment.',
-    16000.00, 22000.00, 'PLN', 'ACTIVE', NOW(), NOW()
+    16000.00, 22000.00, 'PLN', 3, 'ACTIVE', NOW(), NOW()
 );
 
 INSERT INTO job_offer_employment_type (job_offer_id, employment_type)

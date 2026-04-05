@@ -63,6 +63,9 @@ public class JobOfferEntity {
     private BigDecimal salaryTo;
     private String currency;
 
+    @Column(name = "required_years_of_experience")
+    private int requiredYearsOfExperience;
+
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "job_offer_employment_type", joinColumns = @JoinColumn(name = "job_offer_id"))
     @Column(name = "employment_type")

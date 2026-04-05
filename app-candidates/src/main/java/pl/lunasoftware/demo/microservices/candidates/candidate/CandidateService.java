@@ -4,6 +4,7 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import pl.lunasoftware.demo.microservices.candidates.candidate.api.ResourceNotFoundException;
+import pl.lunasoftware.demo.microservices.candidates.joboffer.CandidateSkillDto;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersClient;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersSearchRequest;
@@ -37,17 +38,18 @@ public class CandidateService {
             return List.of();
         }
 
-        Set<String> skillNames = skills.stream()
-                .map(CandidateSkillEntity::getSkillName)
+        Set<CandidateSkillDto> candidateSkills = skills.stream()
+                .map(s -> new CandidateSkillDto(s.getSkillName(), s.getSeniorityLevel()))
                 .collect(Collectors.toSet());
 
         JobOffersSearchRequest searchRequest = new JobOffersSearchRequest(
-                skillNames,
+                candidateSkills,
                 candidate.getGeoLat(),
                 candidate.getGeoLon(),
                 candidate.getRadiusKm(),
                 candidate.getExpectedSalary(),
-                candidate.getPreferredEmploymentTypes()
+                candidate.getPreferredEmploymentTypes(),
+                candidate.getYearsOfExperience()
         );
 
         List<JobOfferMatchDto> matches = jobOffersClient.searchOffers(searchRequest);

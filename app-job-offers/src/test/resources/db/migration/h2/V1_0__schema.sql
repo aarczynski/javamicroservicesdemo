@@ -1,16 +1,16 @@
 CREATE TABLE company
 (
-    id         UUID DEFAULT random_uuid() PRIMARY KEY,
+    id         UUID                         DEFAULT random_uuid() PRIMARY KEY,
     name       VARCHAR(255) UNIQUE NOT NULL,
-    geo_lat      DOUBLE PRECISION    NOT NULL,
-    geo_lon      DOUBLE PRECISION    NOT NULL,
+    geo_lat    DOUBLE PRECISION    NOT NULL,
+    geo_lon    DOUBLE PRECISION    NOT NULL,
     created_at TIMESTAMP           NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP           NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE skill
 (
-    id         UUID DEFAULT random_uuid() PRIMARY KEY,
+    id         UUID                         DEFAULT random_uuid() PRIMARY KEY,
     name       VARCHAR(255) UNIQUE NOT NULL,
     created_at TIMESTAMP           NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP           NOT NULL DEFAULT NOW()
@@ -20,16 +20,17 @@ CREATE INDEX idx_skill_name ON skill (name);
 
 CREATE TABLE job_offer
 (
-    id          UUID DEFAULT random_uuid() PRIMARY KEY,
-    company_id  UUID             NOT NULL,
-    title       VARCHAR(255)     NOT NULL,
-    description TEXT,
-    salary_from NUMERIC(12, 2),
-    salary_to   NUMERIC(12, 2),
-    currency    VARCHAR(10),
-    status      VARCHAR(50)      NOT NULL,
-    created_at  TIMESTAMP        NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMP        NOT NULL DEFAULT NOW(),
+    id                           UUID                  DEFAULT random_uuid() PRIMARY KEY,
+    company_id                   UUID         NOT NULL,
+    title                        VARCHAR(255) NOT NULL,
+    description                  TEXT,
+    salary_from                  NUMERIC(12, 2),
+    salary_to                    NUMERIC(12, 2),
+    currency                     VARCHAR(10),
+    required_years_of_experience INT          NOT NULL DEFAULT 0,
+    status                       VARCHAR(50)  NOT NULL,
+    created_at                   TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at                   TIMESTAMP    NOT NULL DEFAULT NOW(),
     FOREIGN KEY (company_id) REFERENCES company (id)
 );
 
@@ -43,7 +44,7 @@ CREATE TABLE job_offer_employment_type
 
 CREATE TABLE job_offer_skill
 (
-    id                       UUID DEFAULT random_uuid() PRIMARY KEY,
+    id                       UUID                   DEFAULT random_uuid() PRIMARY KEY,
     job_offer_id             UUID          NOT NULL,
     skill_id                 UUID          NOT NULL,
     required_seniority_level VARCHAR(50)   NOT NULL,

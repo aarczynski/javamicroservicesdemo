@@ -64,7 +64,7 @@ class CandidateServiceSpec extends Specification {
         def result = service.findMatchingOffers(id)
 
         then:
-        1 * jobOffersClient.searchOffers({ it.skillNames == ['Java'] as Set }) >> [match]
+        1 * jobOffersClient.searchOffers({ it.candidateSkills*.skillName as Set == ['Java'] as Set }) >> [match]
         result.size() == 1
     }
 }

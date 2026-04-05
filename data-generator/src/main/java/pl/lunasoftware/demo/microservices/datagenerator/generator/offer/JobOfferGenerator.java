@@ -49,6 +49,7 @@ public class JobOfferGenerator {
                 salaryFrom,
                 salaryTo,
                 randomCurrency(),
+                ThreadLocalRandom.current().nextInt(0, 21),
                 randomJobOfferStatus(),
                 randomEmploymentTypes()
         );

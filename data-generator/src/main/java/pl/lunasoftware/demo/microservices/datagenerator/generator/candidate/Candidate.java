@@ -14,6 +14,7 @@ public record Candidate(
         double geoLat,
         double geoLon,
         double radiusKm,
+        int yearsOfExperience,
         BigDecimal expectedSalary,
         EmploymentType[] preferredEmploymentTypes
 ) {
