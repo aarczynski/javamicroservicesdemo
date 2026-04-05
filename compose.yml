@@ -200,7 +200,7 @@ services:
       context: ./load-background
       dockerfile: Dockerfile
     environment:
-      TARGET_HOST: "http://app-candidates:8080"
+      TARGET_HOST: "${TARGET_HOST:-http://app-candidates:8080}"
       DATA_FILE: "/data/01-candidates.sql"
     volumes:
       - ./data-generator/output/candidates/01-candidates.sql:/data/01-candidates.sql:ro

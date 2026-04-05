@@ -1,4 +1,5 @@
 host ?= http://localhost:8081
+targetHost ?= http://app-candidates:8080
 candidatesDataFile ?= $(shell pwd)/data-generator/output/candidates/01-candidates.sql
 
 start: clean_build compose_up
@@ -12,7 +13,7 @@ compose_up:
 	docker compose up --build
 
 compose_up_ambient:
-	docker compose --profile ambient up --build
+	TARGET_HOST=$(targetHost) docker compose --profile ambient up --build
 
 candidateSimulation:
 	./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation -Dhost=$(host) -DdataFile=$(candidatesDataFile)

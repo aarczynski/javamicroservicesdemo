@@ -102,7 +102,18 @@ or full command:
 ./gradlew clean :app-job-offers:build :app-candidates:build && docker compose up --build
 ```
 
-To also start the background k6 load alongside the services, use the `ambient` profile:
+Please note that the new v2 of Docker Compose is used. If you are using older Docker version, use `docker-compose` instead of `docker compose`.
+
+## Sample HTTP requests
+Check `http/requests.http` file.
+
+## Background load (k6)
+
+The `load-background` module sends continuous ambient traffic to `app-candidates` 24/7.
+It runs as part of the `ambient` Docker Compose profile (`make start-ambient`) and starts only after both Spring Boot apps report healthy on `/actuator/health`.
+
+To start the background k6 load alongside the services, use the `ambient` profile:
+
 ```shell
 make start-ambient
 ```
@@ -111,10 +122,48 @@ or full command:
 ./gradlew clean :app-job-offers:build :app-candidates:build && docker compose --profile ambient up --build
 ```
 
-Please note that the new v2 of Docker Compose is used. If you are using older Docker version, use `docker-compose` instead of `docker compose`.
+### Target host
 
-## Sample HTTP requests
-Check `http/requests.http` file.
+By default k6 sends requests to `http://app-candidates:8080` (container address in the Docker network).
+Override with the `targetHost` Makefile variable or the `TARGET_HOST` environment variable:
+
+```shell
+# via Makefile
+make start-ambient targetHost=http://192.168.0.100:8080
+
+# via environment variable
+TARGET_HOST=http://192.168.0.100:8080 docker compose --profile ambient up --build
+```
+
+### RPS profile
+
+Load oscillates sinusoidally between **5 and 10 RPS** with a 5-minute period:
+
+```
+RPS
+ 10 |     *         *         *
+  9 |    * *       * *       * *
+  8 |   *   *     *   *     *   *
+  7 |  *     *   *     *   *     *
+  6 | *       * *       * *       *
+  5 +*---------*---------*---------*-> t (min)
+     0    1    2    3    4    5    6
+```
+
+The script reads all candidate UUIDs from the SQL data file into a `SharedArray` at startup (shared across all VUs, loaded once into RAM).
+Mount the file at `data-generator/output/candidates/01-candidates.sql` before running `docker compose up`.
+If the file is absent the service still starts — all requests will return 404.
+
+### Running k6 standalone (without Docker Compose)
+
+```shell
+./gradlew :load-background:runK6
+```
+
+Override host or data file:
+```shell
+./gradlew :load-background:runK6 -Phost=http://localhost:8081 -PdataFile=/path/to/01-candidates.sql
+```
 
 ## Performance testing
 Gatling gradle plugin is used. Run the following command:
@@ -162,41 +211,6 @@ or full command:
 5 steps of 100 rps each. Each step: 1 min linear ramp + 2 min steady.
 Peak at 500 rps: 2 min (last step's steady) + 3 min (peak steady) = 5 min total.
 Cooldown: linear ramp from 500 to 0 rps over 5 min.
-
-## Background load (k6)
-
-The `load-background` module sends continuous ambient traffic to `app-candidates` 24/7.
-It runs as part of the `ambient` Docker Compose profile (`make start-ambient`) and starts only after both Spring Boot apps report healthy on `/actuator/health`.
-
-### RPS profile
-
-Load oscillates sinusoidally between **5 and 10 RPS** with a 5-minute period:
-
-```
-RPS
- 10 |     *         *         *
-  9 |    * *       * *       * *
-  8 |   *   *     *   *     *   *
-  7 |  *     *   *     *   *     *
-  6 | *       * *       * *       *
-  5 +*---------*---------*---------*-> t (min)
-     0    1    2    3    4    5    6
-```
-
-The script reads all candidate UUIDs from the SQL data file into a `SharedArray` at startup (shared across all VUs, loaded once into RAM).
-Mount the file at `data-generator/output/candidates/01-candidates.sql` before running `docker compose up`.
-If the file is absent the service still starts — all requests will return 404.
-
-### Running k6 standalone (without Docker Compose)
-
-```shell
-./gradlew :load-background:runK6
-```
-
-Override host or data file:
-```shell
-./gradlew :load-background:runK6 -Phost=http://localhost:8081 -PdataFile=/path/to/01-candidates.sql
-```
 
 ## Observability
 Apps use OTEL agent to export metrics, traces and logs to OTEL collector. It pushes all data to designated backends. Spring Boot Actuator and Micrometer are enabled.
