@@ -135,19 +135,19 @@ or full command:
 
 ```
  RPS
- 500 |              +-------------------------------+
- 400 |          +---+                                \
- 300 |      +---+                                     \
- 200 |  +---+                                          \
- 100 +--+                                               \
-   0 +----------------------------------------------------> t (min)
+ 500 |              /-------------------------------\
+ 400 |           /--                                 \
+ 300 |        /--                                     \
+ 200 |     /--                                         \
+ 100 |  /--                                             \
+   0 +-/-------------------------------------------------\-> t (min)
      0  1  3  4  6  7  9 10 12 13                   18  23
-     |<------------ ramp-up 13 min ---------->|peak |cool|
-                                               5 min 5 min
+     |<------------ ramp-up 13 min ---------->| peak |cool|
+                                               5 min  5 min
 ```
 
-5 steps of 100 rps each. Each step: 1 min ramp + 2 min steady.
-Peak at 500 rps: 2 min (last step) + 3 min (steady) = 5 min total.
+5 steps of 100 rps each. Each step: 1 min linear ramp + 2 min steady.
+Peak at 500 rps: 2 min (last step's steady) + 3 min (peak steady) = 5 min total.
 Cooldown: linear ramp from 500 to 0 rps over 5 min.
 
 ## Observability
