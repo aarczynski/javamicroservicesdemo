@@ -72,7 +72,9 @@ public class JobOfferService {
      */
     private double scoreDistance(CompanyEntity company, double candLat, double candLon, double radiusKm) {
         double distKm = haversineKm(candLat, candLon, company.getGeoLat(), company.getGeoLon());
-        if (distKm >= radiusKm) return 0.0;
+        if (distKm >= radiusKm) {
+            return 0.0;
+        }
         return Math.cos(Math.PI / 2 * distKm / radiusKm);
     }
 
@@ -98,12 +100,16 @@ public class JobOfferService {
         double totalWeight = offerSkills.stream()
                 .mapToDouble(s -> s.getWeight().doubleValue())
                 .sum();
-        if (totalWeight == 0) return 0.0;
+        if (totalWeight == 0) {
+            return 0.0;
+        }
 
         double weightedCoverage = offerSkills.stream()
                 .mapToDouble(offerSkill -> {
                     SeniorityLevel candidateLevel = candidateSkillMap.get(offerSkill.getSkill().getName());
-                    if (candidateLevel == null) return 0.0;
+                    if (candidateLevel == null) {
+                        return 0.0;
+                    }
                     return offerSkill.getWeight().doubleValue()
                             * seniorityFactor(candidateLevel, offerSkill.getRequiredSeniorityLevel());
                 })
@@ -118,9 +124,13 @@ public class JobOfferService {
     }
 
     private double seniorityFactor(SeniorityLevel candidateLevel, SeniorityLevel requiredLevel) {
-        if (requiredLevel == null) return 1.0;
+        if (requiredLevel == null) {
+            return 1.0;
+        }
         int gap = requiredLevel.ordinal() - candidateLevel.ordinal();
-        if (gap <= 0) return 1.0;
+        if (gap <= 0) {
+            return 1.0;
+        }
         return Math.pow(0.5, gap);
     }
 
@@ -130,7 +140,9 @@ public class JobOfferService {
      */
     private double scoreSalary(BigDecimal salaryTo, BigDecimal expectedSalary) {
         double max = salaryTo.doubleValue();
-        if (max == 0) return 0.0;
+        if (max == 0) {
+            return 0.0;
+        }
         double ratio = Math.min(1.0, expectedSalary.doubleValue() / max);
         return 1.0 - ratio * ratio;
     }

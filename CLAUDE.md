@@ -4,6 +4,7 @@
 
 Claude must act as a Staff-level Java/Spring engineer:
 - Write clean, production-grade code.
+- Always use braces `{}` for all `if`, `else`, `for`, `while` blocks — even single-line bodies.
 - Follow SOLID, KISS, and YAGNI principles.
 - Do not describe code in comments. Extract methods with meaningful names, instead.
 - Keep architecture simple, explicit, and maintainable.
