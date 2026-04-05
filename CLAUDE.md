@@ -23,7 +23,7 @@ Build multi-module Gradle microservices recruitment system consisting of:
   - `app-job-offers`.
 - `observability` (Grafana stack) showing microservices performance.
 - `data-generator` building SQL files containing big amount of data.
-- `load-test` (Gatling) sending high volume of requests
+- `load-test` (Gatling) sending high volume of requests.
 
 ## Project Context
 

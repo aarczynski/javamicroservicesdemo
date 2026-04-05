@@ -29,6 +29,7 @@ public class CandidateSimulation extends Simulation {
     private static final int RPS = 100;
     public static final int RAMPS = 5;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
+    private static final Duration PEAK_STEADY_DURATION = Duration.ofMinutes(3);
     private static final int NOT_FOUND_RATE_PER_MILLE = 1;
 
     private CandidateSqlDataReader candidateReader;
@@ -75,13 +76,27 @@ public class CandidateSimulation extends Simulation {
     }
 
     private OpenInjectionStep[] buildInjectionSteps() {
+        return Stream.concat(
+                buildRampUpSteps(),
+                Stream.of(buildPeakSteady(), buildCooldownStep())
+        ).toArray(OpenInjectionStep[]::new);
+    }
+
+    private Stream<OpenInjectionStep> buildRampUpSteps() {
         return IntStream.range(0, RAMPS)
                 .boxed()
                 .flatMap(i -> Stream.of(
                         rampUsersPerSec((double) RPS * i).to((double) RPS * (i + 1)).during(A_MINUTE).randomized(),
-                        constantUsersPerSec((double) RPS * (i + 1)).during(A_MINUTE).randomized()
-                ))
-                .toArray(OpenInjectionStep[]::new);
+                        constantUsersPerSec((double) RPS * (i + 1)).during(A_MINUTE.multipliedBy(2)).randomized()
+                ));
+    }
+
+    private OpenInjectionStep buildPeakSteady() {
+        return constantUsersPerSec((double) RPS * RAMPS).during(PEAK_STEADY_DURATION).randomized();
+    }
+
+    private OpenInjectionStep buildCooldownStep() {
+        return rampUsersPerSec((double) RPS * RAMPS).to(0).during(A_MINUTE.multipliedBy(5)).randomized();
     }
 
     private HttpProtocolBuilder httpProtocolBuilder() {
