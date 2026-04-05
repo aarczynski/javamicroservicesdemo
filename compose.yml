@@ -24,6 +24,12 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -c UP" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -57,6 +63,12 @@ services:
         condition: service_started
       otel-collector:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -c UP" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -177,3 +189,26 @@ services:
       - "3000:3000"
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
+
+  load-background:
+    container_name: load-background
+    profiles:
+      - ambient
+    build:
+      context: ./load-background
+      dockerfile: Dockerfile
+    environment:
+      TARGET_HOST: "http://app-candidates:8080"
+      DATA_FILE: "/data/01-candidates.sql"
+    volumes:
+      - ./data-generator/output/candidates/01-candidates.sql:/data/01-candidates.sql:ro
+    depends_on:
+      app-candidates:
+        condition: service_healthy
+      app-job-offers:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"

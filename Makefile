@@ -3,11 +3,16 @@ candidatesDataFile ?= $(shell pwd)/data-generator/output/candidates/01-candidate
 
 start: clean_build compose_up
 
+start-ambient: clean_build compose_up_ambient
+
 clean_build:
 	./gradlew clean :app-job-offers:build :app-candidates:build
 
 compose_up:
 	docker compose up --build
+
+compose_up_ambient:
+	docker compose --profile ambient up --build
 
 candidateSimulation:
 	./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation -Dhost=$(host) -DdataFile=$(candidatesDataFile)
