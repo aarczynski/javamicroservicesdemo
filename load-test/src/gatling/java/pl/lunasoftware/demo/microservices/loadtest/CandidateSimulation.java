@@ -29,7 +29,6 @@ public class CandidateSimulation extends Simulation {
     private static final int RPS = 100;
     public static final int RAMPS = 5;
     private static final Duration A_MINUTE = Duration.ofSeconds(60);
-    private static final Duration PEAK_STEADY_DURATION = Duration.ofMinutes(3);
     private static final int NOT_FOUND_RATE_PER_MILLE = 1;
 
     private CandidateSqlDataReader candidateReader;
@@ -92,7 +91,7 @@ public class CandidateSimulation extends Simulation {
     }
 
     private OpenInjectionStep buildPeakSteady() {
-        return constantUsersPerSec((double) RPS * RAMPS).during(PEAK_STEADY_DURATION).randomized();
+        return constantUsersPerSec((double) RPS * RAMPS).during(A_MINUTE.multipliedBy(3)).randomized();
     }
 
     private OpenInjectionStep buildCooldownStep() {
