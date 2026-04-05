@@ -30,6 +30,7 @@ public class CandidateController {
 
     @GetMapping("/{id}/matching-offers")
     public List<JobOfferMatchDto> matchingOffers(@PathVariable UUID id) {
+        log.info("Received matching offers request, candidateId={}", id);
         return candidateService.findMatchingOffers(id);
     }
 

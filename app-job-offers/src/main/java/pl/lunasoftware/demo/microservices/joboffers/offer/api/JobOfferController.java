@@ -34,18 +34,21 @@ public class JobOfferController {
         return jobOfferService.search(request);
     }
 
+    @Slf4j
     @RestControllerAdvice(assignableTypes = JobOfferController.class)
     static class JobOfferExceptionHandler {
 
         @ExceptionHandler(ResourceNotFoundException.class)
         @ResponseStatus(HttpStatus.NOT_FOUND)
         ErrorResponse handleNotFound(ResourceNotFoundException ex) {
+            log.warn("404 Not Found: {}", ex.getMessage());
             return new ErrorResponse(ex.getMessage());
         }
 
         @ExceptionHandler(BadRequestException.class)
         @ResponseStatus(HttpStatus.BAD_REQUEST)
         ErrorResponse handleBadRequest(BadRequestException ex) {
+            log.warn("400 Bad Request: {}", ex.getMessage());
             return new ErrorResponse(ex.getMessage());
         }
 
@@ -55,6 +58,7 @@ public class JobOfferController {
             String message = ex.getBindingResult().getFieldErrors().stream()
                     .map(e -> e.getField() + ": " + e.getDefaultMessage())
                     .collect(Collectors.joining(", "));
+            log.warn("400 Bad Request - validation failed: {}", message);
             return new ErrorResponse(message);
         }
 
