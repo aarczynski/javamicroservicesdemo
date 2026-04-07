@@ -19,6 +19,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(JobOfferController)
 class JobOfferControllerSpec extends Specification {
 
+    private static final String VALID_REQUEST = '''
+        {
+          "candidateSkills": [
+            {"skillName": "Java", "seniorityLevel": "MID"},
+            {"skillName": "Spring Boot", "seniorityLevel": "MID"}
+          ],
+          "geoLat": 52.2297,
+          "geoLon": 21.0122,
+          "radiusKm": 100,
+          "expectedSalary": 15000,
+          "preferredEmploymentTypes": ["B2B"],
+          "yearsOfExperience": 5
+        }
+    '''
+
     @Autowired
     private MockMvc mockMvc
 
@@ -48,7 +63,7 @@ class JobOfferControllerSpec extends Specification {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"skillNames":["Java","Spring Boot"],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"]}'))
+                .content(VALID_REQUEST))
                 .andExpect(status().isOk())
                 .andExpect(content().json('''
                     [
@@ -58,20 +73,20 @@ class JobOfferControllerSpec extends Specification {
                 '''))
     }
 
-    def "POST search returns 400 when skillNames is empty"() {
+    def "POST search returns 400 when candidateSkills is empty"() {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"skillNames":[],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"]}'))
+                .content('{"candidateSkills":[],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5}'))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().json('{"message":"skillNames: must not be empty"}'))
+                .andExpect(content().json('{"message":"candidateSkills: must not be empty"}'))
     }
 
     def "POST search returns 400 when radiusKm is not positive"() {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"skillNames":["Java"],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"]}'))
+                .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"radiusKm: must be greater than 0"}'))
     }
@@ -80,7 +95,7 @@ class JobOfferControllerSpec extends Specification {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"skillNames":["Java"],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":50,"expectedSalary":15000,"preferredEmploymentTypes":[]}'))
+                .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":50,"expectedSalary":15000,"preferredEmploymentTypes":[],"yearsOfExperience":5}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"preferredEmploymentTypes: must not be empty"}'))
     }

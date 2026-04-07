@@ -1,7 +1,10 @@
 package pl.lunasoftware.demo.microservices.joboffers.offer
 
 import org.instancio.Instancio
+import pl.lunasoftware.demo.microservices.joboffers.company.CompanyEntity
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSearchRequest
+import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSkillRequest
+import pl.lunasoftware.demo.microservices.joboffers.skill.SeniorityLevel
 import pl.lunasoftware.demo.microservices.joboffers.skill.SkillEntity
 import spock.lang.Specification
 
@@ -9,17 +12,16 @@ import static org.instancio.Select.field
 
 class JobOfferServiceSpec extends Specification {
 
+    private static final double CANDIDATE_LAT = 52.2297
+    private static final double CANDIDATE_LON = 21.0122
+    private static final double RADIUS_KM = 100.0
+
     private JobOfferRepository jobOfferRepository = Mock()
     private JobOfferService service = new JobOfferService(jobOfferRepository)
 
     def "should return empty list when no offers match"() {
         given:
-        def request = new CandidateSearchRequest(
-                ['Cobol'] as Set,
-                52.2297, 21.0122, 100,
-                new BigDecimal('15000.00'),
-                [EmploymentType.B2B] as Set
-        )
+        def request = searchRequest(['Java': SeniorityLevel.MID], 5)
         jobOfferRepository.findCandidateMatches(*_) >> []
 
         when:
@@ -31,68 +33,143 @@ class JobOfferServiceSpec extends Specification {
 
     def "should return matched offers sorted by score descending"() {
         given:
-        def offerId1 = UUID.randomUUID()
-        def offerId2 = UUID.randomUUID()
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
 
-        def javaSkill = new SkillEntity(); javaSkill.name = 'Java'
-        def springSkill = new SkillEntity(); springSkill.name = 'Spring Boot'
-        def reactSkill = new SkillEntity(); reactSkill.name = 'React'
+        def javaSkill = skill('Java')
+        def springSkill = skill('Spring Boot')
+        def reactSkill = skill('React')
 
-        def skill1 = new JobOfferSkillEntity(); skill1.skill = javaSkill; skill1.weight = new BigDecimal('1.00'); skill1.mandatory = true
-        def skill2 = new JobOfferSkillEntity(); skill2.skill = springSkill; skill2.weight = new BigDecimal('0.80'); skill2.mandatory = false
-        def skill3 = new JobOfferSkillEntity(); skill3.skill = javaSkill; skill3.weight = new BigDecimal('1.00'); skill3.mandatory = true
-        def skill4 = new JobOfferSkillEntity(); skill4.skill = reactSkill; skill4.weight = new BigDecimal('0.80'); skill4.mandatory = false
-
-        def offer1 = Instancio.of(JobOfferEntity)
-                .set(field(JobOfferEntity, 'id'), offerId1)
-                .set(field(JobOfferEntity, 'skills'), [skill1, skill2])
-                .create()
-        def offer2 = Instancio.of(JobOfferEntity)
-                .set(field(JobOfferEntity, 'id'), offerId2)
-                .set(field(JobOfferEntity, 'skills'), [skill3, skill4])
-                .create()
-
-        def request = new CandidateSearchRequest(
-                ['Java', 'Spring Boot'] as Set,
-                52.2297, 21.0122, 100,
-                new BigDecimal('15000.00'),
-                [EmploymentType.B2B] as Set
-        )
-        jobOfferRepository.findCandidateMatches(_, _, _, _, _, _, _) >> [offer1, offer2]
+        def offerWithBothSkills = offer(company, 20000, [
+                offerSkill(javaSkill, '1.00', true, SeniorityLevel.MID),
+                offerSkill(springSkill, '0.80', false, SeniorityLevel.MID)
+        ])
+        def offerWithOneSkill = offer(company, 20000, [
+                offerSkill(javaSkill, '1.00', true, SeniorityLevel.MID),
+                offerSkill(reactSkill, '0.80', false, SeniorityLevel.MID)
+        ])
+        jobOfferRepository.findCandidateMatches(*_) >> [offerWithOneSkill, offerWithBothSkills]
 
         when:
-        def results = service.search(request)
+        def results = service.search(searchRequest(['Java': SeniorityLevel.MID, 'Spring Boot': SeniorityLevel.MID], 3))
 
         then:
         results.size() == 2
+        results[0].id() == offerWithBothSkills.id
+        results[1].id() == offerWithOneSkill.id
         results[0].score() > results[1].score()
-        results[0].id() == offerId1
-        results[1].id() == offerId2
     }
 
-    def "should return score 1.0 when candidate has all required skills"() {
+    def "should penalize score when candidate is missing a mandatory skill"() {
         given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [
+                offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID),
+                offerSkill(skill('Spring Boot'), '0.80', true, SeniorityLevel.MID)
+        ]
         def offerId = UUID.randomUUID()
-        def javaSkill = new SkillEntity(); javaSkill.name = 'Java'
-        def jos = new JobOfferSkillEntity(); jos.skill = javaSkill; jos.weight = new BigDecimal('1.00'); jos.mandatory = true
-        def offer = Instancio.of(JobOfferEntity)
-                .set(field(JobOfferEntity, 'id'), offerId)
-                .set(field(JobOfferEntity, 'skills'), [jos])
-                .create()
-
-        def request = new CandidateSearchRequest(
-                ['Java'] as Set,
-                52.2297, 21.0122, 100,
-                new BigDecimal('15000.00'),
-                [EmploymentType.B2B] as Set
-        )
-        jobOfferRepository.findCandidateMatches(*_) >> [offer]
+        def theOffer = offer(company, 20000, offerSkills, offerId)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
 
         when:
-        def results = service.search(request)
+        def scoreWithBoth = service.search(searchRequest(['Java': SeniorityLevel.MID, 'Spring Boot': SeniorityLevel.MID], 3))[0].score()
+        def scoreMissingSpring = service.search(searchRequest(['Java': SeniorityLevel.MID], 3))[0].score()
 
         then:
-        results.size() == 1
-        results[0].score() == 1.0
+        scoreWithBoth > scoreMissingSpring
+    }
+
+    def "should reduce score when candidate seniority is below required"() {
+        given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.SENIOR)]
+        def offerId = UUID.randomUUID()
+        def theOffer = offer(company, 20000, offerSkills, offerId)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+
+        when:
+        def scoreAtLevel = service.search(searchRequest(['Java': SeniorityLevel.SENIOR], 5))[0].score()
+        def scoreBelowLevel = service.search(searchRequest(['Java': SeniorityLevel.JUNIOR], 5))[0].score()
+
+        then:
+        scoreAtLevel > scoreBelowLevel
+    }
+
+    def "should reduce score when candidate expected salary is close to offer ceiling"() {
+        given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def theOffer = offer(company, 20000, offerSkills)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+
+        when:
+        def scoreComfortableSalary = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('5000.00')))[0].score()
+        def scoreAtCeiling = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('19000.00')))[0].score()
+
+        then:
+        scoreComfortableSalary > scoreAtCeiling
+    }
+
+    def "should reduce score when candidate lacks required years of experience"() {
+        given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.SENIOR)]
+        def theOffer = offer(company, 20000, offerSkills, UUID.randomUUID(), 5)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+
+        when:
+        def scoreEnoughExp = service.search(searchRequest(['Java': SeniorityLevel.SENIOR], 6))[0].score()
+        def scoreTooLittleExp = service.search(searchRequest(['Java': SeniorityLevel.SENIOR], 1))[0].score()
+
+        then:
+        scoreEnoughExp > scoreTooLittleExp
+    }
+
+    // --- helpers ---
+
+    private static CandidateSearchRequest searchRequest(Map<String, SeniorityLevel> skills, int yearsOfExperience,
+                                                         BigDecimal expectedSalary = new BigDecimal('10000.00')) {
+        def candidateSkills = skills.collect { name, level -> new CandidateSkillRequest(name, level) } as Set
+        new CandidateSearchRequest(
+                candidateSkills,
+                CANDIDATE_LAT, CANDIDATE_LON, RADIUS_KM,
+                expectedSalary,
+                [EmploymentType.B2B] as Set,
+                yearsOfExperience
+        )
+    }
+
+    private static CompanyEntity companyAt(double lat, double lon) {
+        def company = new CompanyEntity()
+        company.geoLat = lat
+        company.geoLon = lon
+        company
+    }
+
+    private static SkillEntity skill(String name) {
+        def s = new SkillEntity()
+        s.name = name
+        s
+    }
+
+    private static JobOfferSkillEntity offerSkill(SkillEntity skill, String weight, boolean mandatory, SeniorityLevel level) {
+        def jos = new JobOfferSkillEntity()
+        jos.skill = skill
+        jos.weight = new BigDecimal(weight)
+        jos.mandatory = mandatory
+        jos.requiredSeniorityLevel = level
+        jos
+    }
+
+    private static JobOfferEntity offer(CompanyEntity company, double salaryTo,
+                                        List<JobOfferSkillEntity> skills,
+                                        UUID id = UUID.randomUUID(), int requiredYearsOfExperience = 0) {
+        Instancio.of(JobOfferEntity)
+                .set(field(JobOfferEntity, 'id'), id)
+                .set(field(JobOfferEntity, 'company'), company)
+                .set(field(JobOfferEntity, 'salaryFrom'), new BigDecimal('10000.00'))
+                .set(field(JobOfferEntity, 'salaryTo'), new BigDecimal(salaryTo))
+                .set(field(JobOfferEntity, 'requiredYearsOfExperience'), requiredYearsOfExperience)
+                .set(field(JobOfferEntity, 'skills'), skills)
+                .create()
     }
 }

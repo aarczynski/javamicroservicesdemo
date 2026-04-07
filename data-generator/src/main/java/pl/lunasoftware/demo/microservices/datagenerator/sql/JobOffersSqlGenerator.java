@@ -44,18 +44,18 @@ public class JobOffersSqlGenerator {
 
     public String generateJobOffersBatchSql(JobOffer[] jobOffers) {
         String sqlTemplate = """
-                INSERT INTO job_offer(id, company_id, title, description, salary_from, salary_to, currency, status, created_at, updated_at) VALUES
+                INSERT INTO job_offer(id, company_id, title, description, salary_from, salary_to, currency, required_years_of_experience, status, created_at, updated_at) VALUES
                 %s;
                 """;
 
         StringBuilder sb = new StringBuilder();
         for (JobOffer o : jobOffers) {
             sb
-                    .append(String.format("('%s', '%s', '%s', '%s', %s, %s, '%s', '%s', NOW(), NOW()),",
+                    .append(String.format("('%s', '%s', '%s', '%s', %s, %s, '%s', %s, '%s', NOW(), NOW()),",
                             o.id(), o.companyId(),
                             escapeSingleQuote(o.title()), escapeSingleQuote(o.description()),
                             o.salaryFrom(), o.salaryTo(),
-                            o.currency(), o.status()))
+                            o.currency(), o.requiredYearsOfExperience(), o.status()))
                     .append(System.lineSeparator());
         }
         sb.replace(sb.length() - 2, sb.length(), "");

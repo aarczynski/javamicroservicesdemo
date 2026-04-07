@@ -38,6 +38,7 @@ public class CandidateEntity {
     private double geoLat;
     private double geoLon;
     private double radiusKm;
+    private int yearsOfExperience;
     private BigDecimal expectedSalary;
 
     @ElementCollection(fetch = FetchType.LAZY)

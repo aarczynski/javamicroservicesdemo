@@ -12,6 +12,7 @@ public record JobOffer(
         BigDecimal salaryFrom,
         BigDecimal salaryTo,
         String currency,
+        int requiredYearsOfExperience,
         JobOfferStatus status,
         EmploymentType[] employmentTypes
 ) {

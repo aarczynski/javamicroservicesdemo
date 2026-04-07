@@ -8,18 +8,19 @@ public class CandidatesSqlGenerator {
 
     public String generateCandidatesBatchSql(Candidate[] candidates) {
         String sqlTemplate = """
-                INSERT INTO candidate(id, first_name, last_name, email, geo_lat, geo_lon, radius_km, expected_salary, created_at, updated_at) VALUES
+                INSERT INTO candidate(id, first_name, last_name, email, geo_lat, geo_lon, radius_km, years_of_experience, expected_salary, created_at, updated_at) VALUES
                 %s;
                 """;
 
         StringBuilder sb = new StringBuilder();
         for (Candidate c : candidates) {
             sb
-                    .append(String.format("('%s', '%s', '%s', '%s', %s, %s, %s, %s, NOW(), NOW()),",
+                    .append(String.format("('%s', '%s', '%s', '%s', %s, %s, %s, %s, %s, NOW(), NOW()),",
                             c.id(),
                             escapeSingleQuote(c.firstName()), escapeSingleQuote(c.lastName()),
                             c.email(),
                             c.geoLat(), c.geoLon(), c.radiusKm(),
+                            c.yearsOfExperience(),
                             c.expectedSalary()))
                     .append(System.lineSeparator());
         }

@@ -165,6 +165,19 @@ Override host or data file:
 ./gradlew :load-background:runK6 -Phost=http://localhost:8081 -PdataFile=/path/to/01-candidates.sql
 ```
 
+## Matching score
+
+`app-job-offers` scores each candidate–offer pair as a weighted sum of four sub-scores, all in `[0.0, 1.0]`:
+
+| Sub-score    | Weight | Description |
+|--------------|--------|-------------|
+| Skills       | 50%    | Weighted coverage of offer skills adjusted for seniority gap and missing mandatory skills. |
+| Salary       | 20%    | Quadratic decay — lower score the closer the expected salary is to the offer ceiling. |
+| Distance     | 15%    | Haversine distance with cosine decay — score=1.0 at distance=0, score=0.0 at the radius boundary. |
+| Experience   | 15%    | Exponential decay based on the gap between candidate years and the minimum expected for the required seniority. |
+
+SQL bounding box pre-filters offers cheaply; Haversine and the full scoring run only on the reduced set.
+
 ## Performance testing
 Gatling gradle plugin is used. Run the following command:
 ```shell

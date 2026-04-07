@@ -37,6 +37,7 @@ public class CandidateGenerator {
                 ThreadLocalRandom.current().nextDouble(-90.0, 90.0),
                 ThreadLocalRandom.current().nextDouble(-180.0, 180.0),
                 ThreadLocalRandom.current().nextDouble(10.0, 200.0),
+                ThreadLocalRandom.current().nextInt(0, 31),
                 BigDecimal.valueOf(faker.number().randomDouble(2, 3_000, 25_000)).setScale(2, RoundingMode.HALF_UP),
                 randomPreferredEmploymentTypes()
         );
