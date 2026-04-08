@@ -25,7 +25,7 @@ Build multi-module Gradle microservices recruitment system consisting of:
 - `observability` (Grafana stack) showing microservices performance.
 - `data-generator` building SQL files containing big amount of data.
 - `load-test` (Gatling) sending high volume of requests.
-- `load-background` (k6) sending continuous 24/7 ambient load.
+- `load-background` (Grafana k6) sending continuous 24/7 ambient load.
 
 ## Project Context
 
@@ -311,14 +311,14 @@ Both services have `healthcheck` configured in `compose.yml`. `load-background` 
 ### Module structure
 ```
 load-background/
-  Dockerfile               — builds the k6 image with the script and entrypoint
+  Dockerfile               — builds the Grafana k6 image with the script and entrypoint
   entrypoint.sh            — extracts UUIDs from the SQL file, then runs k6
   src/candidate-search.js  — k6 script with sinusoidal load profile
   build.gradle             — defines runK6 task for standalone execution
 ```
 
 ### Rules for changes to this module
-- Keep the k6 script as plain JavaScript — do not introduce TypeScript or bundlers.
+- Keep the Grafana k6 script as plain JavaScript — do not introduce TypeScript or bundlers.
 - Load profile constants (`MIN_RPS`, `MAX_RPS`, `PERIOD_S`, `VUS`) are defined at the top of the script.
 - Do not add thresholds — this module is ambient load, not a pass/fail test.
 

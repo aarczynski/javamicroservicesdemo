@@ -107,7 +107,7 @@ Please note that the new v2 of Docker Compose is used. If you are using older Do
 ## Sample HTTP requests
 Check `http/requests.http` file.
 
-## Background load (k6)
+## Background load (Grafana k6)
 
 The `load-background` module sends continuous ambient traffic to `app-candidates` 24/7.
 It runs as part of the `ambient` Docker Compose profile (`make start-ambient`) and starts only after both Spring Boot apps report healthy on `/actuator/health`.

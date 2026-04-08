@@ -11,15 +11,19 @@ const VUS = 5;        // pre-allocated VUs; enough for peak RPS with latency hea
 
 const BASE_RPS = (MIN_RPS + MAX_RPS) / 2;  // 7.5
 const AMPLITUDE = (MAX_RPS - MIN_RPS) / 2; // 2.5
-const STEP_S = 10; // rate update granularity; 30 stages per period
+const STEP_S = 10;      // rate update granularity; 30 stages per period
+const PERIODS = 144;    // run 144 × 5 min = 12 hours before k6 restarts; eliminates visible dips
 
-// Generates one full sine period as ramping-arrival-rate stages.
-// entrypoint.sh loops the script for continuous 24/7 operation.
+// Generates PERIODS full sine periods as ramping-arrival-rate stages.
+// entrypoint.sh loops the script so k6 restarts every 12 hours instead of every 5 minutes,
+// making the inter-run gap invisible on dashboards.
 function generateStages() {
     const stages = [];
-    for (let t = 0; t < PERIOD_S; t += STEP_S) {
-        const rps = BASE_RPS + AMPLITUDE * Math.sin((2 * Math.PI * t) / PERIOD_S);
-        stages.push({ duration: `${STEP_S}s`, target: Math.round(rps) });
+    for (let p = 0; p < PERIODS; p++) {
+        for (let t = 0; t < PERIOD_S; t += STEP_S) {
+            const rps = BASE_RPS + AMPLITUDE * Math.sin((2 * Math.PI * t) / PERIOD_S);
+            stages.push({ duration: `${STEP_S}s`, target: Math.round(rps) });
+        }
     }
     return stages;
 }
