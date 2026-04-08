@@ -1,4 +1,44 @@
 services:
+  app-candidates:
+    container_name: app-candidates
+    build:
+      context: ./app-candidates
+      dockerfile: docker/Dockerfile
+    command: [ "java",
+               "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005",
+               "-javaagent:./opentelemetry-javaagent.jar",
+               "-jar", "./app-candidates.jar" ]
+    environment:
+      OTEL_SERVICE_NAME: "app-candidates"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_METRIC_EXPORT_INTERVAL: "1000"
+      OTEL_BSP_SCHEDULE_DELAY: "1000"
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+      JOB_OFFERS_URL: "http://app-job-offers:8080"
+    ports:
+      - "8080:8080"
+      - "5005:5005"
+    depends_on:
+      postgres-candidates:
+        condition: service_healthy
+      app-job-offers:
+        condition: service_started
+      otel-collector:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -c UP" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+
   app-job-offers:
     container_name: app-job-offers
     build:
@@ -18,8 +58,8 @@ services:
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
-      - "8080:8080"
-      - "5006:5006"
+      - "8081:8080"
+      - "5006:5005"
     depends_on:
       postgres-job-offers:
         condition: service_healthy
@@ -36,41 +76,20 @@ services:
         limits:
           cpus: "2.00"
 
-  app-candidates:
-    container_name: app-candidates
-    build:
-      context: ./app-candidates
-      dockerfile: docker/Dockerfile
-    command: [ "java",
-               "-Xdebug", "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5007",
-               "-javaagent:./opentelemetry-javaagent.jar",
-               "-jar", "./app-candidates.jar" ]
+  postgres-candidates:
+    container_name: app-candidates-db
+    image: postgres:18.3
     environment:
-      OTEL_SERVICE_NAME: "app-candidates"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
-      OTEL_METRIC_EXPORT_INTERVAL: "1000"
-      OTEL_BSP_SCHEDULE_DELAY: "1000"
-      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
-      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
-      JOB_OFFERS_URL: "http://app-job-offers:8080"
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=app-candidates-db
     ports:
-      - "8081:8080"
-      - "5007:5007"
-    depends_on:
-      postgres-candidates:
-        condition: service_healthy
-      app-job-offers:
-        condition: service_started
-      otel-collector:
-        condition: service_healthy
+      - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -c UP" ]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     deploy:
       resources:
         limits:
@@ -85,25 +104,6 @@ services:
       - POSTGRES_DB=app-job-offers-db
     ports:
       - "5433:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    deploy:
-      resources:
-        limits:
-          cpus: "2.00"
-
-  postgres-candidates:
-    container_name: app-candidates-db
-    image: postgres:18.3
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=app-candidates-db
-    ports:
-      - "5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
