@@ -20,11 +20,11 @@ public class JobOfferGenerator {
             "Full Stack Developer", "Senior Full Stack Developer", "Mobile Developer", "Senior Mobile Developer",
             "DevOps Engineer", "Senior DevOps Engineer", "Platform Engineer", "Site Reliability Engineer",
             "Data Engineer", "Senior Data Engineer", "Data Scientist", "Machine Learning Engineer",
-            "Solutions Architect", "Software Architect", "Technical Lead", "Engineering Manager",
+            "Solutions Architect", "Software Architect", "Technical Lead", "Engineering Manager", "Agile Coach",
             "QA Engineer", "Senior QA Engineer", "Security Engineer", "Database Administrator"
     };
 
-    private static final String[] CURRENCIES = { "EUR" };
+    private static final String[] CURRENCIES = { "PLN" };
 
     private final Faker faker = new Faker();
 

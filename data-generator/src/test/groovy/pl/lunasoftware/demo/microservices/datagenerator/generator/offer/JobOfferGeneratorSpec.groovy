@@ -24,7 +24,7 @@ class JobOfferGeneratorSpec extends Specification {
         actual.every { it.salaryFrom() != null && it.salaryFrom().scale() == 2 }
         actual.every { it.salaryTo() != null && it.salaryTo().scale() == 2 }
         actual.every { it.salaryTo() > it.salaryFrom() }
-        actual.every { it.currency() in ['PLN', 'EUR', 'USD'] }
+        actual.every { it.currency() in ['PLN'] }
         actual.every { it.status() in JobOfferStatus.values() }
         actual.every { it.employmentTypes() != null && it.employmentTypes().length >= 1 }
     }

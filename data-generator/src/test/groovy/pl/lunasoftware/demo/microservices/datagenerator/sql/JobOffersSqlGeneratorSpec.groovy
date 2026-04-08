@@ -84,7 +84,7 @@ class JobOffersSqlGeneratorSpec extends Specification {
                 BigDecimal.TEN, BigDecimal.TEN, 'PLN', 3, JobOfferStatus.ACTIVE,
                 [EmploymentType.B2B, EmploymentType.EMPLOYMENT] as EmploymentType[])
         def offer2 = new JobOffer(JOB_OFFER_ID_2, COMPANY_ID_2, 'Lead', 'Desc',
-                BigDecimal.TEN, BigDecimal.TEN, 'EUR', 8, JobOfferStatus.DRAFT,
+                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 8, JobOfferStatus.DRAFT,
                 [EmploymentType.MANDATE_CONTRACT] as EmploymentType[])
         def jobOffers = [offer1, offer2] as JobOffer[]
 
