@@ -62,6 +62,13 @@ public class JobOfferController {
             return new ErrorResponse(message);
         }
 
+        @ExceptionHandler(Exception.class)
+        @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+        ErrorResponse handleUnexpected(Exception ex) {
+            log.error("Unexpected error", ex);
+            return new ErrorResponse("Internal server error");
+        }
+
         record ErrorResponse(String message) {}
     }
 }
