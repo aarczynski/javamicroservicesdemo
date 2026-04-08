@@ -16,7 +16,8 @@ gatling {
     jvmArgs = [
         '-Xmx2G',
         '--add-opens=java.base/java.lang=ALL-UNNAMED',
-        '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED'
+        '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
+        "-DprojectDir=${rootProject.projectDir.absolutePath}"
     ]
 }
 

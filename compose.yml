@@ -203,7 +203,7 @@ services:
       TARGET_HOST: "${TARGET_HOST:-http://app-candidates:8080}"
       DATA_FILE: "/data/01-candidates.sql"
     volumes:
-      - ./data-generator/output/candidates/01-candidates.sql:/data/01-candidates.sql:ro
+      - ${CANDIDATES_DATA_FILE:-./data-generator/output/candidates/01-candidates.sql}:/data/01-candidates.sql:ro
     depends_on:
       app-candidates:
         condition: service_healthy

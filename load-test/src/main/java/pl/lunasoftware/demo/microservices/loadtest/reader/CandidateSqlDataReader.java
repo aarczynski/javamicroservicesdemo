@@ -14,13 +14,9 @@ public class CandidateSqlDataReader implements AutoCloseable {
     private final RandomAccessFile file;
     private final long lastLineOffset;
 
-    public CandidateSqlDataReader(Path defaultDataFile) {
+    public CandidateSqlDataReader(String dataFile) {
         try {
-            String dataFile = CliParamProvider.CLI_PARAM_PROVIDER.readDataFile();
-            Path path = dataFile == null
-                    ? defaultDataFile
-                    : Path.of(dataFile.replaceFirst("^~", System.getProperty("user.home")));
-            this.file = new RandomAccessFile(path.toAbsolutePath().toFile(), "r");
+            this.file = new RandomAccessFile(resolve(dataFile).toFile(), "r");
             this.lastLineOffset = lastLineOffset(file);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -50,6 +46,16 @@ public class CandidateSqlDataReader implements AutoCloseable {
     @Override
     public void close() throws Exception {
         file.close();
+    }
+
+    private static Path resolve(String dataFile) {
+        Path projectRoot = Path.of(System.getProperty("projectDir"));
+        if (dataFile == null) {
+            return projectRoot.resolve("data-generator/output/candidates/01-candidates.sql");
+        }
+        String expanded = dataFile.replaceFirst("^~", System.getProperty("user.home"));
+        Path p = Path.of(expanded);
+        return p.isAbsolute() ? p : projectRoot.resolve(p);
     }
 
     private long lastLineOffset(RandomAccessFile file) throws IOException {

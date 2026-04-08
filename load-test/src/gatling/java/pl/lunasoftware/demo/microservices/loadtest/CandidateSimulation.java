@@ -6,7 +6,6 @@ import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 import pl.lunasoftware.demo.microservices.loadtest.reader.CandidateSqlDataReader;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Iterator;
@@ -41,7 +40,7 @@ public class CandidateSimulation extends Simulation {
 
     @Override
     public void before() {
-        candidateReader = new CandidateSqlDataReader(Path.of("data-generator/output/candidates/01-candidates.sql"));
+        candidateReader = new CandidateSqlDataReader(CLI_PARAM_PROVIDER.readDataFile());
     }
 
     @Override
@@ -100,7 +99,7 @@ public class CandidateSimulation extends Simulation {
 
     private HttpProtocolBuilder httpProtocolBuilder() {
         String host = CLI_PARAM_PROVIDER.readHost();
-        String targetHost = host == null ? "http://localhost:8081" : (host.startsWith("http") ? host : "http://" + host);
+        String targetHost = host == null ? "http://localhost:8080" : (host.startsWith("http") ? host : "http://" + host);
         return http
                 .baseUrl(targetHost)
                 .acceptHeader("application/json")

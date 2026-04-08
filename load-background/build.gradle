@@ -1,17 +1,3 @@
 plugins {
     id 'base'
 }
-
-tasks.register('runK6', Exec) {
-    group = 'k6'
-    description = 'Run k6 background load locally via Docker Compose'
-
-    def targetHost = findProperty('host') ?: 'http://localhost:8081'
-    def dataFile = findProperty('dataFile') ?: "${rootProject.projectDir}/data-generator/output/candidates/01-candidates.sql"
-
-    commandLine 'docker', 'compose', 'run', '--rm',
-            '-e', "TARGET_HOST=${targetHost}",
-            '-e', 'DATA_FILE=/data/01-candidates.sql',
-            '-v', "${dataFile}:/data/01-candidates.sql:ro",
-            'load-background'
-}
