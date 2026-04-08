@@ -127,6 +127,47 @@ class JobOffersSqlGeneratorSpec extends Specification {
         actual.contains("O''Brien & Sons")
     }
 
+    def "should produce multiple INSERT statements when row count exceeds chunk size"() {
+        given:
+        def companies = (1..5001).collect { i ->
+            new Company(UUID.randomUUID(), "Company $i", 0.0, 0.0)
+        } as Company[]
+
+        when:
+        def actual = generator.generateCompaniesBatchSql(companies)
+
+        then:
+        actual.split('INSERT INTO company').length - 1 == 2
+    }
+
+    def "should include all rows across chunks"() {
+        given:
+        def ids = (1..5001).collect { UUID.randomUUID() }
+        def companies = ids.collect { id ->
+            new Company(id, 'Corp', 0.0, 0.0)
+        } as Company[]
+
+        when:
+        def actual = generator.generateCompaniesBatchSql(companies)
+
+        then:
+        ids.every { id -> actual.contains(id.toString()) }
+    }
+
+    def "should terminate each chunk with a semicolon and not leave dangling commas between chunks"() {
+        given:
+        def companies = (1..5001).collect { i ->
+            new Company(UUID.randomUUID(), "Company $i", 0.0, 0.0)
+        } as Company[]
+
+        when:
+        def actual = generator.generateCompaniesBatchSql(companies)
+
+        then:
+        actual.split('\n').count { it.endsWith(';') } == 2
+        !actual.contains(',\n\nINSERT')
+    }
+
     def "should escape single quote in job offer title and description"() {
         given:
         def offer = new JobOffer(JOB_OFFER_ID_1, COMPANY_ID_1, "Engineer's Role", "O'Brien's team",

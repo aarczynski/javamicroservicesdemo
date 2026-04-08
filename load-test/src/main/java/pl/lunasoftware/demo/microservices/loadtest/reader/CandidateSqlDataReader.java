@@ -33,7 +33,7 @@ public class CandidateSqlDataReader implements AutoCloseable {
             file.seek(randomPos);
             file.readLine();
             String line = file.readLine();
-            if (line.startsWith("INSERT INTO")) {
+            while (line != null && (line.startsWith("INSERT INTO") || line.isEmpty())) {
                 line = file.readLine();
             }
             Matcher m = UUID_REGEX.matcher(line);

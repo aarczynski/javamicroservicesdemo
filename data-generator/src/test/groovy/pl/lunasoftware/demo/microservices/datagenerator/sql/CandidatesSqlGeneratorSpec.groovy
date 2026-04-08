@@ -74,6 +74,50 @@ class CandidatesSqlGeneratorSpec extends Specification {
                 |""".stripMargin()
     }
 
+    def "should produce multiple INSERT statements when row count exceeds chunk size"() {
+        given:
+        def candidates = (1..5001).collect { i ->
+            new Candidate(UUID.randomUUID(), 'John', 'Doe', "user$i@example.com",
+                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, [] as EmploymentType[])
+        } as Candidate[]
+
+        when:
+        def actual = generator.generateCandidatesBatchSql(candidates)
+
+        then:
+        actual.split('INSERT INTO candidate').length - 1 == 2
+    }
+
+    def "should include all rows across chunks"() {
+        given:
+        def emails = (1..5001).collect { "user$it@example.com" }
+        def candidates = emails.collect { email ->
+            new Candidate(UUID.randomUUID(), 'John', 'Doe', email,
+                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, [] as EmploymentType[])
+        } as Candidate[]
+
+        when:
+        def actual = generator.generateCandidatesBatchSql(candidates)
+
+        then:
+        emails.every { email -> actual.contains(email) }
+    }
+
+    def "should terminate each chunk with a semicolon and not leave dangling commas between chunks"() {
+        given:
+        def candidates = (1..5001).collect { i ->
+            new Candidate(UUID.randomUUID(), 'John', 'Doe', "user$i@example.com",
+                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, [] as EmploymentType[])
+        } as Candidate[]
+
+        when:
+        def actual = generator.generateCandidatesBatchSql(candidates)
+
+        then:
+        actual.split('\n').count { it.endsWith(';') } == 2
+        !actual.contains(',\n\nINSERT')
+    }
+
     def "should escape single quote in candidate first name and last name"() {
         given:
         def candidate = new Candidate(CANDIDATE_ID_1, "O'Connor", "Mac'Donald", 'oconnor@example.com',
