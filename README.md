@@ -230,6 +230,7 @@ or full command:
 ```
 
 Load tests the endpoint that finds matching job offers for a given candidate (`GET /api/v1/candidates/{id}/matching-offers`).
+0.1% of requests intentionally are supposed to return HTTP 404 (Not Found) response.
 
 ### RPS profile
 
