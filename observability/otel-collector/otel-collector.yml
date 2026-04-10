@@ -13,7 +13,7 @@ connectors:
     metrics_flush_interval: 1s
     histogram:
       explicit:
-        buckets: ["1ms", "5ms", "10ms", "25ms", "50ms", "100ms", "250ms", "500ms", "1s", "2500ms", "5s", "10s", "30s"]
+        buckets: ["5ms", "10ms", "25ms", "50ms", "75ms", "100ms", "250ms", "500ms", "750ms", "1s", "2500ms", "5s", "7500ms", "10s"]
     dimensions:
       - name: db.system
       - name: db.system.name

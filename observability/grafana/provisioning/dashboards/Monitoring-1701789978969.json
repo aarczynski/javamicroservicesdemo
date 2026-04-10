@@ -295,6 +295,7 @@
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
+            "axisMax": 20000,
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.6,
@@ -543,7 +544,7 @@
           "unit": "ms",
           "custom": {
             "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text",
-            "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6,
+            "axisLabel": "", "axisMax": 20000, "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6,
             "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 1, "pointSize": 5,
