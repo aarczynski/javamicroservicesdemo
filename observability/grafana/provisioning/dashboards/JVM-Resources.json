@@ -84,7 +84,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "jvm_cpu_recent_utilization{job=\"$service\"}",
+          "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\"}",
           "instant": false,
           "legendFormat": "CPU utilization",
           "range": true,
