@@ -39,3 +39,21 @@ compactor:
 limits_config:
   retention_period: 7d
   max_query_lookback: 7d
+  max_query_parallelism: 2
+  max_entries_limit_per_query: 5000
+
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 256
+      ttl: 1h
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 64
+        ttl: 10m
+  cache_results: true
