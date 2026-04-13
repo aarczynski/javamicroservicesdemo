@@ -14,6 +14,7 @@ Claude must act as a Staff-level Java/Spring engineer:
 - Avoid overengineering.
 - Check for unused code, methods, classes, and tests when implementing changes. Remove unused code.
 - Run tests after implementing changes.
+- Do not change production code specifically for tests implementation.
 - When in doubt, ask whether application code, or tests should be adjusted.
 
 ## Goal
@@ -116,6 +117,7 @@ Suggested endpoint:
     - Candidate location (`geoLat`, `geoLon`)
     - Candidate expected salary
     - Candidate preferred employment types
+    - Candidate remote work preference (`preferredRemoteDaysPercentage`, 0-100)
     - Search radius in kilometers
 - Return matching job offers.
 - Calculate matching score for each offer.
@@ -134,14 +136,15 @@ At this stage, `app-job-offers` should focus on:
 
 #### Scoring system
 
-Final score is a weighted sum of four sub-scores, each in `[0.0, 1.0]`:
+Final score is a weighted sum of five sub-scores, each in `[0.0, 1.0]`:
 
-| Sub-score    | Weight | Formula |
-|--------------|--------|---------|
-| Skills       | 0.50   | Weighted coverage of offer skills by candidate skills, adjusted for seniority gap (×0.5 per level below required) and mandatory penalty (×0.5 per missing mandatory skill). |
-| Salary       | 0.20   | Quadratic decay: `1 - (expectedSalary / salaryTo)²`. Score drops faster near the offer ceiling. |
-| Distance     | 0.15   | Haversine distance + cosine decay: `cos(π/2 · d/radius)`. Score=1.0 at distance=0, score=0.0 at the radius boundary. |
-| Experience   | 0.15   | Exponential decay: `exp(-0.3 · max(0, requiredYears - candidateYears))`. Required years derived from the highest seniority among mandatory skills (falls back to all skills). Seniority → years mapping: JUNIOR=0, MID=2, SENIOR=5, LEAD=8, PRINCIPAL=12. |
+| Sub-score    | Weight | Formula                                                                                                                                                                                                                                                                                            |
+|--------------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Skills       | 0.45   | Weighted coverage of offer skills by candidate skills, adjusted for seniority gap (×0.5 per level below required) and mandatory penalty (×0.5 per missing mandatory skill).                                                                                                                        |
+| Salary       | 0.20   | Quadratic decay: `1 - (expectedSalary / salaryTo)²`. Score drops faster near the offer ceiling.                                                                                                                                                                                                    |
+| Experience   | 0.10   | Exponential decay: `exp(-0.3 · max(0, requiredYears - candidateYears))`. Required years derived from the highest seniority among mandatory skills (falls back to all skills). Seniority → years mapping: JUNIOR=0, MID=2, SENIOR=5, LEAD=8, PRINCIPAL=12.                                          |
+| Remote       | 0.10   | Cosine decay on office mismatch: `cos(π/2 · mismatch / 100)` where `mismatch = max(0, requiredOfficeDaysPercentage - (100 - preferredRemoteDaysPercentage))`. Score=1.0 when candidate is willing to work in office as much or more than required, decays non-linearly as the gap grows.           |
+| Distance     | 0.15   | Blended with remote allowance: `officeRatio * geoScore + (1 - officeRatio)` where `officeRatio = requiredOfficeDaysPercentage / 100` and `geoScore = cos(π/2 · d/radius)` (0.0 beyond radius). Fully remote offers (officeRatio=0) always score 1.0; fully in-office offers use pure cosine decay. |
 
 SQL pre-filter (bounding box) runs before scoring to reduce the candidate set cheaply. Haversine is used only in the scoring phase.
 
@@ -172,6 +175,7 @@ Fields:
 - `salaryFrom`
 - `salaryTo`
 - `currency`
+- `requiredOfficeDaysPercentage` (int, 0-100)
 - `offeredEmploymentTypes` (set of EmploymentType)
 - `geoLat`
 - `geoLon`
@@ -251,6 +255,7 @@ Fields:
 - `yearsOfExperience`
 - `expectedSalary`
 - `expectedSalaryCurrency`
+- `preferredRemoteDaysPercentage` (int, 0-100)
 - `preferredEmploymentTypes` (set of EmploymentType)
 - `createdAt`
 - `updatedAt`

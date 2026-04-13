@@ -66,6 +66,9 @@ public class JobOfferEntity {
     @Column(name = "required_years_of_experience")
     private int requiredYearsOfExperience;
 
+    @Column(name = "required_office_days_percentage")
+    private int requiredOfficeDaysPercentage;
+
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "job_offer_employment_type", joinColumns = @JoinColumn(name = "job_offer_id"))
     @Column(name = "employment_type")

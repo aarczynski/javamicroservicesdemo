@@ -15,7 +15,7 @@ public class CandidatesSqlGenerator {
     private static final int CHUNK_SIZE = 5_000;
 
     public String generateCandidatesBatchSql(Candidate[] candidates) {
-        String header = "INSERT INTO candidate(id, first_name, last_name, email, geo_lat, geo_lon, radius_km, years_of_experience, expected_salary, created_at, updated_at) VALUES\n";
+        String header = "INSERT INTO candidate(id, first_name, last_name, email, geo_lat, geo_lon, radius_km, years_of_experience, expected_salary, preferred_remote_days_percentage, created_at, updated_at) VALUES\n";
         return chunked(IntStream.range(0, candidates.length)
                 .mapToObj(i -> formatCandidateRow(candidates[i])), header);
     }
@@ -50,13 +50,14 @@ public class CandidatesSqlGenerator {
     }
 
     private String formatCandidateRow(Candidate c) {
-        return String.format("('%s', '%s', '%s', '%s', %s, %s, %s, %s, %s, NOW(), NOW())",
+        return String.format("('%s', '%s', '%s', '%s', %s, %s, %s, %s, %s, %s, NOW(), NOW())",
                 c.id(),
                 escapeSingleQuote(c.firstName()), escapeSingleQuote(c.lastName()),
                 c.email(),
                 c.geoLat(), c.geoLon(), c.radiusKm(),
                 c.yearsOfExperience(),
-                c.expectedSalary());
+                c.expectedSalary(),
+                c.preferredRemoteDaysPercentage());
     }
 
     private String formatEmploymentTypeRow(UUID candidateId, EmploymentType type) {

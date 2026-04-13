@@ -6,10 +6,10 @@ App to analyze distributed microservices system and DB performance using Gatling
 
 * **app-job-offers** - a microservice managing job offers. Data model consists of five tables: company, skill,
   job_offer, job_offer_skill, and job_offer_employment_type.
-  A job offer belongs to one company and may require multiple skills at specific seniority levels.
+  A job offer belongs to one company and may require multiple skills at specific seniority levels. Job offers include remote/hybrid work requirements and required years of experience
 * **app-candidates** - a microservice managing candidates, acting as a client for app-job-offers to find matching
   offers.
-  Data model consists of three tables: candidate, candidate_skill, and candidate_preferred_employment_type.
+  Data model consists of three tables: candidate, candidate_skill, and candidate_preferred_employment_type. Candidates include remote work preferences.
 * **data-generator** - a utility tool to generate SQL file(s) to populate job-offers and candidates databases with
   significant amounts of data.
   This code does not use collections and streams for performance reasons.
@@ -131,14 +131,15 @@ instead of `docker compose`.
 
 ## Matching score
 
-`app-job-offers` scores each candidate–offer pair as a weighted sum of four sub-scores, all in `[0.0, 1.0]`:
+`app-job-offers` scores each candidate–offer pair as a weighted sum of five sub-scores, all in `[0.0, 1.0]`:
 
-| Sub-score  | Weight | Description                                                                                                     |
-|------------|--------|-----------------------------------------------------------------------------------------------------------------|
-| Skills     | 50%    | Weighted coverage of offer skills adjusted for seniority gap and missing mandatory skills.                      |
-| Salary     | 20%    | Quadratic decay — lower score the closer the expected salary is to the offer ceiling.                           |
-| Distance   | 15%    | Haversine distance with cosine decay — score=1.0 at distance=0, score=0.0 at the radius boundary.               |
-| Experience | 15%    | Exponential decay based on the gap between candidate years and the minimum expected for the required seniority. |
+| Sub-score  | Weight | Description                                                                                                                                                              |
+|------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Skills     | 45%    | Weighted coverage of offer skills adjusted for seniority gap and missing mandatory skills.                                                                               |
+| Salary     | 20%    | Quadratic decay — lower score the closer the expected salary is to the offer ceiling.                                                                                    |
+| Experience | 10%    | Exponential decay based on the gap between candidate years and the minimum expected for the required seniority.                                                          |
+| Remote     | 10%    | Cosine decay on office mismatch — score=1.0 when candidate willingness meets or exceeds office requirement, non-linear drop as the gap grows.                            |
+| Distance   | 15%    | Haversine cosine decay blended with remote allowance — fully remote offers always score 1.0; in-office offers use pure cosine decay; hybrid offers blend proportionally. |
 
 SQL bounding box pre-filters offers cheaply; Haversine and the full scoring run only on the reduced set.
 

@@ -30,5 +30,6 @@ class CandidateGeneratorSpec extends Specification {
         actual.every { it.geoLat() >= -90.0 && it.geoLat() <= 90.0 }
         actual.every { it.geoLon() >= -180.0 && it.geoLon() <= 180.0 }
         actual.every { it.radiusKm() >= 10.0 && it.radiusKm() <= 200.0 }
+        actual.every { it.preferredRemoteDaysPercentage() >= 0 && it.preferredRemoteDaysPercentage() <= 100 && it.preferredRemoteDaysPercentage() % 20 == 0 }
     }
 }

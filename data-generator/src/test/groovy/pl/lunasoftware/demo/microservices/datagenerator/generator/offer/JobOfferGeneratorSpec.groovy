@@ -27,6 +27,7 @@ class JobOfferGeneratorSpec extends Specification {
         actual.every { it.currency() in ['PLN'] }
         actual.every { it.status() in JobOfferStatus.values() }
         actual.every { it.employmentTypes() != null && it.employmentTypes().length >= 1 }
+        actual.every { it.requiredOfficeDaysPercentage() >= 0 && it.requiredOfficeDaysPercentage() <= 100 && it.requiredOfficeDaysPercentage() % 20 == 0 }
     }
 
     def "should use only company ids from provided companies"() {

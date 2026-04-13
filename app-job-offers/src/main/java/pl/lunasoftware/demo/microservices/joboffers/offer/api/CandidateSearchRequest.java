@@ -1,6 +1,7 @@
 package pl.lunasoftware.demo.microservices.joboffers.offer.api;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -17,5 +18,6 @@ public record CandidateSearchRequest(
         @Positive double radiusKm,
         @NotNull @DecimalMin("0") BigDecimal expectedSalary,
         @NotEmpty Set<EmploymentType> preferredEmploymentTypes,
-        @Min(0) int yearsOfExperience
+        @Min(0) int yearsOfExperience,
+        @Min(0) @Max(100) int preferredRemoteDaysPercentage
 ) {}

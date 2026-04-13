@@ -12,5 +12,6 @@ public record JobOffersSearchRequest(
         double radiusKm,
         BigDecimal expectedSalary,
         Set<EmploymentType> preferredEmploymentTypes,
-        int yearsOfExperience
+        int yearsOfExperience,
+        int preferredRemoteDaysPercentage
 ) {}

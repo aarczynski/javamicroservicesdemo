@@ -23,6 +23,15 @@ public class CandidateSqlDataReader implements AutoCloseable {
         }
     }
 
+    public CandidateSqlDataReader(Path path) {
+        try {
+            this.file = new RandomAccessFile(path.toFile(), "r");
+            this.lastLineOffset = lastLineOffset(file);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public String readRandomCandidateId() {
         try {
             long randomPos = ThreadLocalRandom.current().nextLong(file.length() - lastLineOffset - 1);

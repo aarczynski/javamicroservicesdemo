@@ -21,10 +21,12 @@ class CandidatesSqlGeneratorSpec extends Specification {
         def candidate1 = new Candidate(CANDIDATE_ID_1, 'John', 'Doe', 'john.doe@example.com',
                 52.2297, 21.0122, 50.0, 8,
                 BigDecimal.valueOf(8000.00).setScale(2, RoundingMode.HALF_UP),
+                60,
                 [EmploymentType.B2B] as EmploymentType[])
         def candidate2 = new Candidate(CANDIDATE_ID_2, 'Jane', 'Smith', 'jane.smith@example.com',
                 51.1079, 17.0385, 30.0, 3,
                 BigDecimal.valueOf(6000.00).setScale(2, RoundingMode.HALF_UP),
+                40,
                 [EmploymentType.EMPLOYMENT] as EmploymentType[])
         def candidates = [candidate1, candidate2] as Candidate[]
 
@@ -33,19 +35,19 @@ class CandidatesSqlGeneratorSpec extends Specification {
 
         then:
         actual == """\
-                |INSERT INTO candidate(id, first_name, last_name, email, geo_lat, geo_lon, radius_km, years_of_experience, expected_salary, created_at, updated_at) VALUES
-                |('$CANDIDATE_ID_1', 'John', 'Doe', 'john.doe@example.com', 52.2297, 21.0122, 50.0, 8, 8000.00, NOW(), NOW()),
-                |('$CANDIDATE_ID_2', 'Jane', 'Smith', 'jane.smith@example.com', 51.1079, 17.0385, 30.0, 3, 6000.00, NOW(), NOW());
+                |INSERT INTO candidate(id, first_name, last_name, email, geo_lat, geo_lon, radius_km, years_of_experience, expected_salary, preferred_remote_days_percentage, created_at, updated_at) VALUES
+                |('$CANDIDATE_ID_1', 'John', 'Doe', 'john.doe@example.com', 52.2297, 21.0122, 50.0, 8, 8000.00, 60, NOW(), NOW()),
+                |('$CANDIDATE_ID_2', 'Jane', 'Smith', 'jane.smith@example.com', 51.1079, 17.0385, 30.0, 3, 6000.00, 40, NOW(), NOW());
                 |""".stripMargin()
     }
 
     def "should return candidate preferred employment types insert SQL"() {
         given:
         def candidate1 = new Candidate(CANDIDATE_ID_1, 'John', 'Doe', 'john@example.com',
-                0.0, 0.0, 50.0, 5, BigDecimal.TEN,
+                0.0, 0.0, 50.0, 5, BigDecimal.TEN, 0,
                 [EmploymentType.B2B, EmploymentType.EMPLOYMENT] as EmploymentType[])
         def candidate2 = new Candidate(CANDIDATE_ID_2, 'Jane', 'Smith', 'jane@example.com',
-                0.0, 0.0, 30.0, 2, BigDecimal.TEN,
+                0.0, 0.0, 30.0, 2, BigDecimal.TEN, 0,
                 [EmploymentType.MANDATE_CONTRACT] as EmploymentType[])
         def candidates = [candidate1, candidate2] as Candidate[]
 
@@ -78,7 +80,7 @@ class CandidatesSqlGeneratorSpec extends Specification {
         given:
         def candidates = (1..5001).collect { i ->
             new Candidate(UUID.randomUUID(), 'John', 'Doe', "user$i@example.com",
-                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, [] as EmploymentType[])
+                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, 0, [] as EmploymentType[])
         } as Candidate[]
 
         when:
@@ -93,7 +95,7 @@ class CandidatesSqlGeneratorSpec extends Specification {
         def emails = (1..5001).collect { "user$it@example.com" }
         def candidates = emails.collect { email ->
             new Candidate(UUID.randomUUID(), 'John', 'Doe', email,
-                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, [] as EmploymentType[])
+                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, 0, [] as EmploymentType[])
         } as Candidate[]
 
         when:
@@ -107,7 +109,7 @@ class CandidatesSqlGeneratorSpec extends Specification {
         given:
         def candidates = (1..5001).collect { i ->
             new Candidate(UUID.randomUUID(), 'John', 'Doe', "user$i@example.com",
-                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, [] as EmploymentType[])
+                    0.0, 0.0, 50.0, 5, BigDecimal.TEN, 0, [] as EmploymentType[])
         } as Candidate[]
 
         when:
@@ -121,7 +123,7 @@ class CandidatesSqlGeneratorSpec extends Specification {
     def "should escape single quote in candidate first name and last name"() {
         given:
         def candidate = new Candidate(CANDIDATE_ID_1, "O'Connor", "Mac'Donald", 'oconnor@example.com',
-                0.0, 0.0, 50.0, 0, BigDecimal.TEN, [] as EmploymentType[])
+                0.0, 0.0, 50.0, 0, BigDecimal.TEN, 0, [] as EmploymentType[])
         def candidates = [candidate] as Candidate[]
 
         when:

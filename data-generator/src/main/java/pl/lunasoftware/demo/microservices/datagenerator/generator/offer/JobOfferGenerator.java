@@ -50,6 +50,7 @@ public class JobOfferGenerator {
                 salaryTo,
                 randomCurrency(),
                 ThreadLocalRandom.current().nextInt(0, 21),
+                randomOfficePercentage(),
                 randomJobOfferStatus(),
                 randomEmploymentTypes()
         );
@@ -72,6 +73,10 @@ public class JobOfferGenerator {
             return JobOfferStatus.DRAFT;
         }
         return JobOfferStatus.CLOSED;
+    }
+
+    private int randomOfficePercentage() {
+        return ThreadLocalRandom.current().nextInt(0, 6) * 20;
     }
 
     private EmploymentType[] randomEmploymentTypes() {

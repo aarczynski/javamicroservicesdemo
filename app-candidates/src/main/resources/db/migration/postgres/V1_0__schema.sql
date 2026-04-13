@@ -9,6 +9,7 @@ CREATE TABLE candidate
     radius_km           DOUBLE PRECISION    NOT NULL,
     years_of_experience INT                 NOT NULL DEFAULT 0,
     expected_salary     NUMERIC(12, 2)      NOT NULL,
+    preferred_remote_days_percentage   INT                 NOT NULL DEFAULT 0,
     created_at          TIMESTAMP           NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMP           NOT NULL DEFAULT NOW()
 );

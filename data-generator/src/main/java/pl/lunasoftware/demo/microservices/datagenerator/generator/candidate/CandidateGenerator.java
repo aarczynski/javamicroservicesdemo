@@ -39,8 +39,13 @@ public class CandidateGenerator {
                 ThreadLocalRandom.current().nextDouble(10.0, 200.0),
                 ThreadLocalRandom.current().nextInt(0, 31),
                 BigDecimal.valueOf(faker.number().randomDouble(2, 3_000, 25_000)).setScale(2, RoundingMode.HALF_UP),
+                randomRemoteDaysPercentage(),
                 randomPreferredEmploymentTypes()
         );
+    }
+
+    private int randomRemoteDaysPercentage() {
+        return ThreadLocalRandom.current().nextInt(0, 6) * 20;
     }
 
     private EmploymentType[] randomPreferredEmploymentTypes() {

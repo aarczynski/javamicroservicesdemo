@@ -24,10 +24,11 @@ public class JobOfferService {
     private static final double KM_PER_DEGREE = 111.0;
     private static final double EARTH_RADIUS_KM = 6371.0;
 
-    private static final double WEIGHT_SKILLS = 0.50;
+    private static final double WEIGHT_SKILLS = 0.45;
     private static final double WEIGHT_SALARY = 0.20;
     private static final double WEIGHT_DISTANCE = 0.15;
-    private static final double WEIGHT_EXPERIENCE = 0.15;
+    private static final double WEIGHT_EXPERIENCE = 0.10;
+    private static final double WEIGHT_REMOTE = 0.10;
 
     private final JobOfferRepository jobOfferRepository;
 
@@ -56,35 +57,16 @@ public class JobOfferService {
     }
 
     private double calculateScore(JobOfferEntity offer, CandidateSearchRequest request) {
-        double distScore = scoreDistance(offer.getCompany(), request.geoLat(), request.geoLon(), request.radiusKm());
         double skillScore = scoreSkills(offer.getSkills(), request.candidateSkills());
         double salaryScore = scoreSalary(offer.getSalaryTo(), request.expectedSalary());
         double expScore = scoreExperience(offer.getRequiredYearsOfExperience(), request.yearsOfExperience());
+        double remoteScore = scoreRemote(offer.getRequiredOfficeDaysPercentage(), request.preferredRemoteDaysPercentage());
+        double distScore = scoreDistance(offer.getCompany(), request.geoLat(), request.geoLon(), request.radiusKm(), offer.getRequiredOfficeDaysPercentage());
         return WEIGHT_SKILLS * skillScore
                 + WEIGHT_SALARY * salaryScore
                 + WEIGHT_DISTANCE * distScore
-                + WEIGHT_EXPERIENCE * expScore;
-    }
-
-    /**
-     * Haversine distance, then cosine decay: score=1.0 at d=0, score=0.0 at d=radius.
-     * Cosine gives a gentle plateau near the candidate and a steeper drop near the boundary.
-     */
-    private double scoreDistance(CompanyEntity company, double candLat, double candLon, double radiusKm) {
-        double distKm = haversineKm(candLat, candLon, company.getGeoLat(), company.getGeoLon());
-        if (distKm >= radiusKm) {
-            return 0.0;
-        }
-        return Math.cos(Math.PI / 2 * distKm / radiusKm);
-    }
-
-    private double haversineKm(double lat1, double lon1, double lat2, double lon2) {
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                + WEIGHT_EXPERIENCE * expScore
+                + WEIGHT_REMOTE * remoteScore;
     }
 
     /**
@@ -154,6 +136,40 @@ public class JobOfferService {
         return Math.exp(-0.3 * Math.max(0, requiredYears - candidateYears));
     }
 
+    /**
+     * Cosine decay on the mismatch between offer's office requirement and candidate's willingness.
+     * Gentle plateau for small differences, steep drop for large mismatches.
+     */
+    private double scoreRemote(int requiredOfficeDaysPercentage, int preferredRemoteDaysPercentage) {
+        int candidateOfficeWillingness = 100 - preferredRemoteDaysPercentage;
+        int mismatch = Math.max(0, requiredOfficeDaysPercentage - candidateOfficeWillingness);
+        return Math.cos(Math.PI / 2 * mismatch / 100.0);
+    }
+
+    /**
+     * Haversine distance with cosine decay, blended with remote allowance.
+     * Fully remote offers (requiredOfficeDaysPercentage=0) always score 1.0.
+     * Fully in-office offers use pure cosine decay: score=1.0 at d=0, score=0.0 at d=radius.
+     * Hybrid offers blend proportionally: officeRatio * geoScore + (1 - officeRatio).
+     */
+    private double scoreDistance(CompanyEntity company, double candLat, double candLon, double radiusKm,
+                                 int requiredOfficeDaysPercentage) {
+        double officeRatio = requiredOfficeDaysPercentage / 100.0;
+        double distKm = haversineKm(candLat, candLon, company.getGeoLat(), company.getGeoLon());
+        double geoScore = distKm >= radiusKm ? 0.0 : Math.cos(Math.PI / 2 * distKm / radiusKm);
+        return officeRatio * geoScore + (1.0 - officeRatio);
+    }
+
+    private double haversineKm(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+
     private double[] boundingBox(double lat, double lon, double radiusKm) {
         double latMin = lat - radiusKm / KM_PER_DEGREE;
         double latMax = lat + radiusKm / KM_PER_DEGREE;
@@ -172,6 +188,7 @@ public class JobOfferService {
                 e.getSalaryFrom().setScale(2, RoundingMode.HALF_UP),
                 e.getSalaryTo().setScale(2, RoundingMode.HALF_UP),
                 e.getCurrency(),
+                e.getRequiredOfficeDaysPercentage(),
                 e.getOfferedEmploymentTypes(),
                 e.getStatus(),
                 score

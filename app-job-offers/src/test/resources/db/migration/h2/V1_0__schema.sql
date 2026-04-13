@@ -28,6 +28,7 @@ CREATE TABLE job_offer
     salary_to                    NUMERIC(12, 2),
     currency                     VARCHAR(10),
     required_years_of_experience INT          NOT NULL DEFAULT 0,
+    required_office_days_percentage   INT          NOT NULL DEFAULT 100,
     status                       VARCHAR(50)  NOT NULL,
     created_at                   TIMESTAMP    NOT NULL DEFAULT NOW(),
     updated_at                   TIMESTAMP    NOT NULL DEFAULT NOW(),

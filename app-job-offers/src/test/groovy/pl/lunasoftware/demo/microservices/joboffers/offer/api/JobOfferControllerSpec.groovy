@@ -30,7 +30,8 @@ class JobOfferControllerSpec extends Specification {
           "radiusKm": 100,
           "expectedSalary": 15000,
           "preferredEmploymentTypes": ["B2B"],
-          "yearsOfExperience": 5
+          "yearsOfExperience": 5,
+          "preferredRemoteDaysPercentage": 40
         }
     '''
 
@@ -48,14 +49,14 @@ class JobOfferControllerSpec extends Specification {
                         UUID.fromString('b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22'),
                         'TechCorp', 'Senior Java Dev', null,
                         new BigDecimal('18000.00'), new BigDecimal('24000.00'),
-                        'PLN', [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 1.0
+                        'PLN', 60, [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 1.0
                 ),
                 new JobOfferMatchDto(
                         UUID.fromString('c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33'),
                         UUID.fromString('d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44'),
                         'FinTech', 'Backend Dev', null,
                         new BigDecimal('16000.00'), new BigDecimal('22000.00'),
-                        'PLN', [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 0.56
+                        'PLN', 40, [EmploymentType.B2B] as Set, JobOfferStatus.ACTIVE, 0.56
                 )
         ]
         when(jobOfferService.search(any())).thenReturn(matches)
@@ -67,8 +68,8 @@ class JobOfferControllerSpec extends Specification {
                 .andExpect(status().isOk())
                 .andExpect(content().json('''
                     [
-                      {"id":"a1ffcd00-9c0b-4ef8-bb6d-6bb9bd380a11","companyId":"b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22","companyName":"TechCorp","title":"Senior Java Dev","description":null,"salaryFrom":"18000.00","salaryTo":"24000.00","currency":"PLN","employmentTypes":["B2B"],"status":"ACTIVE","score":1.0},
-                      {"id":"c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33","companyId":"d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44","companyName":"FinTech","title":"Backend Dev","description":null,"salaryFrom":"16000.00","salaryTo":"22000.00","currency":"PLN","employmentTypes":["B2B"],"status":"ACTIVE","score":0.56}
+                      {"id":"a1ffcd00-9c0b-4ef8-bb6d-6bb9bd380a11","companyId":"b2aacd00-9c0b-4ef8-bb6d-6bb9bd380b22","companyName":"TechCorp","title":"Senior Java Dev","description":null,"salaryFrom":"18000.00","salaryTo":"24000.00","currency":"PLN","requiredOfficeDaysPercentage":60,"employmentTypes":["B2B"],"status":"ACTIVE","score":1.0},
+                      {"id":"c3ffcd00-9c0b-4ef8-bb6d-6bb9bd380c33","companyId":"d4aacd00-9c0b-4ef8-bb6d-6bb9bd380d44","companyName":"FinTech","title":"Backend Dev","description":null,"salaryFrom":"16000.00","salaryTo":"22000.00","currency":"PLN","requiredOfficeDaysPercentage":40,"employmentTypes":["B2B"],"status":"ACTIVE","score":0.56}
                     ]
                 '''))
     }
@@ -77,7 +78,7 @@ class JobOfferControllerSpec extends Specification {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"candidateSkills":[],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5}'))
+                .content('{"candidateSkills":[],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"candidateSkills: must not be empty"}'))
     }
@@ -86,7 +87,7 @@ class JobOfferControllerSpec extends Specification {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5}'))
+                .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"radiusKm: must be greater than 0"}'))
     }
@@ -95,7 +96,7 @@ class JobOfferControllerSpec extends Specification {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
                 .contentType(MediaType.APPLICATION_JSON)
-                .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":50,"expectedSalary":15000,"preferredEmploymentTypes":[],"yearsOfExperience":5}'))
+                .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":50,"expectedSalary":15000,"preferredEmploymentTypes":[],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"preferredEmploymentTypes: must not be empty"}'))
     }

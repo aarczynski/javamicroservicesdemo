@@ -19,6 +19,7 @@ public record JobOfferMatchDto(
         @JsonFormat(shape = JsonFormat.Shape.STRING)
         BigDecimal salaryTo,
         String currency,
+        int requiredOfficeDaysPercentage,
         Set<EmploymentType> employmentTypes,
         JobOfferStatus status,
         double score

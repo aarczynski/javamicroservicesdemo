@@ -16,6 +16,7 @@ public record Candidate(
         double radiusKm,
         int yearsOfExperience,
         BigDecimal expectedSalary,
+        int preferredRemoteDaysPercentage,
         EmploymentType[] preferredEmploymentTypes
 ) {
     @Override

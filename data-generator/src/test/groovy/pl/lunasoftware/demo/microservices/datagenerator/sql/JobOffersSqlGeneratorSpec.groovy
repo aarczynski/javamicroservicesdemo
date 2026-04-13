@@ -64,7 +64,7 @@ class JobOffersSqlGeneratorSpec extends Specification {
                 JOB_OFFER_ID_1, COMPANY_ID_1, 'Software Engineer', 'Great job opportunity.',
                 BigDecimal.valueOf(8000.00).setScale(2, RoundingMode.HALF_UP),
                 BigDecimal.valueOf(12000.00).setScale(2, RoundingMode.HALF_UP),
-                'PLN', 5, JobOfferStatus.ACTIVE,
+                'PLN', 5, 60, JobOfferStatus.ACTIVE,
                 [EmploymentType.B2B] as EmploymentType[])
         def jobOffers = [offer] as JobOffer[]
 
@@ -73,18 +73,18 @@ class JobOffersSqlGeneratorSpec extends Specification {
 
         then:
         actual == """\
-                |INSERT INTO job_offer(id, company_id, title, description, salary_from, salary_to, currency, required_years_of_experience, status, created_at, updated_at) VALUES
-                |('$JOB_OFFER_ID_1', '$COMPANY_ID_1', 'Software Engineer', 'Great job opportunity.', 8000.00, 12000.00, 'PLN', 5, 'ACTIVE', NOW(), NOW());
+                |INSERT INTO job_offer(id, company_id, title, description, salary_from, salary_to, currency, required_years_of_experience, required_office_days_percentage, status, created_at, updated_at) VALUES
+                |('$JOB_OFFER_ID_1', '$COMPANY_ID_1', 'Software Engineer', 'Great job opportunity.', 8000.00, 12000.00, 'PLN', 5, 60, 'ACTIVE', NOW(), NOW());
                 |""".stripMargin()
     }
 
     def "should return job offer employment types insert SQL"() {
         given:
         def offer1 = new JobOffer(JOB_OFFER_ID_1, COMPANY_ID_1, 'Dev', 'Desc',
-                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 3, JobOfferStatus.ACTIVE,
+                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 3, 40, JobOfferStatus.ACTIVE,
                 [EmploymentType.B2B, EmploymentType.EMPLOYMENT] as EmploymentType[])
         def offer2 = new JobOffer(JOB_OFFER_ID_2, COMPANY_ID_2, 'Lead', 'Desc',
-                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 8, JobOfferStatus.DRAFT,
+                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 8, 80, JobOfferStatus.DRAFT,
                 [EmploymentType.MANDATE_CONTRACT] as EmploymentType[])
         def jobOffers = [offer1, offer2] as JobOffer[]
 
@@ -171,7 +171,7 @@ class JobOffersSqlGeneratorSpec extends Specification {
     def "should escape single quote in job offer title and description"() {
         given:
         def offer = new JobOffer(JOB_OFFER_ID_1, COMPANY_ID_1, "Engineer's Role", "O'Brien's team",
-                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 0, JobOfferStatus.ACTIVE,
+                BigDecimal.TEN, BigDecimal.TEN, 'PLN', 0, 100, JobOfferStatus.ACTIVE,
                 [] as EmploymentType[])
         def jobOffers = [offer] as JobOffer[]
 

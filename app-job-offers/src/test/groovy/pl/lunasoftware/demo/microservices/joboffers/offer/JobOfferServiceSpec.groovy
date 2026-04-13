@@ -124,17 +124,83 @@ class JobOfferServiceSpec extends Specification {
         scoreEnoughExp > scoreTooLittleExp
     }
 
+    def "should reduce score when candidate remote preference mismatches office requirement"() {
+        given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerId = UUID.randomUUID()
+        def theOffer = offer(company, 20000, offerSkills, offerId, 0, 80)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+
+        when:
+        def scoreCompatible = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00'), 0))[0].score()
+        def scoreMismatch = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00'), 60))[0].score()
+
+        then:
+        scoreCompatible > scoreMismatch
+    }
+
+    def "should give maximum distance score for fully remote offer regardless of candidate distance"() {
+        given:
+        def distantCompany = companyAt(51.5074, -0.1278) // London — ~1700 km, outside RADIUS_KM
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def fullyRemoteOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 0)
+        def inOfficeOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 100)
+        jobOfferRepository.findCandidateMatches(*_) >> [fullyRemoteOffer, inOfficeOffer]
+
+        when:
+        def results = service.search(searchRequest(['Java': SeniorityLevel.MID], 3))
+
+        then:
+        results.find { it.id() == fullyRemoteOffer.id }.score() > results.find { it.id() == inOfficeOffer.id }.score()
+    }
+
+    def "should reduce distance penalty proportionally to allowed home office days"() {
+        given:
+        def distantCompany = companyAt(51.5074, -0.1278) // London — ~1700 km, outside RADIUS_KM
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def fullyRemoteOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 0)
+        def hybridOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 60)
+        def inOfficeOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 100)
+        jobOfferRepository.findCandidateMatches(*_) >> [fullyRemoteOffer, hybridOffer, inOfficeOffer]
+
+        when:
+        def results = service.search(searchRequest(['Java': SeniorityLevel.MID], 3))
+
+        then:
+        results.find { it.id() == fullyRemoteOffer.id }.score() > results.find { it.id() == hybridOffer.id }.score()
+        results.find { it.id() == hybridOffer.id }.score() > results.find { it.id() == inOfficeOffer.id }.score()
+    }
+
+    def "should give full remote score when candidate is willing to work more in office than required"() {
+        given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerId = UUID.randomUUID()
+        def theOffer = offer(company, 20000, offerSkills, offerId, 0, 40)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+
+        when:
+        def scoreWillingMore = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00'), 20))[0].score()
+        def scoreExactMatch = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00'), 60))[0].score()
+
+        then:
+        scoreWillingMore == scoreExactMatch
+    }
+
     // --- helpers ---
 
     private static CandidateSearchRequest searchRequest(Map<String, SeniorityLevel> skills, int yearsOfExperience,
-                                                         BigDecimal expectedSalary = new BigDecimal('10000.00')) {
+                                                         BigDecimal expectedSalary = new BigDecimal('10000.00'),
+                                                         int preferredRemoteDaysPercentage = 0) {
         def candidateSkills = skills.collect { name, level -> new CandidateSkillRequest(name, level) } as Set
         new CandidateSearchRequest(
                 candidateSkills,
                 CANDIDATE_LAT, CANDIDATE_LON, RADIUS_KM,
                 expectedSalary,
                 [EmploymentType.B2B] as Set,
-                yearsOfExperience
+                yearsOfExperience,
+                preferredRemoteDaysPercentage
         )
     }
 
@@ -162,13 +228,15 @@ class JobOfferServiceSpec extends Specification {
 
     private static JobOfferEntity offer(CompanyEntity company, double salaryTo,
                                         List<JobOfferSkillEntity> skills,
-                                        UUID id = UUID.randomUUID(), int requiredYearsOfExperience = 0) {
+                                        UUID id = UUID.randomUUID(), int requiredYearsOfExperience = 0,
+                                        int requiredOfficeDaysPercentage = 0) {
         Instancio.of(JobOfferEntity)
                 .set(field(JobOfferEntity, 'id'), id)
                 .set(field(JobOfferEntity, 'company'), company)
                 .set(field(JobOfferEntity, 'salaryFrom'), new BigDecimal('10000.00'))
                 .set(field(JobOfferEntity, 'salaryTo'), new BigDecimal(salaryTo))
                 .set(field(JobOfferEntity, 'requiredYearsOfExperience'), requiredYearsOfExperience)
+                .set(field(JobOfferEntity, 'requiredOfficeDaysPercentage'), requiredOfficeDaysPercentage)
                 .set(field(JobOfferEntity, 'skills'), skills)
                 .create()
     }

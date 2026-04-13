@@ -29,7 +29,7 @@ public class JobOffersSqlGenerator {
     }
 
     public String generateJobOffersBatchSql(JobOffer[] jobOffers) {
-        String header = "INSERT INTO job_offer(id, company_id, title, description, salary_from, salary_to, currency, required_years_of_experience, status, created_at, updated_at) VALUES\n";
+        String header = "INSERT INTO job_offer(id, company_id, title, description, salary_from, salary_to, currency, required_years_of_experience, required_office_days_percentage, status, created_at, updated_at) VALUES\n";
         return chunked(IntStream.range(0, jobOffers.length)
                 .mapToObj(i -> formatJobOfferRow(jobOffers[i])), header);
     }
@@ -74,11 +74,11 @@ public class JobOffersSqlGenerator {
     }
 
     private String formatJobOfferRow(JobOffer o) {
-        return String.format("('%s', '%s', '%s', '%s', %s, %s, '%s', %s, '%s', NOW(), NOW())",
+        return String.format("('%s', '%s', '%s', '%s', %s, %s, '%s', %s, %s, '%s', NOW(), NOW())",
                 o.id(), o.companyId(),
                 escapeSingleQuote(o.title()), escapeSingleQuote(o.description()),
                 o.salaryFrom(), o.salaryTo(),
-                o.currency(), o.requiredYearsOfExperience(), o.status());
+                o.currency(), o.requiredYearsOfExperience(), o.requiredOfficeDaysPercentage(), o.status());
     }
 
     private String formatEmploymentTypeRow(UUID jobOfferId, EmploymentType type) {

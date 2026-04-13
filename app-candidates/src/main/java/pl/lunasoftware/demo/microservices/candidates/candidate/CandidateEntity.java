@@ -40,6 +40,7 @@ public class CandidateEntity {
     private double radiusKm;
     private int yearsOfExperience;
     private BigDecimal expectedSalary;
+    private int preferredRemoteDaysPercentage;
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "candidate_preferred_employment_type", joinColumns = @JoinColumn(name = "candidate_id"))

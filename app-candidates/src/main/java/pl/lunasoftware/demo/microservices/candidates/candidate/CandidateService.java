@@ -49,7 +49,8 @@ public class CandidateService {
                 candidate.getRadiusKm(),
                 candidate.getExpectedSalary(),
                 candidate.getPreferredEmploymentTypes(),
-                candidate.getYearsOfExperience()
+                candidate.getYearsOfExperience(),
+                candidate.getPreferredRemoteDaysPercentage()
         );
 
         List<JobOfferMatchDto> matches = jobOffersClient.searchOffers(searchRequest);

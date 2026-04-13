@@ -35,14 +35,14 @@ class CandidateControllerSpec extends Specification {
                         UUID.fromString('c2aacd00-9c0b-4ef8-bb6d-6bb9bd380c33'),
                         'TechCorp', 'Senior Java Dev', null,
                         new BigDecimal('18000.00'), new BigDecimal('24000.00'),
-                        'PLN', ['B2B'] as Set, 'ACTIVE', 1.0
+                        'PLN', 60, ['B2B'] as Set, 'ACTIVE', 1.0
                 ),
                 new JobOfferMatchDto(
                         UUID.fromString('d3ffcd00-9c0b-4ef8-bb6d-6bb9bd380d44'),
                         UUID.fromString('e4aacd00-9c0b-4ef8-bb6d-6bb9bd380e55'),
                         'FinTech', 'Backend Dev', null,
                         new BigDecimal('16000.00'), new BigDecimal('22000.00'),
-                        'PLN', ['B2B'] as Set, 'ACTIVE', 0.6
+                        'PLN', 40, ['B2B'] as Set, 'ACTIVE', 0.6
                 )
         ]
         when(candidateService.findMatchingOffers(candidateId)).thenReturn(matches)
@@ -52,8 +52,8 @@ class CandidateControllerSpec extends Specification {
                 .andExpect(status().isOk())
                 .andExpect(content().json('''
                     [
-                      {"id":"b1ffcd00-9c0b-4ef8-bb6d-6bb9bd380b22","companyId":"c2aacd00-9c0b-4ef8-bb6d-6bb9bd380c33","companyName":"TechCorp","title":"Senior Java Dev","description":null,"salaryFrom":"18000.00","salaryTo":"24000.00","currency":"PLN","employmentTypes":["B2B"],"status":"ACTIVE","score":1.0},
-                      {"id":"d3ffcd00-9c0b-4ef8-bb6d-6bb9bd380d44","companyId":"e4aacd00-9c0b-4ef8-bb6d-6bb9bd380e55","companyName":"FinTech","title":"Backend Dev","description":null,"salaryFrom":"16000.00","salaryTo":"22000.00","currency":"PLN","employmentTypes":["B2B"],"status":"ACTIVE","score":0.6}
+                      {"id":"b1ffcd00-9c0b-4ef8-bb6d-6bb9bd380b22","companyId":"c2aacd00-9c0b-4ef8-bb6d-6bb9bd380c33","companyName":"TechCorp","title":"Senior Java Dev","description":null,"salaryFrom":"18000.00","salaryTo":"24000.00","currency":"PLN","requiredOfficeDaysPercentage":60,"employmentTypes":["B2B"],"status":"ACTIVE","score":1.0},
+                      {"id":"d3ffcd00-9c0b-4ef8-bb6d-6bb9bd380d44","companyId":"e4aacd00-9c0b-4ef8-bb6d-6bb9bd380e55","companyName":"FinTech","title":"Backend Dev","description":null,"salaryFrom":"16000.00","salaryTo":"22000.00","currency":"PLN","requiredOfficeDaysPercentage":40,"employmentTypes":["B2B"],"status":"ACTIVE","score":0.6}
                     ]
                 '''))
     }
