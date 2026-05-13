@@ -94,19 +94,37 @@ class JobOfferServiceSpec extends Specification {
         scoreAtLevel > scoreBelowLevel
     }
 
-    def "should reduce score when candidate expected salary is close to offer ceiling"() {
+    def "should give maximum score when offer is higher than expected salary"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
-        def theOffer = offer(company, 20000, offerSkills)
+        def theOffer = offer(company, 25000, offerSkills)  // Higher than expected
         jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
 
         when:
-        def scoreComfortableSalary = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('5000.00')))[0].score()
-        def scoreAtCeiling = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('19000.00')))[0].score()
+        def scoreHigherOffer = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00')))[0].score()
+        def scoreEqualOffer = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('25000.00')))[0].score()
 
         then:
-        scoreComfortableSalary > scoreAtCeiling
+        scoreHigherOffer == 1.0d
+        scoreEqualOffer == 1.0d
+    }
+
+    def "should decrease score when offer is below expected salary"() {
+        given:
+        def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
+        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def theOffer = offer(company, 15000, offerSkills)
+        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+
+        when:
+        def scoreLowerOffer = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('20000.00')))[0].score()
+        def scoreMuchLowerOffer = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('30000.00')))[0].score()
+
+        then:
+        scoreLowerOffer < 1.0d
+        scoreMuchLowerOffer < scoreLowerOffer
+        scoreMuchLowerOffer > 0.0d
     }
 
     def "should reduce score when candidate lacks required years of experience"() {

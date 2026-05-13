@@ -116,17 +116,19 @@ public class JobOfferService {
         return Math.pow(0.5, gap);
     }
 
-    /**
-     * Quadratic decay: score=1.0 when expectedSalary=0, score=0.0 when expectedSalary=salaryTo.
-     * Candidates expecting well below the offer ceiling are easier to hire.
-     */
     private double scoreSalary(BigDecimal salaryTo, BigDecimal expectedSalary) {
         double max = salaryTo.doubleValue();
         if (max == 0) {
             return 0.0;
         }
-        double ratio = Math.min(1.0, expectedSalary.doubleValue() / max);
-        return 1.0 - ratio * ratio;
+        double expected = expectedSalary.doubleValue();
+
+        if (max >= expected) {
+            return 1.0;
+        }
+
+        double ratio = max / expected;
+        return Math.exp(-3.0 * (1.0 - ratio));
     }
 
     /**
