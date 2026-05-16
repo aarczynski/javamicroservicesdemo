@@ -421,3 +421,7 @@ Always keep the OTEL Java Agent at the latest stable version. The agent instrume
 When upgrading observability components (Grafana, Loki, Tempo, Prometheus, OTEL Collector), a version bump is not enough.
 Always check the official release notes and migration guides for breaking changes — ports, protocols, configuration file format, and YAML structure can change between versions.
 Blindly bumping the image tag without reviewing the changelog may result in a broken setup.
+
+When upgrading Docker image versions, always use standard release tags in the format `X.Y.Z` (or `vX.Y.Z` where the project convention requires it).
+Do not use tags with suffixes such as `-security-XX`, `-rc`, `-beta`, or `-ubuntu` unless explicitly required.
+If only non-standard tags are available for a given version, stay on the previous stable release.

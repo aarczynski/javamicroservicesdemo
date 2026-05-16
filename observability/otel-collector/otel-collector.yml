@@ -8,7 +8,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
     namespace: db
     metrics_flush_interval: 1s
     histogram:
@@ -52,7 +52,7 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [otlp, spanmetrics]
+      receivers: [otlp, span_metrics]
       processors: [batch/metrics]
       exporters: [prometheusremotewrite]
     traces:
@@ -62,7 +62,7 @@ service:
     traces/db_spans:
       receivers: [otlp]
       processors: [filter/db_spans]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     logs:
       receivers: [otlp]
       processors: [batch]

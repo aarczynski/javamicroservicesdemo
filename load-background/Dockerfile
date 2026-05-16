@@ -1,4 +1,4 @@
-FROM grafana/k6:1.7.1
+FROM grafana/k6:2.0.0
 
 COPY entrypoint.sh /entrypoint.sh
 COPY src/candidate-search.js /scripts/candidate-search.js
