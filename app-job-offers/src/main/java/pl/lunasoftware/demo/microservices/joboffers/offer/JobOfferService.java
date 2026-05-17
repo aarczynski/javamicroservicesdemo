@@ -74,7 +74,9 @@ public class JobOfferService {
      * Seniority gap: score halves per level below required (gap=1 → ×0.5, gap=2 → ×0.25, …).
      */
     private double scoreSkills(List<JobOfferSkillEntity> offerSkills, Set<CandidateSkillRequest> candidateSkills) {
-        if (offerSkills.isEmpty()) return 0.0;
+        if (offerSkills.isEmpty()) {
+            return 0.0;
+        }
 
         Map<String, SeniorityLevel> candidateSkillMap = candidateSkills.stream()
                 .collect(Collectors.toMap(CandidateSkillRequest::skillName, CandidateSkillRequest::seniorityLevel));

@@ -275,7 +275,6 @@ Fields:
 - `candidateId` (UUID)
 - `skillId` (UUID)
 - `seniorityLevel`
-- `isPrimary`
 - `lastUsedAt`
 - `createdAt`
 - `updatedAt`
@@ -360,7 +359,6 @@ Claude must follow these modeling rules:
 
 ### CandidateSkill
 - `seniorityLevel` — candidate’s declared level in the skill
-- `isPrimary` — whether this is one of the candidate’s primary skills
 - `lastUsedAt` — when the skill was last actively used
 
 ## Logging
