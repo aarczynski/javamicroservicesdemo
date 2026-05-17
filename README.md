@@ -136,7 +136,7 @@ instead of `docker compose`.
 | Sub-score  | Weight | Description                                                                                                                                                              |
 |------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Skills     | 45%    | Weighted coverage of offer skills adjusted for seniority gap and missing mandatory skills.                                                                               |
-| Salary     | 20%    | Quadratic decay — lower score the closer the expected salary is to the offer ceiling.                                                                                    |
+| Salary     | 20%    | `1.0` when the offer ceiling meets or exceeds candidate expectations. Exponential decay when the offer ceiling falls below — score drops sharply as the gap grows.        |
 | Experience | 10%    | Exponential decay based on the gap between candidate years and the minimum expected for the required seniority.                                                          |
 | Remote     | 10%    | Cosine decay on office mismatch — score=1.0 when candidate willingness meets or exceeds office requirement, non-linear drop as the gap grows.                            |
 | Distance   | 15%    | Haversine cosine decay blended with remote allowance — fully remote offers always score 1.0; in-office offers use pure cosine decay; hybrid offers blend proportionally. |
