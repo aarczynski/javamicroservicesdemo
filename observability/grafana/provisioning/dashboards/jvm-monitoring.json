@@ -84,14 +84,23 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\"}",
+          "expr": "system_cpu_usage{job=\"$service\"}",
           "instant": false,
-          "legendFormat": "CPU utilization",
+          "legendFormat": "System CPU",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\"}",
+          "instant": false,
+          "legendFormat": "JVM process CPU",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "JVM CPU Utilization",
+      "title": "CPU Utilization",
       "type": "timeseries"
     },
     {
@@ -634,7 +643,7 @@
   "preload": false,
   "refresh": "5s",
   "schemaVersion": 42,
-  "tags": ["jvm", "resources"],
+  "tags": [],
   "templating": {
     "list": [
       {
@@ -661,7 +670,7 @@
   "time": { "from": "now-30m", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "JVM Resources",
+  "title": "JVM Monitoring",
   "uid": "jvm-resources-dashboard",
   "version": 1,
   "weekStart": ""
