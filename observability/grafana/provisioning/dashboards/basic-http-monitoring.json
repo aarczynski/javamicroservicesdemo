@@ -699,7 +699,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Monitoring",
+  "title": "HTTP Monitoring",
   "uid": "e1f890c5-2799-411b-b267-f344670afe6c",
   "version": 5,
   "weekStart": ""
