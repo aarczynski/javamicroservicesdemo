@@ -1,8 +1,10 @@
 package pl.lunasoftware.demo.microservices.candidates.candidate;
 
+import feign.FeignException;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import pl.lunasoftware.demo.microservices.candidates.joboffer.DownstreamServiceException;
 import pl.lunasoftware.demo.microservices.candidates.candidate.api.ResourceNotFoundException;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.CandidateSkillDto;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto;
@@ -53,8 +55,12 @@ public class CandidateService {
                 candidate.getPreferredRemoteDaysPercentage()
         );
 
-        List<JobOfferMatchDto> matches = jobOffersClient.searchOffers(searchRequest);
-        log.info("Found {} matching offers for candidate id={}", matches.size(), candidateId);
-        return matches;
+        try {
+            List<JobOfferMatchDto> matches = jobOffersClient.searchOffers(searchRequest);
+            log.info("Found {} matching offers for candidate id={}", matches.size(), candidateId);
+            return matches;
+        } catch (FeignException ex) {
+            throw new DownstreamServiceException("job-offers", ex);
+        }
     }
 }

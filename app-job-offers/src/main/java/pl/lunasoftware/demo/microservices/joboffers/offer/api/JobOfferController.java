@@ -2,6 +2,9 @@ package pl.lunasoftware.demo.microservices.joboffers.offer.api;
 
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.NestedRuntimeException;
+import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -60,6 +63,13 @@ public class JobOfferController {
                     .collect(Collectors.joining(", "));
             log.warn("400 Bad Request - validation failed: {}", message);
             return new ErrorResponse(message);
+        }
+
+        @ExceptionHandler({DataAccessException.class, TransactionException.class})
+        @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+        ErrorResponse handleDatabaseError(NestedRuntimeException ex) {
+            log.error("Database error, cause='{}'", ex.getMostSpecificCause().getMessage(), ex);
+            return new ErrorResponse("Internal server error");
         }
 
         @ExceptionHandler(Exception.class)

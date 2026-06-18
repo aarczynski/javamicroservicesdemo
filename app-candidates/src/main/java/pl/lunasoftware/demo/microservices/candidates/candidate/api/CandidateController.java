@@ -1,6 +1,9 @@
 package pl.lunasoftware.demo.microservices.candidates.candidate.api;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.NestedRuntimeException;
+import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import pl.lunasoftware.demo.microservices.candidates.joboffer.DownstreamServiceException;
 import pl.lunasoftware.demo.microservices.candidates.candidate.CandidateService;
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto;
 
@@ -60,6 +64,20 @@ public class CandidateController {
                     .collect(Collectors.joining(", "));
             log.warn("400 Bad Request - validation failed: {}", message);
             return new ErrorResponse(message);
+        }
+
+        @ExceptionHandler({DataAccessException.class, TransactionException.class})
+        @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+        ErrorResponse handleDatabaseError(NestedRuntimeException ex) {
+            log.error("Database error, cause='{}'", ex.getMostSpecificCause().getMessage(), ex);
+            return new ErrorResponse("Internal server error");
+        }
+
+        @ExceptionHandler(DownstreamServiceException.class)
+        @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+        ErrorResponse handleDownstreamError(DownstreamServiceException ex) {
+            log.error("Downstream service error, service={}, cause='{}'", ex.getServiceName(), ex.getCause().getMessage(), ex);
+            return new ErrorResponse("Internal server error");
         }
 
         @ExceptionHandler(Exception.class)
