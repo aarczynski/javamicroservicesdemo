@@ -21,18 +21,18 @@ CREATE INDEX idx_company_geo ON company (geo_lat, geo_lon);
 
 CREATE TABLE job_offer
 (
-    id                           UUID                  DEFAULT gen_random_uuid() PRIMARY KEY,
-    company_id                   UUID         NOT NULL,
-    title                        VARCHAR(255) NOT NULL,
-    description                  TEXT,
-    salary_from                  NUMERIC(12, 2),
-    salary_to                    NUMERIC(12, 2),
-    currency                     VARCHAR(10),
-    required_years_of_experience INT          NOT NULL DEFAULT 0,
-    required_office_days_percentage   INT          NOT NULL DEFAULT 100,
-    status                       VARCHAR(50)  NOT NULL,
-    created_at                   TIMESTAMP    NOT NULL DEFAULT NOW(),
-    updated_at                   TIMESTAMP    NOT NULL DEFAULT NOW(),
+    id                              UUID                  DEFAULT gen_random_uuid() PRIMARY KEY,
+    company_id                      UUID         NOT NULL,
+    title                           VARCHAR(255) NOT NULL,
+    description                     TEXT,
+    salary_from                     NUMERIC(12, 2),
+    salary_to                       NUMERIC(12, 2),
+    currency                        VARCHAR(10),
+    required_years_of_experience    INT          NOT NULL DEFAULT 0,
+    required_office_days_percentage INT          NOT NULL DEFAULT 100,
+    status                          VARCHAR(50)  NOT NULL,
+    created_at                      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at                      TIMESTAMP    NOT NULL DEFAULT NOW(),
     FOREIGN KEY (company_id) REFERENCES company (id)
 );
 
