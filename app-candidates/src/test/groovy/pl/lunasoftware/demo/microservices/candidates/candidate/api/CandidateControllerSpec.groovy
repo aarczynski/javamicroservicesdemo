@@ -2,9 +2,11 @@ package pl.lunasoftware.demo.microservices.candidates.candidate.api
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.transaction.CannotCreateTransactionException
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import pl.lunasoftware.demo.microservices.candidates.candidate.CandidateService
+import pl.lunasoftware.demo.microservices.candidates.joboffer.DownstreamServiceException
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersClient
 import spock.lang.Specification
@@ -68,6 +70,30 @@ class CandidateControllerSpec extends Specification {
         mockMvc.perform(get('/api/v1/candidates/{id}/matching-offers', candidateId))
                 .andExpect(status().isNotFound())
                 .andExpect(content().json('{"message":"Candidate not found: 00000000-0000-0000-0000-000000000000"}'))
+    }
+
+    def "GET matching-offers returns 500 when database is unavailable"() {
+        given:
+        def candidateId = UUID.fromString('00000000-0000-0000-0000-000000000002')
+        when(candidateService.findMatchingOffers(candidateId))
+                .thenThrow(new CannotCreateTransactionException('Could not open JPA EntityManager', new RuntimeException('Connection refused')))
+
+        expect:
+        mockMvc.perform(get('/api/v1/candidates/{id}/matching-offers', candidateId))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().json('{"message":"Internal server error"}'))
+    }
+
+    def "GET matching-offers returns 500 when downstream service fails"() {
+        given:
+        def candidateId = UUID.fromString('00000000-0000-0000-0000-000000000003')
+        when(candidateService.findMatchingOffers(candidateId))
+                .thenThrow(new DownstreamServiceException('job-offers', new RuntimeException('Connection refused')))
+
+        expect:
+        mockMvc.perform(get('/api/v1/candidates/{id}/matching-offers', candidateId))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().json('{"message":"Internal server error"}'))
     }
 
     def "GET matching-offers returns 400 when feign client fails"() {

@@ -1,6 +1,9 @@
 package pl.lunasoftware.demo.microservices.candidates.candidate
 
+import feign.Request
+import feign.RetryableException
 import org.instancio.Instancio
+import pl.lunasoftware.demo.microservices.candidates.joboffer.DownstreamServiceException
 import pl.lunasoftware.demo.microservices.candidates.candidate.api.ResourceNotFoundException
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersClient
@@ -43,6 +46,30 @@ class CandidateServiceSpec extends Specification {
         then:
         result.isEmpty()
         0 * jobOffersClient.searchOffers(_)
+    }
+
+    def "should throw DownstreamServiceException when feign client fails"() {
+        given:
+        def id = UUID.randomUUID()
+        def skill = Instancio.of(CandidateSkillEntity)
+                .set(field(CandidateSkillEntity, 'skillName'), 'Java')
+                .set(field(CandidateSkillEntity, 'seniorityLevel'), SeniorityLevel.SENIOR)
+                .create()
+        def entity = Instancio.of(CandidateEntity)
+                .set(field(CandidateEntity, 'id'), id)
+                .set(field(CandidateEntity, 'skills'), [skill])
+                .set(field(CandidateEntity, 'preferredEmploymentTypes'), [EmploymentType.B2B] as Set)
+                .create()
+        candidateRepository.findById(id) >> Optional.of(entity)
+        def feignRequest = Request.create(Request.HttpMethod.POST, 'http://job-offers', [:], Request.Body.empty(), null)
+        jobOffersClient.searchOffers(_) >> { throw new RetryableException(-1, 'Connection refused', Request.HttpMethod.POST, (Date) null, feignRequest) }
+
+        when:
+        service.findMatchingOffers(id)
+
+        then:
+        def ex = thrown(DownstreamServiceException)
+        ex.serviceName == 'job-offers'
     }
 
     def "should call job offers client and return matches"() {

@@ -10,6 +10,8 @@ import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferService
 import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferStatus
 import spock.lang.Specification
 
+import org.springframework.transaction.CannotCreateTransactionException
+
 import static org.mockito.ArgumentMatchers.any
 import static org.mockito.Mockito.when
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -90,6 +92,19 @@ class JobOfferControllerSpec extends Specification {
                 .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"radiusKm: must be greater than 0"}'))
+    }
+
+    def "POST search returns 500 when database is unavailable"() {
+        given:
+        when(jobOfferService.search(any()))
+                .thenThrow(new CannotCreateTransactionException('Could not open JPA EntityManager', new RuntimeException('Connection refused')))
+
+        expect:
+        mockMvc.perform(post('/api/v1/job-offers/search')
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_REQUEST))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().json('{"message":"Internal server error"}'))
     }
 
     def "POST search returns 400 when preferredEmploymentTypes is empty"() {
