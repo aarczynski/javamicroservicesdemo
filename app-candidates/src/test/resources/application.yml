@@ -8,7 +8,7 @@ spring:
     hibernate:
       ddl-auto: validate
   flyway:
-    locations: db/migration/h2
+    locations: classpath:db/migration/h2
   cloud:
     openfeign:
       client:

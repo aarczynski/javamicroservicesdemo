@@ -138,7 +138,7 @@ services:
 
   prometheus:
     container_name: prometheus
-    image: prom/prometheus:v3.11.3
+    image: prom/prometheus:v3.14.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-remote-write-receiver
@@ -182,7 +182,7 @@ services:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:12.4.2
+    image: grafana/grafana:13.1.4
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin

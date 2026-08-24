@@ -14,11 +14,17 @@ storage:
     local:
       path: /tmp/tempo/blocks
 
-ingester:
-  trace_idle_period: 30s
+live_store:
+  max_trace_idle: 30s
   flush_check_period: 10s
   max_block_duration: 5m
 
-compactor:
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: 168h # 7 days, 7d causes parse error
+
+backend_worker:
   compaction:
     block_retention: 168h # 7 days, 7d causes parse error
