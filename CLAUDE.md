@@ -302,7 +302,7 @@ This module runs burst load tests against `app-candidates` using Gatling.
 ./gradlew :load-test:gatlingRun \
   -DcandidatesDataFile=/path/to/01-candidates.sql \
   -DtargetHost=http://localhost:8080 \
-  -DmaxRps=10 \
+  -DmaxRps=20 \
   -DstepDuration=30s \
   -Dramps=2
 ```
@@ -313,19 +313,19 @@ This module runs burst load tests against `app-candidates` using Gatling.
 |-----------------------|---------|-------------|
 | `candidatesDataFile`  | —       | Path to SQL file with candidate UUIDs (required) |
 | `targetHost`          | `http://localhost:8080` | Base URL of `app-candidates` |
-| `maxRps`              | `100`   | Peak requests per second (per ramp step) |
+| `maxRps`              | `500`   | Peak requests per second (global maximum, reached at the top of the last ramp) |
 | `stepDuration`        | `60s`   | Base time unit for each phase (`30s`, `5m`, `1h`) |
 | `ramps`               | `5`     | Number of ramp-up steps |
 
 ### Load profile shape
 
-With defaults (`maxRps=100`, `stepDuration=60s`, `ramps=5`):
+With defaults (`maxRps=500`, `stepDuration=60s`, `ramps=5`):
 - Ramp-up: 5 steps × 3 min each = 15 min (0→100, 100→200, … up to 500 RPS)
 - Peak steady: 3 min at 500 RPS
 - Cooldown: 5 min ramp down to 0
 - **Total: ~23 min**
 
-Smoke test example (`maxRps=10`, `stepDuration=30s`, `ramps=2`):
+Smoke test example (`maxRps=20`, `stepDuration=30s`, `ramps=2`):
 - **Total: ~6 min**, peak 20 RPS
 
 ### Rules for changes to this module

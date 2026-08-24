@@ -32,6 +32,7 @@ public class CandidateSimulation extends Simulation {
 
     private final int maxRps = readMaxRps();
     private final int ramps = readRamps();
+    private final double stepRps = (double) maxRps / ramps;
     private final Duration stepDuration = readStepDuration();
 
     private CandidateSqlDataReader candidateReader;
@@ -88,17 +89,17 @@ public class CandidateSimulation extends Simulation {
         return IntStream.range(0, ramps)
                 .boxed()
                 .flatMap(i -> Stream.of(
-                        rampUsersPerSec((double) maxRps * i).to((double) maxRps * (i + 1)).during(stepDuration).randomized(),
-                        constantUsersPerSec((double) maxRps * (i + 1)).during(stepDuration.multipliedBy(2)).randomized()
+                        rampUsersPerSec(stepRps * i).to(stepRps * (i + 1)).during(stepDuration).randomized(),
+                        constantUsersPerSec(stepRps * (i + 1)).during(stepDuration.multipliedBy(2)).randomized()
                 ));
     }
 
     private OpenInjectionStep buildPeakSteady() {
-        return constantUsersPerSec((double) maxRps * ramps).during(stepDuration.multipliedBy(3)).randomized();
+        return constantUsersPerSec(maxRps).during(stepDuration.multipliedBy(3)).randomized();
     }
 
     private OpenInjectionStep buildCooldownStep() {
-        return rampUsersPerSec((double) maxRps * ramps).to(0).during(stepDuration.multipliedBy(5)).randomized();
+        return rampUsersPerSec(maxRps).to(0).during(stepDuration.multipliedBy(5)).randomized();
     }
 
     private HttpProtocolBuilder httpProtocolBuilder() {

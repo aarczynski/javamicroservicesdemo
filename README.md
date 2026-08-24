@@ -239,11 +239,11 @@ Load tests the endpoint that finds matching job offers for a given candidate (`G
 |---------------------|------------------------------------------------------|------------------------------------------|
 | `targetHost`        | `http://localhost:8080`                              | Base URL of `app-candidates`             |
 | `candidatesDataFile`| `data-generator/output/candidates/01-candidates.sql` | SQL file with candidate UUIDs            |
-| `maxRps`            | `100`                                                | Peak RPS per ramp step                   |
+| `maxRps`            | `500`                                                | Peak RPS (global maximum, reached at the top of the last ramp) |
 | `stepDuration`      | `60s`                                                | Base time unit for each phase (`30s`, `5m`, `1h`) |
 | `ramps`             | `5`                                                  | Number of ramp-up steps                  |
 
-### RPS profile (defaults: maxRps=100, stepDuration=60s, ramps=5)
+### RPS profile (defaults: maxRps=500, stepDuration=60s, ramps=5)
 
 ```
  RPS
@@ -272,7 +272,7 @@ make candidateSimulation targetHost=http://192.168.0.140:8080 candidatesDataFile
 Quick smoke test (peak 20 RPS, ~6 min total):
 
 ```shell
-make candidateSimulation maxRps=10 stepDuration=30s ramps=2
+make candidateSimulation maxRps=20 stepDuration=30s ramps=2
 ```
 
 or full command:
@@ -281,7 +281,7 @@ or full command:
 ./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation \
   -DtargetHost=http://192.168.0.140:8080 \
   -DcandidatesDataFile=/path/to/01-candidates.sql \
-  -DmaxRps=10 \
+  -DmaxRps=20 \
   -DstepDuration=30s \
   -Dramps=2
 ```
