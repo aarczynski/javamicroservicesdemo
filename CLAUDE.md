@@ -292,6 +292,46 @@ Recommended enums:
 - `SeniorityLevel`
 - `EmploymentType`
 
+## load-test
+
+This module runs burst load tests against `app-candidates` using Gatling.
+
+### Running the load test
+
+```bash
+./gradlew :load-test:gatlingRun \
+  -DcandidatesDataFile=/path/to/01-candidates.sql \
+  -DtargetHost=http://localhost:8080 \
+  -DmaxRps=10 \
+  -DstepDuration=30s \
+  -Dramps=2
+```
+
+### Parameters
+
+| Parameter             | Default | Description |
+|-----------------------|---------|-------------|
+| `candidatesDataFile`  | —       | Path to SQL file with candidate UUIDs (required) |
+| `targetHost`          | `http://localhost:8080` | Base URL of `app-candidates` |
+| `maxRps`              | `100`   | Peak requests per second (per ramp step) |
+| `stepDuration`        | `60s`   | Base time unit for each phase (`30s`, `5m`, `1h`) |
+| `ramps`               | `5`     | Number of ramp-up steps |
+
+### Load profile shape
+
+With defaults (`maxRps=100`, `stepDuration=60s`, `ramps=5`):
+- Ramp-up: 5 steps × 3 min each = 15 min (0→100, 100→200, … up to 500 RPS)
+- Peak steady: 3 min at 500 RPS
+- Cooldown: 5 min ramp down to 0
+- **Total: ~23 min**
+
+Smoke test example (`maxRps=10`, `stepDuration=30s`, `ramps=2`):
+- **Total: ~6 min**, peak 20 RPS
+
+### Rules for changes to this module
+- All load profile constants (`maxRps`, `stepDuration`, `ramps`) must be read via `CliParamProvider` — no hardcoded values in `CandidateSimulation`.
+- Add a test in `CliParamProviderSpec` for every new parameter (both default and explicit value cases).
+
 ## load-background
 
 This module sends continuous 24/7 ambient load to `app-candidates`.
@@ -423,3 +463,25 @@ Blindly bumping the image tag without reviewing the changelog may result in a br
 When upgrading Docker image versions, always use standard release tags in the format `X.Y.Z` (or `vX.Y.Z` where the project convention requires it).
 Do not use tags with suffixes such as `-security-XX`, `-rc`, `-beta`, or `-ubuntu` unless explicitly required.
 If only non-standard tags are available for a given version, stay on the previous stable release.
+
+## After dependency upgrades — observability verification
+
+After every dependency upgrade, verify the observability stack is intact by running the app locally and querying the APIs directly (no browser needed):
+
+1. `docker compose up -d --build` — start the full stack
+2. Wait for both services to be healthy (`/actuator/health` returns `UP`)
+3. Generate traffic: send several `GET /api/v1/candidates/{id}/matching-offers` requests (pick IDs from DB via `docker exec`)
+4. Wait ~15s for telemetry to flush
+5. Check via APIs:
+   - **Loki** (via Grafana proxy `GET /api/datasources/proxy/uid/loki/loki/api/v1/query_range`):
+     - Logs are present for both `app-candidates` and `app-job-offers`
+     - Each log entry has `trace_id` and `span_id` labels
+   - **Loki datasource config** (`GET /api/datasources/uid/loki`):
+     - `jsonData.derivedFields` contains a field matching `trace_id` linked to Tempo datasource
+   - **Tempo** (via Grafana proxy `GET /api/datasources/proxy/uid/tempo/api/search`):
+     - Traces are present from both services
+     - A trace for a candidate request spans both `app-candidates` and `app-job-offers`
+   - **Prometheus** (`GET http://localhost:9090/api/v1/query`):
+     - HTTP Monitoring: `http_server_request_duration_seconds_count{job="app-candidates", http_route=~"/api.*"}` returns data
+     - JVM Monitoring: `jvm_memory_used_bytes{job="app-candidates"}`, `jvm_thread_count{job="app-candidates"}`, `jvm_cpu_recent_utilization_ratio{job="app-candidates"}` return data
+6. `docker compose down`

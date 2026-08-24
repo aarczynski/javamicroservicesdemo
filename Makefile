@@ -1,5 +1,8 @@
 targetHost ?=
 candidatesDataFile ?= $(shell pwd)/data-generator/output/candidates/01-candidates.sql
+maxRps ?=
+stepDuration ?=
+ramps ?=
 
 start: clean_build
 	-TARGET_HOST=$(targetHost) CANDIDATES_DATA_FILE=$(candidatesDataFile) docker compose up --build
@@ -14,4 +17,4 @@ clean_build:
 	./gradlew clean :app-job-offers:build :app-candidates:build
 
 candidateSimulation:
-	-./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation $(if $(targetHost),-DtargetHost=$(targetHost)) -DcandidatesDataFile=$(candidatesDataFile)
+	-./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation $(if $(targetHost),-DtargetHost=$(targetHost)) -DcandidatesDataFile=$(candidatesDataFile) $(if $(maxRps),-DmaxRps=$(maxRps)) $(if $(stepDuration),-DstepDuration=$(stepDuration)) $(if $(ramps),-Dramps=$(ramps))

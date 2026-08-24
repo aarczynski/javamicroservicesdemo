@@ -5,6 +5,7 @@ import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 import pl.lunasoftware.demo.microservices.loadtest.reader.CandidateSqlDataReader;
+import pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -21,14 +22,17 @@ import static io.gatling.javaapi.core.CoreDsl.rampUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
-import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.CLI_PARAM_PROVIDER;
+import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.readMaxRps;
+import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.readRamps;
+import static pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider.readStepDuration;
 
 public class CandidateSimulation extends Simulation {
 
-    private static final int RPS = 100;
-    public static final int RAMPS = 5;
-    private static final Duration A_MINUTE = Duration.ofSeconds(60);
     private static final int NOT_FOUND_RATE_PER_MILLE = 1;
+
+    private final int maxRps = readMaxRps();
+    private final int ramps = readRamps();
+    private final Duration stepDuration = readStepDuration();
 
     private CandidateSqlDataReader candidateReader;
 
@@ -40,7 +44,7 @@ public class CandidateSimulation extends Simulation {
 
     @Override
     public void before() {
-        candidateReader = new CandidateSqlDataReader(CLI_PARAM_PROVIDER.readDataFile());
+        candidateReader = new CandidateSqlDataReader(CliParamProvider.readDataFile());
     }
 
     @Override
@@ -81,24 +85,24 @@ public class CandidateSimulation extends Simulation {
     }
 
     private Stream<OpenInjectionStep> buildRampUpSteps() {
-        return IntStream.range(0, RAMPS)
+        return IntStream.range(0, ramps)
                 .boxed()
                 .flatMap(i -> Stream.of(
-                        rampUsersPerSec((double) RPS * i).to((double) RPS * (i + 1)).during(A_MINUTE).randomized(),
-                        constantUsersPerSec((double) RPS * (i + 1)).during(A_MINUTE.multipliedBy(2)).randomized()
+                        rampUsersPerSec((double) maxRps * i).to((double) maxRps * (i + 1)).during(stepDuration).randomized(),
+                        constantUsersPerSec((double) maxRps * (i + 1)).during(stepDuration.multipliedBy(2)).randomized()
                 ));
     }
 
     private OpenInjectionStep buildPeakSteady() {
-        return constantUsersPerSec((double) RPS * RAMPS).during(A_MINUTE.multipliedBy(3)).randomized();
+        return constantUsersPerSec((double) maxRps * ramps).during(stepDuration.multipliedBy(3)).randomized();
     }
 
     private OpenInjectionStep buildCooldownStep() {
-        return rampUsersPerSec((double) RPS * RAMPS).to(0).during(A_MINUTE.multipliedBy(5)).randomized();
+        return rampUsersPerSec((double) maxRps * ramps).to(0).during(stepDuration.multipliedBy(5)).randomized();
     }
 
     private HttpProtocolBuilder httpProtocolBuilder() {
-        String host = CLI_PARAM_PROVIDER.readHost();
+        String host = CliParamProvider.readHost();
         String targetHost = host == null ? "http://localhost:8080" : (host.startsWith("http") ? host : "http://" + host);
         return http
                 .baseUrl(targetHost)
