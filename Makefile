@@ -3,6 +3,12 @@ candidatesDataFile ?= $(shell pwd)/data-generator/output/candidates/01-candidate
 maxRps ?=
 stepDuration ?=
 ramps ?=
+candidates ?=
+jobOffers ?=
+companies ?=
+
+generate-data:
+	./gradlew clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar $(candidates) $(jobOffers) $(companies)
 
 start: clean_build
 	-TARGET_HOST=$(targetHost) CANDIDATES_DATA_FILE=$(candidatesDataFile) docker compose up --build
