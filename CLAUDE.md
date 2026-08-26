@@ -488,3 +488,14 @@ After every dependency upgrade, verify the observability stack is intact by runn
      - HTTP Monitoring: `http_server_request_duration_seconds_count{job="app-candidates", http_route=~"/api.*"}` returns data
      - JVM Monitoring: `jvm_memory_used_bytes{job="app-candidates"}`, `jvm_thread_count{job="app-candidates"}`, `jvm_cpu_recent_utilization_ratio{job="app-candidates"}` return data
 6. `docker compose down`
+
+## Home Kubernetes Cluster (Raspberry Pi 5)
+
+Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster (12× Raspberry Pi 5, `kubeadm`-based — not k3s, a deliberate choice to learn the full stack manually rather than rely on batteries-included defaults).
+
+Detailed, current state (node topology, architectural decisions, in-progress work, gotchas already hit) is tracked in `.claude/handoff-k8s-rpi-cluster.md` — read it at the start of any session touching the cluster, and keep it updated as work progresses.
+
+Conventions for this work stream:
+- Cluster resources as code live under `k8s-cluster/`: `ansible/` for node provisioning, `manifests/` for Helm chart values and plain Kubernetes manifests.
+- The version-pinning discipline above (standard `X.Y.Z` tags, no `-rc`/`-beta`, check release notes) applies to Helm charts too — additionally, **check `helm show chart <repo>/<chart> --version X` for a `deprecated: true` flag before adopting a chart**. Learned the hard way: `grafana.github.io/helm-charts` (repo `grafana`) is frozen — migrated wholesale to `grafana-community/helm-charts` (repo `grafana-community`) — use the latter for Loki, Tempo, and Grafana charts, or you silently get stale, unmaintained versions.
+- The user runs SSH/`ansible`/`kubeadm`/`kubectl` commands on cluster nodes themselves — Claude gives the exact command and waits for the result rather than executing it directly, unless the user explicitly hands off a specific batch of work ("ty zrób"/"you do it"). This does not apply to the rest of the repo (Gradle, tests, etc.), only to hands-on cluster operations.
