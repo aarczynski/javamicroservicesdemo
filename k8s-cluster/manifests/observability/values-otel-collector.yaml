@@ -1,0 +1,108 @@
+# helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+# helm install otel-collector open-telemetry/opentelemetry-collector -n observability -f values-otel-collector.yaml --version 0.171.0
+#
+# Endpoints point at in-cluster Service DNS names (verified via `helm template` against
+# the actually-rendered prometheus/tempo/loki Services in this same directory):
+#   prometheus-server.observability.svc.cluster.local:80 (chart Service port — not 9090)
+#   tempo.observability.svc.cluster.local:4317
+#   loki.observability.svc.cluster.local:3100
+
+mode: deployment
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.159.0"
+
+# alternateConfig fully replaces the chart's default config (no merge with chart
+# presets) — same pipeline as observability/otel-collector/otel-collector.yml,
+# with compose service names swapped for in-cluster Service DNS names.
+alternateConfig:
+  extensions:
+    # explicit 0.0.0.0 bind — default is localhost-only, unreachable for the
+    # kubelet's liveness/readiness probes, which connect via the pod IP.
+    health_check:
+      endpoint: 0.0.0.0:13133
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+  connectors:
+    span_metrics:
+      namespace: db
+      metrics_flush_interval: 1s
+      histogram:
+        explicit:
+          buckets: ["5ms", "10ms", "25ms", "50ms", "75ms", "100ms", "250ms", "500ms", "750ms", "1s", "2500ms", "5s", "7500ms", "10s"]
+      dimensions:
+        - name: db.system
+        - name: db.system.name
+        - name: db.operation.name
+      exemplars:
+        enabled: true
+
+  processors:
+    batch:
+      send_batch_max_size: 1000
+      send_batch_size: 100
+      timeout: 5s
+    batch/metrics:
+      send_batch_max_size: 1000
+      send_batch_size: 100
+      timeout: 5s
+    filter/db_spans:
+      error_mode: ignore
+      traces:
+        span:
+          - 'attributes["db.system"] == nil and attributes["db.system.name"] == nil'
+
+  exporters:
+    prometheusremotewrite:
+      endpoint: "http://prometheus-server.observability.svc.cluster.local:80/api/v1/write"
+
+    otlp_grpc/tempo:
+      endpoint: "tempo.observability.svc.cluster.local:4317"
+      tls:
+        insecure: true
+
+    otlp_http/loki:
+      endpoint: "http://loki.observability.svc.cluster.local:3100/otlp"
+
+  service:
+    extensions: [health_check]
+    pipelines:
+      metrics:
+        receivers: [otlp, span_metrics]
+        processors: [batch/metrics]
+        exporters: [prometheusremotewrite]
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlp_grpc/tempo]
+      traces/db_spans:
+        receivers: [otlp]
+        processors: [filter/db_spans]
+        exporters: [span_metrics]
+      logs:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlp_http/loki]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-observability-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: observability
+    effect: NoSchedule

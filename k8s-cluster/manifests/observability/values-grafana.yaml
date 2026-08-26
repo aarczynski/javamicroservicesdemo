@@ -1,0 +1,100 @@
+# helm repo add grafana-community https://grafana-community.github.io/helm-charts
+# helm install grafana grafana-community/grafana -n observability -f values-grafana.yaml --version 12.11.2
+#
+# NOTE: grafana.github.io/helm-charts is frozen (migrated to grafana-community/helm-charts
+# on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.
+
+image:
+  tag: "13.1.4" # matches compose.yml
+
+env:
+  GF_AUTH_ANONYMOUS_ENABLED: "true"
+  GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+  GF_AUTH_DISABLE_LOGIN_FORM: "true"
+
+persistence:
+  enabled: true
+  type: pvc
+  storageClassName: local-path
+  size: 1Gi
+
+# LoadBalancer (via MetalLB) so Grafana is reachable at a stable IP from the
+# LAN without kubectl port-forward.
+service:
+  type: LoadBalancer
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-observability-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: observability
+    effect: NoSchedule
+
+# Dashboard JSON files are provisioned as separate ConfigMaps (see
+# dashboards-configmap.yaml) labeled grafana_dashboard=1 — the sidecar below
+# picks them up automatically, mirroring observability/grafana/provisioning/dashboards/.
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "1"
+
+# Same content as observability/grafana/provisioning/datasources/datasources.yml,
+# with compose service names swapped for in-cluster Service DNS names.
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        access: proxy
+        url: http://prometheus-server.observability.svc.cluster.local:80
+        basicAuth: false
+        isDefault: true
+        editable: false
+        jsonData:
+          httpMethod: GET
+          timeInterval: "1s"
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://loki.observability.svc.cluster.local:3100
+        isDefault: false
+        editable: false
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: trace_id
+              matcherType: label
+              name: trace_id
+              url: $${__value.raw}
+              urlDisplayLabel: View in Tempo
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://tempo.observability.svc.cluster.local:3200
+        isDefault: false
+        editable: false
+        jsonData:
+          httpMethod: GET
+          serviceMap:
+            datasourceUid: prometheus
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: '-10m'
+            spanEndTimeShift: '10m'
+            filterByTraceID: true
+            filterBySpanID: true
+            tags: [ { key: 'service.name', value: 'job' } ]

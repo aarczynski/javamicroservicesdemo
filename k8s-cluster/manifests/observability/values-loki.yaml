@@ -1,0 +1,71 @@
+# helm repo add grafana-community https://grafana-community.github.io/helm-charts
+# helm install loki grafana-community/loki -n observability -f values-loki.yaml --version 18.11.3
+#
+# NOTE: grafana.github.io/helm-charts is frozen (migrated to grafana-community/helm-charts
+# on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2026-08-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  storage:
+    type: filesystem
+  limits_config:
+    retention_period: 168h # 7d, matches observability/loki/loki.yml
+    max_query_lookback: 168h
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-1
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+# SimpleScalable/Distributed components — unused in SingleBinary mode.
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# No object storage on this cluster — filesystem storage on the single node only.
+minio:
+  enabled: false
+
+# Extras not needed for a home-lab single-node deployment.
+gateway:
+  enabled: false
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false

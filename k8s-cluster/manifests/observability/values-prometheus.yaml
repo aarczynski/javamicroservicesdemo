@@ -1,0 +1,39 @@
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm install prometheus prometheus-community/prometheus -n observability -f values-prometheus.yaml --version 29.27.0
+
+# Only the bare server, matching compose.yml — no alertmanager/exporters/pushgateway.
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  # Equivalent of compose.yml's `--web.enable-remote-write-receiver` flag —
+  # otel-collector's prometheusremotewrite exporter needs this.
+  extraArgs:
+    web.enable-remote-write-receiver: null
+
+  persistentVolume:
+    enabled: true
+    storageClass: local-path
+    size: 8Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-1
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule

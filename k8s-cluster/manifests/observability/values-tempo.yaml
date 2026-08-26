@@ -1,0 +1,36 @@
+# helm repo add grafana-community https://grafana-community.github.io/helm-charts
+# helm install tempo grafana-community/tempo -n observability -f values-tempo.yaml --version 2.3.0
+#
+# NOTE: grafana.github.io/helm-charts is frozen (migrated to grafana-community/helm-charts
+# on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.
+
+replicas: 1
+
+tempo:
+  # Tested 2026-08-26: overriding to 3.0.3 (compose.yml's pin) breaks —
+  # Tempo 3.x's app.Config dropped the top-level compactor/ingester fields
+  # this chart generates ("field compactor not found in type app.Config").
+  # Real schema rewrite, not just new optional sections — chart would need
+  # to be rewritten upstream to support 3.x. Staying on chart default (2.10.8).
+  retention: 168h # 7d, matches observability/tempo/tempo.yml
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # storage.trace.backend defaults to "local" already — matches compose.yml
+
+persistence:
+  enabled: true
+  storageClassName: local-path
+  size: 10Gi
+
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-observability-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: observability
+    effect: NoSchedule
