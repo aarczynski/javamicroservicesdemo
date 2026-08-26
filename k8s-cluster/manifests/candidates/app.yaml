@@ -1,0 +1,107 @@
+# kubectl apply -f namespace.yaml -f postgres.yaml -f app.yaml
+# app-candidates. Talks to Postgres in this namespace (already matches the
+# image's baked-in docker/application.yml) and to app-job-offers cross-namespace.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-candidates-config
+  namespace: candidates
+data:
+  application.yml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres-candidates:5432/app-candidates-db
+        username: postgres
+        password: password
+      cloud:
+        openfeign:
+          client:
+            config:
+              job-offers:
+                url: http://app-job-offers.job-offers.svc.cluster.local:8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-candidates
+  namespace: candidates
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-candidates
+  template:
+    metadata:
+      labels:
+        app: app-candidates
+    spec:
+      containers:
+        - name: app-candidates
+          image: ghcr.io/aarczynski/app-candidates:v1
+          command: ["java", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: app-candidates
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "1000"
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "1000"
+            - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: config
+              mountPath: /app/application.yml
+              subPath: application.yml
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+      volumes:
+        - name: config
+          configMap:
+            name: app-candidates-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-candidates
+  namespace: candidates
+spec:
+  type: LoadBalancer
+  selector:
+    app: app-candidates
+  ports:
+    - port: 8080
+      targetPort: 8080

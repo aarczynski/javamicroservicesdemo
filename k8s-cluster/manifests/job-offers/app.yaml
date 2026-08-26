@@ -1,0 +1,81 @@
+# kubectl apply -f namespace.yaml -f postgres.yaml -f app.yaml
+# app-job-offers. Internal only (called via Feign by app-candidates) — no
+# LoadBalancer, ClusterIP is enough. Datasource in the image's baked-in
+# docker/application.yml already matches the in-namespace Postgres Service
+# name, so no config override needed here (unlike app-candidates).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-job-offers
+  namespace: job-offers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-job-offers
+  template:
+    metadata:
+      labels:
+        app: app-job-offers
+    spec:
+      containers:
+        - name: app-job-offers
+          image: ghcr.io/aarczynski/app-job-offers:v1
+          command: ["java", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: app-job-offers
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "1000"
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "1000"
+            - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-job-offers
+  namespace: job-offers
+spec:
+  type: ClusterIP
+  selector:
+    app: app-job-offers
+  ports:
+    - port: 8080
+      targetPort: 8080
