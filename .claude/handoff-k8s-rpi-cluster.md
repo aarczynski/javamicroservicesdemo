@@ -1,10 +1,37 @@
-# Handoff: klaster k8s na RPi5 — stan na 2026-08-26
+# Handoff: klaster k8s na RPi5 — stan na 2026-08-27
 
 Cel: domowy klaster Kubernetes na Raspberry Pi 5 (8GB, NVMe), docelowo do wdrożenia `javamicroservicesdemo` (candidates, job-offers, ich bazy, observability).
 
-**Gotowe:** 6 node'ów `Ready` pod finalnymi nazwami, MetalLB, `local-path-provisioner`, cały stack observability (Prometheus/Loki/Tempo/otel-collector/Grafana) działający end-to-end. Repo (`k8s-cluster/`, ten handoff) skomitowane na branchu `k8s-observability-stack`, jeszcze niezmergowane.
+**Gotowe:** 6 node'ów `Ready` pod finalnymi nazwami, MetalLB, `local-path-provisioner`, cały stack observability (Prometheus/Loki/Tempo/otel-collector/Grafana) działający end-to-end, oba Postgresy (`candidates`, `job-offers`) wdrożone i załadowane danymi z `data-generator`. Repo (`k8s-cluster/`, ten handoff) skomitowane na branchu `k8s-observability-stack`, jeszcze niezmergowane.
 
-**Następny krok:** deploy `candidates`/`job-offers` na klaster (patrz "Następny krok" niżej).
+**Następny krok:** ingress controller, potem deploy appek `candidates`/`job-offers` (patrz "Następny krok" niżej).
+
+## Postgres — candidates/job-offers — ukończone (2026-08-27)
+
+Wdrożone bezpośrednio przez Claude (jawne "ty robisz" od użytkownika — wyjątek od zasady "użytkownik sam wpisuje komendy k8s", patrz "Kluczowe decyzje architektoniczne").
+
+**Namespace per serwis** (`candidates`, `job-offers`) — nie jeden wspólny namespace dla baz — pod przyszły deploy appek w tych samych namespace'ach (plan pkt 4).
+
+**Obiekty** (`k8s-cluster/manifests/candidates/`, `k8s-cluster/manifests/job-offers/`, każdy `namespace.yaml` + `postgres.yaml`): `Secret` (credentiale, zwierciadło `compose.yml`: user `postgres`/hasło `password`), `PersistentVolumeClaim` (5Gi, `local-path`), `Deployment` (1 replika, `strategy: Recreate`, image `postgres:18.3`, `PGDATA` na subpath `pgdata` w mount pointcie — standardowa praktyka z docs obrazu postgres), `Service` typu `LoadBalancer`.
+
+**Zamiast StatefulSet — świadomie zwykły `Deployment` + samodzielny PVC** (nie volumeClaimTemplate) — dla pojedynczej repliki bez potrzeby stabilnej tożsamości sieciowej/discovery, `StatefulSet` + headless Service byłby zbędnym narzutem (YAGNI).
+
+**Node placement:** `postgres-candidates` przypięty (`nodeSelector` po hostname + toleracja `role=database`) na `k8s-rpi-db-1`, `postgres-job-offers` na `k8s-rpi-db-2` — rozdzielone fizycznie, żeby nie dzieliły I/O jednego dysku NVMe.
+
+**Ekspozycja: `LoadBalancer` przez MetalLB** (nie tylko `ClusterIP` + port-forward) — spójne z Grafaną (`.100`), żeby dało się łączyć bezpośrednio z dowolnego klienta w LAN bez `kubectl port-forward` za każdym razem.
+
+| Serwis | Namespace | Node | External IP | DB | User/Pass |
+|---|---|---|---|---|---|
+| `postgres-candidates` | `candidates` | `k8s-rpi-db-1` | `192.168.10.101:5432` | `app-candidates-db` | `postgres`/`password` |
+| `postgres-job-offers` | `job-offers` | `k8s-rpi-db-2` | `192.168.10.102:5432` | `app-job-offers-db` | `postgres`/`password` |
+
+**Załadowane dane** z `data-generator/output/{candidates,job-offers}/*.sql` (schema + dane, w kolejności numerycznej plików) via `kubectl exec -i <pod> -- psql ... < plik.sql` (streaming stdin przez API server, bez kopiowania plików na node'y). Zweryfikowane liczby wierszy:
+- candidates: `candidate` 100000, `candidate_preferred_employment_type` 199849, `candidate_skill` 300127.
+- job-offers: `company` 50000, `skill` 53, `job_offer` 100000, `job_offer_employment_type` 199894, `job_offer_skill` 299936.
+
+**Kubeconfig:** `k8s-cluster/kubeconfig` (skopiowany z `/etc/kubernetes/admin.conf` na masterze, gitignorowany przez `.git/info/exclude` — nie w `.gitignore` repo, więc niewidoczny w `git status`/diff, ale też nie trafi do żadnego commita). `export KUBECONFIG=$(pwd)/k8s-cluster/kubeconfig` przed pracą z Maca.
+
+**Do zrobienia (nie teraz):** te dwa Postgresy nie mają jeszcze roli/hasła ograniczonego per-aplikacja (współdzielą superusera `postgres` z compose) — wystarczające na tym etapie (tylko test połączenia), do rewizji przy realnym deployu appek.
 
 ## Stan fizyczny — aktualne node'y
 
@@ -120,15 +147,14 @@ Passwordless sudo już skonfigurowane na wszystkich node'ach — `--ask-become-p
 
 ## Następny krok (do zrobienia w kolejnej sesji)
 
-Gotowe: node'y, MetalLB, storage, cały stack observability (patrz sekcje wyżej).
+Gotowe: node'y, MetalLB, storage, cały stack observability, oba Postgresy (`candidates`/`job-offers`) załadowane danymi (patrz sekcje wyżej).
 
 Jeszcze nie zrobione, w orientacyjnej kolejności:
 1. `k8s-rpi-worker-3`/`worker-4` (dopełnienie pierwotnego planu 4 workerów, `inventory.ini` już ma zakomentowane wpisy) + decyzja co do pozostałych RPi z 12 fizycznie posiadanych (patrz "Kluczowe decyzje architektoniczne").
 2. Ingress controller.
-3. Deploy baz Postgres na `k8s-rpi-db-1`/`k8s-rpi-db-2`.
-4. Deploy `candidates`/`job-offers` — w tym wskazanie ich na już działający otel-collector: `otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317`.
-5. Kubernetes Dashboard na `k8s-rpi-observability-1` (patrz plan pkt 12 niżej).
-6. **Budowanie i wgrywanie obrazów Javy — do ustalenia, nie pilne.** `docker build` nadal działa (containerd tylko *uruchamia* obrazy, nie wpływa na budowanie) — Dockerfile'e już istnieją (`app-candidates/docker/Dockerfile`, `app-job-offers/docker/Dockerfile`). Mac jest arm64, ta sama architektura co RPi5 — bez cross-buildu. Brakujący element: registry, z którego RPi pobiorą obraz (Docker Hub prywatne / `ghcr.io` / własny `registry:2` w klastrze). Alternatywa dla `docker build`: **Jib** (plugin Gradle, buduje obraz Javy bez Dockera/demona, bezpośredni push).
+3. Deploy `candidates`/`job-offers` — w tym wskazanie ich na już działający otel-collector: `otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317`, i na już działające Postgresy (`postgres-candidates.candidates.svc.cluster.local:5432`, `postgres-job-offers.job-offers.svc.cluster.local:5432`).
+4. Kubernetes Dashboard na `k8s-rpi-observability-1` (patrz plan pkt 12 niżej).
+5. **Budowanie i wgrywanie obrazów Javy — do ustalenia, nie pilne.** `docker build` nadal działa (containerd tylko *uruchamia* obrazy, nie wpływa na budowanie) — Dockerfile'e już istnieją (`app-candidates/docker/Dockerfile`, `app-job-offers/docker/Dockerfile`). Mac jest arm64, ta sama architektura co RPi5 — bez cross-buildu. Brakujący element: registry, z którego RPi pobiorą obraz (Docker Hub prywatne / `ghcr.io` / własny `registry:2` w klastrze). Alternatywa dla `docker build`: **Jib** (plugin Gradle, buduje obraz Javy bez Dockera/demona, bezpośredni push).
 
 **Helm — decyzja potwierdzona w praktyce (2026-08-26):** dla infrastruktury (MetalLB, obserwowalność, docelowo ingress-nginx) używać Helm charts — przed `helm install` warto raz zobaczyć wyrenderowany manifest (`helm template`), żeby nie było to czarną skrzynką. Dla własnych apek (`candidates`/`job-offers`) na razie zostać przy plain YAML. **Ważna lekcja:** zawsze sprawdzać `deprecated: true` w metadanych chartu przed instalacją (`helm show chart <repo>/<chart> --version X`), bo repo mogło się zmigrować gdzie indziej (patrz pułapka 1 wyżej).
 

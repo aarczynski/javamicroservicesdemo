@@ -1,0 +1,114 @@
+# kubectl apply -f namespace.yaml -f postgres.yaml
+# Mirrors compose.yml's postgres-job-offers service (image, credentials, db name).
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-job-offers-credentials
+  namespace: job-offers
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: password
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-job-offers-data
+  namespace: job-offers
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-job-offers
+  namespace: job-offers
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres-job-offers
+  template:
+    metadata:
+      labels:
+        app: postgres-job-offers
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-db-2
+      tolerations:
+        - key: role
+          operator: Equal
+          value: database
+          effect: NoSchedule
+      containers:
+        - name: postgres
+          image: postgres:18.3
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: app-job-offers-db
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-job-offers-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-job-offers-credentials
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-job-offers-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-job-offers
+  namespace: job-offers
+spec:
+  type: LoadBalancer
+  selector:
+    app: postgres-job-offers
+  ports:
+    - port: 5432
+      targetPort: 5432
