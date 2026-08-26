@@ -12,7 +12,7 @@ Wdrożone bezpośrednio przez Claude (jawne "ty robisz"), build+push obrazów z 
 
 **Rejestr obrazów: ghcr.io, publiczne pakiety** (nie self-hosted `registry:2` w klastrze — odrzucone jako "szkoda node'a", choć rejestr w klastrze i tak nie wymaga dedykowanego node'a, tylko lekkiego poda na generic workerze; nie zdążyło dojść do realizacji, bo user wybrał ghcr). `ghcr.io/aarczynski/app-candidates:v1`, `ghcr.io/aarczynski/app-job-offers:v1`. **Uwaga (pułapka, zajęła najwięcej czasu przy tym kroku):** świeżo wypchnięty pakiet w ghcr jest domyślnie **prywatny**, nawet z publicznego repo — trzeba ręcznie zmienić w GitHub → profil → Packages → pakiet → Package settings → Danger Zone → Change visibility → Public, dla każdego pakietu osobno. `docker manifest inspect` z Maca **mylnie pokazywał sukces jako "publiczny"**, bo używał zapisanych credentiali z `~/.docker/config.json` (ten sam plik co `docker login`) — nie był to realny anonimowy request. Realna weryfikacja anonimowej widoczności: request `curl` bezpośrednio po token z `https://ghcr.io/token?scope=repository:<user>/<img>:pull&service=ghcr.io`, potem `GET /v2/<user>/<img>/manifests/<tag>` z tym tokenem, bez użycia `docker` CLI.
 
-**Build obrazów:** `./gradlew clean :app-job-offers:build :app-candidates:build` (jak `make clean_build`) produkuje jary + otel-agent, potem zwykły `docker build -f <service>/docker/Dockerfile <service>` — Mac arm64 = RPi5 arm64, bez cross-buildu. Tag wersjonowany (`v1`), nie `latest` — świadoma decyzja: deterministyczny stan w manifeście, rollback = zmiana tagu + `kubectl apply`, zamiast `:latest` + `rollout restart` (patrz też pkt 6 niżej o strategii bumpowania).
+**Build obrazów:** `./gradlew clean :app-job-offers:build :app-candidates:build` (jak `make clean_build`) produkuje jary + otel-agent, potem zwykły `docker build -f <service>/docker/Dockerfile <service>` — Mac arm64 = RPi5 arm64, bez cross-buildu. Tag wersjonowany (`v1`), nie `latest` — świadoma decyzja: deterministyczny stan w manifeście, rollback = zmiana tagu + `kubectl apply`, zamiast `:latest` + `rollout restart`.
 
 **Manifesty** (`k8s-cluster/manifests/candidates/app.yaml`, `k8s-cluster/manifests/job-offers/app.yaml`) — plain YAML `Deployment` (1 replika) + `Service`, bez `nodeSelector`/tolerations (appki lądują naturalnie na generic workerach, `worker-1`/`worker-2`, bo tylko baza/observability mają taints):
 - `command` nadpisuje domyślny `CMD` z Dockerfile'a, dopisując `-javaagent:./opentelemetry-javaagent.jar` (Dockerfile sam z siebie nie uruchamia agenta OTel — to robił dopiero `compose.yml`'s command override, trzeba było go odtworzyć w k8s).
@@ -26,11 +26,13 @@ Wdrożone bezpośrednio przez Claude (jawne "ty robisz"), build+push obrazów z 
 
 **Do zrobienia (nie teraz):** `imagePullSecrets` niepotrzebne (pakiety publiczne) — do rewizji, jeśli kiedyś przejdą na prywatne. Brak `HorizontalPodAutoscaler`/wielu replik — 1 replika each, wystarczające na tym etapie.
 
+**IP LoadBalancerów (`.101`/`.102`/`.103`) nie są przypięte na sztywno** (brak `metallb.io/loadBalancerIPs` w manifestach) — MetalLB przydzielił je automatycznie z puli przy pierwszym `apply` i **zostają stałe dopóki dany `Service` nie zostanie usunięty i utworzony od nowa** (restart poda/node'a/klastra tego nie rusza — stan jest w `etcd`). Świadoma decyzja użytkownika: nie przypinać teraz. Jeśli kiedyś `Service` trzeba będzie usunąć i odtworzyć, nowy IP może wypaść inny niż obecny — wtedy do rozważenia dopisanie `metallb.io/loadBalancerIPs` dla przewidywalności.
+
 ## Postgres — candidates/job-offers — ukończone (2026-08-27)
 
 Wdrożone bezpośrednio przez Claude (jawne "ty robisz" od użytkownika — wyjątek od zasady "użytkownik sam wpisuje komendy k8s", patrz "Kluczowe decyzje architektoniczne").
 
-**Namespace per serwis** (`candidates`, `job-offers`) — nie jeden wspólny namespace dla baz — pod przyszły deploy appek w tych samych namespace'ach (plan pkt 4).
+**Namespace per serwis** (`candidates`, `job-offers`) — nie jeden wspólny namespace dla baz — appki (`app-candidates`/`app-job-offers`) wdrożone później w tych samych namespace'ach, patrz sekcja wyżej.
 
 **Obiekty** (`k8s-cluster/manifests/candidates/`, `k8s-cluster/manifests/job-offers/`, każdy `namespace.yaml` + `postgres.yaml`): `Secret` (credentiale, zwierciadło `compose.yml`: user `postgres`/hasło `password`), `PersistentVolumeClaim` (5Gi, `local-path`), `Deployment` (1 replika, `strategy: Recreate`, image `postgres:18.3`, `PGDATA` na subpath `pgdata` w mount pointcie — standardowa praktyka z docs obrazu postgres), `Service` typu `LoadBalancer`.
 
@@ -173,7 +175,7 @@ Jeszcze nie zrobione, w orientacyjnej kolejności:
 1. `k8s-rpi-worker-3`/`worker-4` (dopełnienie pierwotnego planu 4 workerów, `inventory.ini` już ma zakomentowane wpisy) + decyzja co do pozostałych RPi z 12 fizycznie posiadanych (patrz "Kluczowe decyzje architektoniczne").
 2. Ingress controller.
 3. Kubernetes Dashboard na `k8s-rpi-observability-1` (patrz plan pkt 12 niżej).
-4. **Weryfikacja telemetrii appek w Grafanie** — appki są wdrożone i wskazują na otel-collector, ale nie sprawdzone jeszcze, czy logi/trace'y/metryki faktycznie płyną (analogicznie do checklisty "Po aktualizacjach zależności" w CLAUDE.md). `docker build` nadal działa (containerd tylko *uruchamia* obrazy, nie wpływa na budowanie) — Dockerfile'e już istnieją (`app-candidates/docker/Dockerfile`, `app-job-offers/docker/Dockerfile`). Mac jest arm64, ta sama architektura co RPi5 — bez cross-buildu. Brakujący element: registry, z którego RPi pobiorą obraz (Docker Hub prywatne / `ghcr.io` / własny `registry:2` w klastrze). Alternatywa dla `docker build`: **Jib** (plugin Gradle, buduje obraz Javy bez Dockera/demona, bezpośredni push).
+4. **Weryfikacja telemetrii appek w Grafanie** — appki są wdrożone i wskazują na otel-collector, ale nie sprawdzone jeszcze, czy logi/trace'y/metryki faktycznie płyną (analogicznie do checklisty "Po aktualizacjach zależności" w CLAUDE.md).
 
 **Helm — decyzja potwierdzona w praktyce (2026-08-26):** dla infrastruktury (MetalLB, obserwowalność, docelowo ingress-nginx) używać Helm charts — przed `helm install` warto raz zobaczyć wyrenderowany manifest (`helm template`), żeby nie było to czarną skrzynką. Dla własnych apek (`candidates`/`job-offers`) na razie zostać przy plain YAML. **Ważna lekcja:** zawsze sprawdzać `deprecated: true` w metadanych chartu przed instalacją (`helm show chart <repo>/<chart> --version X`), bo repo mogło się zmigrować gdzie indziej (patrz pułapka 1 wyżej).
 
