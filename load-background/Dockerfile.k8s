@@ -1,0 +1,13 @@
+# Separate from Dockerfile (used by Compose's bind-mount approach). Build
+# context must be repo root so the data file is reachable:
+#   docker build -f load-background/Dockerfile.k8s -t <tag> .
+FROM grafana/k6:2.0.0
+
+COPY load-background/entrypoint.sh /entrypoint.sh
+COPY load-background/src/candidate-search.js /scripts/candidate-search.js
+COPY data-generator/output/candidates/01-candidates.sql /data/01-candidates.sql
+
+ENV DATA_FILE=/data/01-candidates.sql
+ENV TARGET_HOST=http://app-candidates.candidates.svc.cluster.local:8080
+
+ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]

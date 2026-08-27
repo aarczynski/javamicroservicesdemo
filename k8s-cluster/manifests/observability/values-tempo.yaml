@@ -16,10 +16,10 @@ tempo:
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 1Gi
   # storage.trace.backend defaults to "local" already — matches compose.yml
 
 persistence:

@@ -19,9 +19,14 @@ persistence:
   size: 1Gi
 
 # LoadBalancer (via MetalLB) so Grafana is reachable at a stable IP from the
-# LAN without kubectl port-forward.
+# LAN without kubectl port-forward. Pinned to .199 (last address in the
+# MetalLB pool, right before the DHCP dynamic range) so it survives a
+# Service delete/recreate and stays out of .100, reserved for the future
+# ingress controller.
 service:
   type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: "192.168.10.199"
 
 resources:
   requests:

@@ -1,0 +1,31 @@
+# kubectl apply -f namespace.yaml -f app.yaml
+# load-background. Pure client (no exposed port) — sends sinusoidal ambient
+# load at app-candidates via its in-cluster ClusterIP-equivalent DNS name.
+# No nodeSelector/tolerations: lands naturally on a generic worker, same as
+# app-candidates/app-job-offers.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-background
+  namespace: load-background
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-background
+  template:
+    metadata:
+      labels:
+        app: load-background
+    spec:
+      containers:
+        - name: load-background
+          image: ghcr.io/aarczynski/load-background:v1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi

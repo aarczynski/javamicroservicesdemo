@@ -312,7 +312,7 @@ distribution.
 Current state:
 
 * **Cilium** as CNI, with Hubble for network observability.
-* **MetalLB** (L2 mode) providing `LoadBalancer` services on the home LAN.
+* **MetalLB** (L2 mode) providing `LoadBalancer` services on the home LAN, IP pool `192.168.10.100`–`192.168.10.199`.
 * **`local-path-provisioner`** for node-local persistent storage.
 * The full observability stack from this README — Prometheus, Loki, Tempo, OTEL Collector, Grafana — already running
   on the cluster via Helm, mirroring the Compose setup above.

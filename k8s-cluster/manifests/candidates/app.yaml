@@ -99,7 +99,7 @@ metadata:
   name: app-candidates
   namespace: candidates
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: app-candidates
   ports:

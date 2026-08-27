@@ -2,9 +2,9 @@
 
 Cel: domowy klaster Kubernetes na Raspberry Pi 5 (8GB, NVMe), docelowo do wdrożenia `javamicroservicesdemo` (candidates, job-offers, ich bazy, observability).
 
-**Gotowe:** 6 node'ów `Ready` pod finalnymi nazwami, MetalLB, `local-path-provisioner`, cały stack observability (Prometheus/Loki/Tempo/otel-collector/Grafana) działający end-to-end, oba Postgresy (`candidates`, `job-offers`) wdrożone i załadowane danymi z `data-generator`, oba mikroserwisy (`app-candidates`, `app-job-offers`) wdrożone i zweryfikowane end-to-end. Repo (`k8s-cluster/`, ten handoff) skomitowane na branchu `k8s-observability-stack`, jeszcze niezmergowane.
+**Gotowe:** 6 node'ów `Ready` pod finalnymi nazwami, MetalLB, `local-path-provisioner`, cały stack observability (Prometheus/Loki/Tempo/otel-collector/Grafana) działający end-to-end, oba Postgresy (`candidates`, `job-offers`) wdrożone i załadowane danymi z `data-generator`, oba mikroserwisy (`app-candidates`, `app-job-offers`) wdrożone i zweryfikowane end-to-end, ambient load (`load-background`, k6) działający w klastrze jako osobny pod, **ingress przez Cilium Gateway API działający end-to-end** (klaster zmigrowany z kube-proxy na `kubeProxyReplacement`, `.100` jako publiczne wejście API przez port 80). Repo (`k8s-cluster/`, ten handoff) skomitowane na branchu `k8s-observability-stack`, jeszcze niezmergowane.
 
-**Następny krok:** ingress controller (patrz "Następny krok" niżej) — appki są już wdrożone.
+**Następny krok:** worker-3/worker-4, Kubernetes Dashboard, weryfikacja telemetrii appek w Grafanie (patrz "Następny krok" niżej).
 
 ## app-candidates / app-job-offers — ukończone (2026-08-27)
 
@@ -26,7 +26,9 @@ Wdrożone bezpośrednio przez Claude (jawne "ty robisz"), build+push obrazów z 
 
 **Do zrobienia (nie teraz):** `imagePullSecrets` niepotrzebne (pakiety publiczne) — do rewizji, jeśli kiedyś przejdą na prywatne. Brak `HorizontalPodAutoscaler`/wielu replik — 1 replika each, wystarczające na tym etapie.
 
-**IP LoadBalancerów (`.101`/`.102`/`.103`) nie są przypięte na sztywno** (brak `metallb.io/loadBalancerIPs` w manifestach) — MetalLB przydzielił je automatycznie z puli przy pierwszym `apply` i **zostają stałe dopóki dany `Service` nie zostanie usunięty i utworzony od nowa** (restart poda/node'a/klastra tego nie rusza — stan jest w `etcd`). Świadoma decyzja użytkownika: nie przypinać teraz. Jeśli kiedyś `Service` trzeba będzie usunąć i odtworzyć, nowy IP może wypaść inny niż obecny — wtedy do rozważenia dopisanie `metallb.io/loadBalancerIPs` dla przewidywalności.
+**IP LoadBalancerów (`.101`/`.102`) nie są przypięte na sztywno** (brak `metallb.io/loadBalancerIPs` w manifestach) — MetalLB przydzielił je automatycznie z puli przy pierwszym `apply` i **zostają stałe dopóki dany `Service` nie zostanie usunięty i utworzony od nowa** (restart poda/node'a/klastra tego nie rusza — stan jest w `etcd`). Jeśli kiedyś trzeba będzie je usunąć i odtworzyć, nowy IP może wypaść inny niż obecny.
+
+**Aktualizacja 2026-08-27:** `app-candidates` **nie jest już `LoadBalancer`** — przełączony na `ClusterIP` (jak `app-job-offers`), bo publicznym wejściem do API jest teraz Gateway (`.100`, port 80, nie `:8080`) — patrz sekcja "Ingress — Cilium Gateway API" niżej. Stary adres `.103` wrócił do puli MetalLB (wolny). Grafana (`.199`) i Gateway (`.100`) mają teraz IP przypięte na sztywno przez `metallb.io/loadBalancerIPs` — powyższy akapit o nieprzypiętych IP dotyczy już tylko obu Postgresów.
 
 ## Postgres — candidates/job-offers — ukończone (2026-08-27)
 
@@ -40,7 +42,7 @@ Wdrożone bezpośrednio przez Claude (jawne "ty robisz" od użytkownika — wyj�
 
 **Node placement:** `postgres-candidates` przypięty (`nodeSelector` po hostname + toleracja `role=database`) na `k8s-rpi-db-1`, `postgres-job-offers` na `k8s-rpi-db-2` — rozdzielone fizycznie, żeby nie dzieliły I/O jednego dysku NVMe.
 
-**Ekspozycja: `LoadBalancer` przez MetalLB** (nie tylko `ClusterIP` + port-forward) — spójne z Grafaną (`.100`), żeby dało się łączyć bezpośrednio z dowolnego klienta w LAN bez `kubectl port-forward` za każdym razem.
+**Ekspozycja: `LoadBalancer` przez MetalLB** (nie tylko `ClusterIP` + port-forward) — spójne z Grafaną, żeby dało się łączyć bezpośrednio z dowolnego klienta w LAN bez `kubectl port-forward` za każdym razem.
 
 | Serwis | Namespace | Node | External IP | DB | User/Pass |
 |---|---|---|---|---|---|
@@ -80,7 +82,7 @@ Node'y bazodanowe i observability używają nazw generycznych, nie per-serwis �
 - **Node'y bazodanowe i observability nazwane generycznie** (`db-N`, nie per-serwis) — cel: wymienne node'y mogące hostować dowolną bazę (Postgres i/lub NoSQL, także kilka na jednym node'zie — taint `role=database` jest silnik-agnostyczny). Numeracja node'ów **0-indexed** dla workerów, ale bazy skończyły na 1-indexed (`db-1`/`db-2`) po drugiej rundzie rename — niespójność zaakceptowana, nieistotna funkcjonalnie. `master` i `observability-1` bez numeracji/z numeracją inną niż reszta — świadome odstępstwa.
 - **Liczba RPi: użytkownik ma fizycznie 12 sztuk**, nie 8 jak zakładał pierwotny plan (1 master + 2 bazy + 1 observability + 4 workery). 4 obecnie w użyciu (`master`, `db-1`, `db-2`, `observability-1`) + 2 workery = 6. **Otwarta decyzja co do pozostałych 6**: albo więcej workerów, albo HA control-plane (3 mastery — "przyszłe ćwiczenie").
 - **Robocza preferencja użytkownika:** przy pracach na klastrze (SSH/ansible/kubeadm/kubectl na node'ach) użytkownik chce sam wpisywać komendy — Claude podaje komendę, czeka na wynik, nie wykonuje sam przez Bash. Nie dotyczy reszty repo (Gradle/testy). **Obserwowane wyjątki** (zawsze jawny, ad-hoc sygnał typu "ty zrób", nie trwała zmiana): dołączanie nowych node'ów i rename całej floty node'ów 2026-08-26 — Claude wykonał SSH/ansible/kubeadm/kubectl bezpośrednio.
-- **Auto-mode classifier bywa zawodny przy `kubeadm reset`/`kubectl delete node` przez SSH** — blokuje mimo jawnej zgody użytkownika (hard-deny na destrukcyjne komendy), nawet z istniejącą regułą `autoMode.allow` w `.claude/settings.local.json` (plik lokalny, niecommitowany — patrz `.gitignore`). Jeśli się powtórzy: reguła już tam jest, powinna przepuszczać automatycznie; jeśli nie zadziała, ostatecznym wyjściem było odpalenie sesji w "yolo mode" (bypass permission prompts).
+- **Auto-mode classifier bywa zawodny przy `kubeadm reset`/`kubectl delete node` przez SSH** — blokuje mimo jawnej zgody użytkownika (hard-deny na destrukcyjne komendy), nawet z istniejącą regułą `autoMode.allow` w `.claude/settings.local.json` (plik lokalny, niecommitowany — patrz `.gitignore`). Jeśli się powtórzy: reguła już tam jest, powinna przepuszczać automatycznie; jeśli nie zadziała, ostatecznym wyjściem było odpalenie sesji w "yolo mode" (bypass permission prompts). **Potwierdzone ponownie 2026-08-27** na trzech kolejnych komendach: `kubectl delete svc`, `helm upgrade cilium` (zmiana core CNI/kube-proxy), oraz SSH+`sudo`+`iptables-restore` na node'ach — wszystkie zablokowane mimo jawnego "zrób to za mnie/ty uruchom". Za każdym razem rozwiązanie było takie samo: Claude podaje gotową komendę, użytkownik wkleja i uruchamia sam.
 
 ## MetalLB — ukończone (2026-08-26)
 
@@ -111,7 +113,7 @@ Po upgrade: 6/6 speakerów `Running` (po jednym na każdym node'zie, w tym taint
 
 ## Observability stack — ukończone (2026-08-26)
 
-Prometheus + Loki + Tempo + otel-collector + Grafana wdrożone na `k8s-rpi-observability-1` przez Helm, zwierciadlące configi z `compose.yml`/`observability/*`. Wszystkie 5 Podów `Running`/`Ready`, wszystkie 3 datasource'y w Grafanie zdrowe (`/api/datasources/uid/<uid>/health` → `OK`), 3 dashboardy (HTTP Monitoring, JVM Monitoring, Logs) załadowane przez sidecar. Grafana dostępna pod `http://192.168.10.100` (pierwszy adres z puli MetalLB), anonymous auth jak w compose (`admin`, bez logowania).
+Prometheus + Loki + Tempo + otel-collector + Grafana wdrożone na `k8s-rpi-observability-1` przez Helm, zwierciadlące configi z `compose.yml`/`observability/*`. Wszystkie 5 Podów `Running`/`Ready`, wszystkie 3 datasource'y w Grafanie zdrowe (`/api/datasources/uid/<uid>/health` → `OK`), 3 dashboardy (HTTP Monitoring, JVM Monitoring, Logs) załadowane przez sidecar. Grafana dostępna pod `http://192.168.10.199` (pierwotnie `.100`, przypięta na stałe pod `.199` 2026-08-27 przez `metallb.io/loadBalancerIPs` — `.100` zwolniony dla Gateway, patrz sekcja "Ingress — Cilium Gateway API" niżej), anonymous auth jak w compose (`admin`, bez logowania).
 
 **Storage:** `local-path-provisioner` v0.0.37 zainstalowany jako pierwszy krok (`kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.37/deploy/local-path-storage.yaml`) — na klastrze wcześniej nie było żadnego `StorageClass`. Tworzy `StorageClass` o nazwie `local-path` (`WaitForFirstConsumer`, `reclaimPolicy: Delete`), używaną przez wszystkie PVC-e stacku.
 
@@ -141,6 +143,37 @@ Prometheus + Loki + Tempo + otel-collector + Grafana wdrożone na `k8s-rpi-obser
 
 Działa na generic workerach (`k8s-rpi-worker-1`/`-2`), scheduler sam omija tainted node'y. Decyzja użytkownika: zostaje w klastrze mimo niepewności co do realnego użycia — było częścią uzasadnienia wyboru Cilium zamiast Calico. Do ponownej oceny, jeśli faktycznie nigdy nie będzie używane do debugowania sieci.
 
+## Ingress — Cilium Gateway API — ukończone (2026-08-27)
+
+**Wybór kontrolera:** zamiast osobnego ingress-nginx/Traefik, wybrano **Cilium Gateway API** — reużywa CNI, który już jest w klastrze (zero dodatkowego komponentu do utrzymania na ciasnym budżecie węzłów RPi), i to nowszy standard (Gateway API stopniowo zastępuje klasyczny `Ingress`). Świadomy kompromis: `Gateway`/`HTTPRoute` to inny model mentalny niż `Ingress`, mniej "ogólnych" tutoriali.
+
+**Wymagana migracja z kube-proxy na `kubeProxyReplacement`** — Cilium Gateway API twardo tego wymaga (potwierdzone w oficjalnych docs). To nie był izolowany dodatek, tylko realna zmiana rdzenia sieciowego całego klastra:
+1. Zainstalowane CRD-y Gateway API, standard channel **v1.4.1** (wersja wymagana przez Cilium 1.19) — `gatewayclasses`, `gateways`, `httproutes`, `referencegrants`, `grpcroutes`.
+2. Nowy `k8s-cluster/manifests/cilium/values-cilium.yaml` (pierwszy raz Cilium ma tracked values w repo — wcześniej bootstrapped ad-hoc) — dopisane `kubeProxyReplacement: "true"`, `k8sServiceHost`/`k8sServicePort` (`192.168.10.1:6443`, adres control-plane — wymagane, bo bez kube-proxy Cilium nie ma jak inaczej odkryć API servera) i `gatewayAPI.enabled: true`. `helm upgrade cilium cilium/cilium -n kube-system -f values-cilium.yaml --version 1.19.5` (ta sama wersja chartu, tylko nowe pola).
+3. **Kolejność zgodna z oficjalnym przewodnikiem migracji Cilium** (zweryfikowana przez `WebFetch` na docs.cilium.io, nie zgadywana): najpierw włączyć `kubeProxyReplacement` przy wciąż działającym kube-proxy (stan hybrydowy), zweryfikować `KubeProxyReplacement: True` na wszystkich node'ach (`cilium-dbg status`), dopiero potem usunąć kube-proxy. Dokumentacja Cilium wprost ostrzega, że stan hybrydowy może zrywać istniejące połączenia (dwie niezależne tabele NAT) — stąd kolejność ma znaczenie, nie robić tego na odwrót.
+4. Usunięcie kube-proxy: `kubectl -n kube-system delete ds kube-proxy` + `delete cm kube-proxy`, potem na **każdym z 6 node'ów** przez SSH: `sudo sh -c "iptables-save | grep -v KUBE | iptables-restore"` (czyszczenie starych reguł). Wykonane przez użytkownika (auto-mode classifier zablokował to Claude'owi — patrz "Kluczowe decyzje architektoniczne").
+5. **Zweryfikowane po migracji:** `KubeProxyReplacement: True` na wszystkich 6 node'ach, `app-candidates`/Postgres/Grafana nadal odpowiadają, `load-background` bez błędów w logach — brak przerwy zauważalnej poza samą migracją.
+
+**Zasoby Gateway API** (`k8s-cluster/manifests/candidates/gateway.yaml`): `Gateway` (`gatewayClassName: cilium`, namespace `candidates`) + `HTTPRoute` kierujący `path: /` (`PathPrefix`) na `Service app-candidates:8080`. IP przypięty przez `spec.infrastructure.annotations: {metallb.io/loadBalancerIPs: "192.168.10.100"}` — Cilium propaguje tę adnotację na auto-tworzony `Service` typu `LoadBalancer` (`cilium-gateway-api-gateway`), który MetalLB obsługuje dokładnie tak jak każdy inny ręcznie napisany `Service` (Cilium nie ma włączonego własnego LB-IPAM w tym klastrze — o to zadbało już MetalLB). Zadziałało od razu, bez dodatkowej konfiguracji MetalLB.
+
+**Konsekwencja:** `app-candidates` `Service` przełączony z `LoadBalancer` na `ClusterIP` (jak `app-job-offers`) — publiczne wejście do API to teraz **`http://192.168.10.100/api/v1/...` (port 80, bez `:8080`)**, nie bezpośredni adres appki. Zweryfikowane end-to-end: `GET /actuator/health` → `200`, `GET /api/v1/candidates/{id}/matching-offers` → `200` z realnymi dopasowanymi ofertami.
+
+**Do zrobienia (nie teraz):** rozszerzenie `HTTPRoute` o więcej reguł/serwisów w miarę potrzeb, weryfikacja dostępu z innych maszyn w LAN (nie tylko z Maca).
+
+## load-background — ambient load w klastrze — ukończone (2026-08-27)
+
+**Decyzja: w klastrze, nie na zewnętrznym hoście** — Raspberry Pi są fizycznie always-on (Mac nie), więc to k8s jest tu "zawsze włączoną" infrastrukturą; prościej sieciowo (wołanie po wewnętrznym DNS Service'u, bez ryzyka hairpin NAT przez MetalLB).
+
+**Problem:** plik z danymi testowymi (`data-generator/output/candidates/01-candidates.sql`, **21MB**, 100k UUID-ów) jest za duży na `ConfigMap` (limit 1MB) i k8s nie ma odpowiednika bind-mounta z Compose. **Rozwiązanie:** nowy `load-background/Dockerfile.k8s` (osobny od `Dockerfile` używanego przez Compose — ten zostaje nietknięty, analogicznie do zasady z planu pkt 13 o logach) wypiekający plik z danymi bezpośrednio w obraz przy buildzie (build context = repo root). Ten sam workflow co appki: `ghcr.io/aarczynski/load-background:v1`, build+push z Maca, ręczne ustawienie Public w GitHub Packages (ta sama pułapka co przy appkach).
+
+**Manifest** (`k8s-cluster/manifests/load-background/`): namespace `load-background` + `Deployment` (1 replika, bez `Service` — to czysty klient, nic nie nasłuchuje), bez tainta/nodeSelectora (ląduje naturalnie na generic workerze). `TARGET_HOST` wskazuje na wewnętrzny DNS `app-candidates.candidates.svc.cluster.local:8080` (nie zewnętrzny adres — appka jest teraz i tak `ClusterIP`, patrz sekcja Ingress wyżej).
+
+**Zweryfikowane:** pod `Running`, k6 generuje sinusoidalny ruch (~8 req/s baseline), `app-candidates` faktycznie odpowiada (część requestów zwraca realne dopasowane oferty, widoczne w logach obu stron).
+
+## Tempo — fix OOMKilled — ukończone (2026-08-27)
+
+`tempo-0` był w `CrashLoopBackOff` od ~18h, **`OOMKilled` (exit 137)** — limit pamięci `512Mi` za mały pod normalne obciążenie (niezwiązane z migracją kube-proxy, sprawdzone w logach/opisie poda). Node `k8s-rpi-observability-1` miał mnóstwo zapasu (memory requests 11%, limits 52% z ~8GB) — podniesiono limit w `values-tempo.yaml`: `requests.memory: 128Mi→256Mi`, `limits.memory: 512Mi→1Gi`. Po `helm upgrade` StatefulSet nie podmienił automatycznie już istniejącego (crashującego) poda z nowym szablonem — trzeba było ręcznie `kubectl delete pod tempo-0`, żeby StatefulSet odtworzył go z nowymi limitami. Działa stabilnie po naprawie (`1/1 Running`, 0 restartów).
+
 ## Ansible
 
 Katalog: `k8s-cluster/ansible/` w repo (nie wchodzi w Gradle build, skomitowany na branchu `k8s-observability-stack`).
@@ -169,15 +202,15 @@ Passwordless sudo już skonfigurowane na wszystkich node'ach — `--ask-become-p
 
 ## Następny krok (do zrobienia w kolejnej sesji)
 
-Gotowe: node'y, MetalLB, storage, cały stack observability, oba Postgresy i obie appki (`candidates`/`job-offers`) załadowane danymi i wdrożone, zweryfikowane end-to-end (patrz sekcje wyżej).
+Gotowe: node'y, MetalLB, storage, cały stack observability, oba Postgresy i obie appki (`candidates`/`job-offers`) załadowane danymi i wdrożone, ambient load w klastrze, ingress przez Cilium Gateway API (klaster bez kube-proxy) — wszystko zweryfikowane end-to-end (patrz sekcje wyżej).
 
 Jeszcze nie zrobione, w orientacyjnej kolejności:
 1. `k8s-rpi-worker-3`/`worker-4` (dopełnienie pierwotnego planu 4 workerów, `inventory.ini` już ma zakomentowane wpisy) + decyzja co do pozostałych RPi z 12 fizycznie posiadanych (patrz "Kluczowe decyzje architektoniczne").
-2. Ingress controller.
-3. Kubernetes Dashboard na `k8s-rpi-observability-1` (patrz plan pkt 12 niżej).
-4. **Weryfikacja telemetrii appek w Grafanie** — appki są wdrożone i wskazują na otel-collector, ale nie sprawdzone jeszcze, czy logi/trace'y/metryki faktycznie płyną (analogicznie do checklisty "Po aktualizacjach zależności" w CLAUDE.md).
+2. Kubernetes Dashboard na `k8s-rpi-observability-1` (patrz plan pkt 12 niżej).
+3. **Weryfikacja telemetrii appek w Grafanie** — appki są wdrożone i wskazują na otel-collector, ale nie sprawdzone jeszcze, czy logi/trace'y/metryki faktycznie płyną (analogicznie do checklisty "Po aktualizacjach zależności" w CLAUDE.md).
+4. Rozszerzenie `HTTPRoute` o kolejne reguły/serwisy w miarę potrzeb; weryfikacja dostępu do Gateway (`.100`) z innych maszyn w LAN, nie tylko z Maca.
 
-**Helm — decyzja potwierdzona w praktyce (2026-08-26):** dla infrastruktury (MetalLB, obserwowalność, docelowo ingress-nginx) używać Helm charts — przed `helm install` warto raz zobaczyć wyrenderowany manifest (`helm template`), żeby nie było to czarną skrzynką. Dla własnych apek (`candidates`/`job-offers`) na razie zostać przy plain YAML. **Ważna lekcja:** zawsze sprawdzać `deprecated: true` w metadanych chartu przed instalacją (`helm show chart <repo>/<chart> --version X`), bo repo mogło się zmigrować gdzie indziej (patrz pułapka 1 wyżej).
+**Helm — decyzja potwierdzona w praktyce (2026-08-26):** dla infrastruktury (MetalLB, obserwowalność, Cilium) używać Helm charts — przed `helm install` warto raz zobaczyć wyrenderowany manifest (`helm template`), żeby nie było to czarną skrzynką. Dla własnych apek (`candidates`/`job-offers`) na razie zostać przy plain YAML. **Ważna lekcja:** zawsze sprawdzać `deprecated: true` w metadanych chartu przed instalacją (`helm show chart <repo>/<chart> --version X`), bo repo mogło się zmigrować gdzie indziej (patrz pułapka 1 wyżej).
 
 ## Plany na koniec (długoterminowe, nie priorytetowe teraz)
 
