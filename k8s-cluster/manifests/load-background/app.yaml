@@ -1,8 +1,8 @@
 # kubectl apply -f namespace.yaml -f app.yaml
 # load-background. Pure client (no exposed port) — sends sinusoidal ambient
 # load at app-candidates via its in-cluster ClusterIP-equivalent DNS name.
-# No nodeSelector/tolerations: lands naturally on a generic worker, same as
-# app-candidates/app-job-offers.
+# Pinned to k8s-rpi-observability-1: keeps the ambient-load generator off the
+# generic workers, colocated with the stack it feeds telemetry into.
 
 apiVersion: apps/v1
 kind: Deployment
@@ -19,6 +19,13 @@ spec:
       labels:
         app: load-background
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-observability-1
+      tolerations:
+        - key: role
+          operator: Equal
+          value: observability
+          effect: NoSchedule
       containers:
         - name: load-background
           image: ghcr.io/aarczynski/load-background:v1
