@@ -13,6 +13,20 @@ tempo:
   # Real schema rewrite, not just new optional sections — chart would need
   # to be rewritten upstream to support 3.x. Staying on chart default (2.10.8).
   retention: 168h # 7d, matches observability/tempo/tempo.yml
+  # Chart default (1024) pre-allocates a GC ballast equal to the whole 1Gi
+  # memory limit below, leaving no headroom for actual heap — guaranteed
+  # OOMKilled under any real traffic (found 2026-08-27 after repeated OOM
+  # despite raising the limit). Lowered well below the limit instead.
+  memBallastSizeMbs: 128
+  # Ballast alone wasn't enough — verified via Prometheus (container_memory_working_set_bytes)
+  # that usage still climbs to ~1000-1007Mi (right at the 1024Mi limit) before OOMKilled, on a
+  # repeating ~45-60min sawtooth. Root cause: Go's GC triggers off GOGC (heap-doubling), not the
+  # cgroup limit, so without GOMEMLIMIT it can overshoot the container limit before a GC cycle
+  # fires. GOMEMLIMIT gives the runtime a soft target so GC kicks in proactively. Set to 800MiB,
+  # leaving ~224Mi headroom under the 1Gi limit for non-heap overhead (goroutine stacks, cgo, OS).
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: "800MiB"
   resources:
     requests:
       cpu: 100m
