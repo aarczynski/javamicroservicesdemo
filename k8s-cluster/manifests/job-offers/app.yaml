@@ -22,7 +22,7 @@ spec:
       containers:
         - name: app-job-offers
           image: ghcr.io/aarczynski/app-job-offers:v1
-          command: ["java", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
+          command: ["java", "-Djava.net.preferIPv4Stack=true", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
           ports:
             - containerPort: 8080
           env:

@@ -40,7 +40,7 @@ spec:
       containers:
         - name: app-candidates
           image: ghcr.io/aarczynski/app-candidates:v1
-          command: ["java", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          command: ["java", "-Djava.net.preferIPv4Stack=true", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080
           env:
