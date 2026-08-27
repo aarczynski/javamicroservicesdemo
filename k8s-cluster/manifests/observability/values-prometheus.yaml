@@ -1,13 +1,29 @@
 # helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 # helm install prometheus prometheus-community/prometheus -n observability -f values-prometheus.yaml --version 29.27.0
 
-# Only the bare server, matching compose.yml — no alertmanager/exporters/pushgateway.
+# Bare server matching compose.yml, plus kube-state-metrics/node-exporter for
+# cluster/pod visibility (compose.yml has no equivalent — k8s-only addition).
 alertmanager:
   enabled: false
 kube-state-metrics:
-  enabled: false
+  enabled: true
 prometheus-node-exporter:
-  enabled: false
+  enabled: true
+  # DaemonSet: needs to run on every node, including the tainted ones, to see
+  # node-level metrics from db-1/db-2/observability-1/master (same pattern as
+  # the MetalLB speaker fix — see handoff "pułapka" notes).
+  tolerations:
+    - key: role
+      operator: Equal
+      value: database
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 prometheus-pushgateway:
   enabled: false
 
