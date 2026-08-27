@@ -2365,6 +2365,174 @@ data:
               "mode": "multi"
             }
           }
+        },
+        {
+          "id": 21,
+          "type": "row",
+          "title": "Pod/Container Resources",
+          "description": "Which pod is actually eating CPU/memory, and whether any container is being CPU-throttled — cadvisor metrics, not just node totals.",
+          "gridPos": {
+            "x": 0,
+            "y": 50,
+            "w": 24,
+            "h": 1
+          },
+          "collapsed": false,
+          "panels": []
+        },
+        {
+          "id": 22,
+          "type": "timeseries",
+          "title": "CPU Usage by Pod (cores)",
+          "gridPos": {
+            "x": 0,
+            "y": 51,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+              "refId": "A",
+              "legendFormat": "{{namespace}}/{{pod}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 1,
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 23,
+          "type": "timeseries",
+          "title": "Memory Usage by Pod",
+          "gridPos": {
+            "x": 12,
+            "y": 51,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(container_memory_working_set_bytes{container!=\"\", container!=\"POD\"}) by (namespace, pod)",
+              "refId": "A",
+              "legendFormat": "{{namespace}}/{{pod}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 1,
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 24,
+          "type": "timeseries",
+          "title": "CPU Throttling by Pod",
+          "description": "Time fraction each container spent CPU-throttled (hit its cfs_quota). Zero for containers with no CPU limit set — mostly relevant once app-candidates/app-job-offers get limits.cpu for HPA.",
+          "gridPos": {
+            "x": 0,
+            "y": 59,
+            "w": 24,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+              "refId": "A",
+              "legendFormat": "{{namespace}}/{{pod}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineWidth": 1,
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
         }
       ],
       "preload": false,
