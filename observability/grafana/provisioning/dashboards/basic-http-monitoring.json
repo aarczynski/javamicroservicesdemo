@@ -666,7 +666,7 @@
   "preload": false,
   "refresh": "5s",
   "schemaVersion": 42,
-  "tags": [],
+  "tags": ["microservices", "http"],
   "templating": {
     "list": [
       {

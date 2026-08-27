@@ -220,7 +220,7 @@
   "preload": false,
   "refresh": "",
   "schemaVersion": 41,
-  "tags": [],
+  "tags": ["microservices", "logs"],
   "templating": {
     "list": [
       {
