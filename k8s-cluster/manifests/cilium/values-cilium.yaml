@@ -22,6 +22,10 @@ hubble:
     enabled: true
   ui:
     enabled: true
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.io/loadBalancerIPs: "192.168.10.197"
 
 ipam:
   operator:
