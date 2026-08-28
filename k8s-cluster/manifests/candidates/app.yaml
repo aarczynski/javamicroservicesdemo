@@ -37,6 +37,20 @@ spec:
       labels:
         app: app-candidates
     spec:
+      # ndots:5 (k8s default) makes glibc/JVM getaddrinfo() try up to 4 extra
+      # search-domain-expanded queries (candidates.svc.cluster.local, ...,
+      # lan) before the real, already-fully-qualified name — a single lost
+      # UDP packet on any of those costs a full 5s resolver timeout. Our
+      # cross-namespace FQDNs (app-job-offers.job-offers.svc.cluster.local,
+      # otel-collector...observability.svc.cluster.local) have 4 dots, so
+      # ndots:1 tries them as absolute first, skipping the search list.
+      # Root-caused 2026-08-28 via JVM thread dump: Tomcat worker threads
+      # serialized on InetAddress$NameServiceAddresses's per-host lock while
+      # one thread sat in native lookupAllHostAddr for seconds.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       containers:
         - name: app-candidates
           image: ghcr.io/aarczynski/app-candidates:v1
