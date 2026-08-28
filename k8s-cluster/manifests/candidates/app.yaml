@@ -54,7 +54,14 @@ spec:
       containers:
         - name: app-candidates
           image: ghcr.io/aarczynski/app-candidates:v1
-          command: ["java", "-Djava.net.preferIPv4Stack=true", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
+          # lookup for 10s. A single transient packet loss (ndots:1 still hits
+          # this occasionally, root-caused 2026-08-28) then poisons every
+          # request for the next 10s with an immediate UnknownHostException
+          # instead of each retrying independently — observed as a cascade of
+          # ~26 sub-10ms error traces following one genuine resolution
+          # failure. Set to 1s so a transient loss doesn't compound.
+          command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080
           env:
