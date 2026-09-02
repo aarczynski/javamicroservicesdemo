@@ -29,7 +29,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: load-background
-          image: ghcr.io/aarczynski/load-background:v1
+          image: ghcr.io/aarczynski/load-background:v2
           resources:
             requests:
               cpu: 250m
