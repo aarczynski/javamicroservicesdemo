@@ -12,11 +12,13 @@ const VUS = 5;        // pre-allocated VUs; enough for peak RPS with latency hea
 const BASE_RPS = (MIN_RPS + MAX_RPS) / 2;  // 7.5
 const AMPLITUDE = (MAX_RPS - MIN_RPS) / 2; // 2.5
 const STEP_S = 10;      // rate update granularity; 30 stages per period
-const PERIODS = 144;    // run 144 × 5 min = 12 hours before k6 restarts; eliminates visible dips
+const PERIODS = 12;     // run 12 × 5 min = 1 hour before k6 restarts.
+// Kept short deliberately: the process leaks memory over a run (unbounded metric-sample
+// retention for k6's end-of-run summary) and the container has no memory limit headroom
+// to spare, so it must cycle well before it would otherwise get OOMKilled mid-run.
 
 // Generates PERIODS full sine periods as ramping-arrival-rate stages.
-// entrypoint.sh loops the script so k6 restarts every 12 hours instead of every 5 minutes,
-// making the inter-run gap invisible on dashboards.
+// entrypoint.sh loops the script so k6 restarts every hour, well short of the memory ceiling.
 function generateStages() {
     const stages = [];
     for (let p = 0; p < PERIODS; p++) {
