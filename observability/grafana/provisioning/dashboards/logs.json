@@ -218,7 +218,7 @@
     }
   ],
   "preload": false,
-  "refresh": "",
+  "refresh": "15s",
   "schemaVersion": 41,
   "tags": ["microservices", "logs"],
   "templating": {

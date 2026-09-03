@@ -1159,7 +1159,7 @@
     }
   ],
   "preload": false,
-  "refresh": "30s",
+  "refresh": "15s",
   "schemaVersion": 42,
   "tags": [
     "kubernetes"

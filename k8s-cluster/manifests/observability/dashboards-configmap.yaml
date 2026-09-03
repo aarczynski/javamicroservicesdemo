@@ -667,7 +667,7 @@ data:
         }
       ],
       "preload": false,
-      "refresh": "5s",
+      "refresh": "15s",
       "schemaVersion": 42,
       "tags": ["microservices", "http"],
       "templating": {
@@ -1340,7 +1340,7 @@ data:
         }
       ],
       "preload": false,
-      "refresh": "5s",
+      "refresh": "15s",
       "schemaVersion": 42,
       "tags": ["microservices", "jvm"],
       "templating": {
@@ -2536,7 +2536,7 @@ data:
         }
       ],
       "preload": false,
-      "refresh": "30s",
+      "refresh": "15s",
       "schemaVersion": 42,
       "tags": [
         "kubernetes"
@@ -2776,7 +2776,7 @@ data:
         }
       ],
       "preload": false,
-      "refresh": "",
+      "refresh": "15s",
       "schemaVersion": 41,
       "tags": ["microservices", "logs"],
       "templating": {

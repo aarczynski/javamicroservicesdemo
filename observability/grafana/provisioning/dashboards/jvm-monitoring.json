@@ -630,7 +630,7 @@
     }
   ],
   "preload": false,
-  "refresh": "5s",
+  "refresh": "15s",
   "schemaVersion": 42,
   "tags": ["microservices", "jvm"],
   "templating": {
