@@ -53,7 +53,7 @@ spec:
             value: "1"
       containers:
         - name: app-candidates
-          image: ghcr.io/aarczynski/app-candidates:v1
+          image: ghcr.io/aarczynski/app-candidates:v2
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every

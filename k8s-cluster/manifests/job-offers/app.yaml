@@ -29,7 +29,7 @@ spec:
             value: "1"
       containers:
         - name: app-job-offers
-          image: ghcr.io/aarczynski/app-job-offers:v1
+          image: ghcr.io/aarczynski/app-job-offers:v2
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request).
