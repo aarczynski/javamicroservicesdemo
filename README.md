@@ -128,6 +128,11 @@ make start
 Please note that the new v2 of Docker Compose is used. If you are using older Docker version, use `docker-compose`
 instead of `docker compose`.
 
+## CPU limits when load testing
+
+Adjust CPU limits in [compose.yml](compose.yml) to avoid Gatling starving the load-tested apps. Default configuration
+limits each app to 2 cores.
+
 # Matching score
 
 `app-job-offers` scores each candidate–offer pair as a weighted sum of five sub-scores, all in `[0.0, 1.0]`:
@@ -311,24 +316,96 @@ distribution.
 
 Current state:
 
-* **Cilium** as CNI, with Hubble for network observability.
+* **Cilium** as CNI, with Hubble for network observability, and as the ingress controller via Cilium Gateway API
+  (kube-proxy replaced by `kubeProxyReplacement`, required by Cilium's Gateway API support).
 * **MetalLB** (L2 mode) providing `LoadBalancer` services on the home LAN, IP pool `192.168.10.100`–`192.168.10.199`.
 * **`local-path-provisioner`** for node-local persistent storage.
-* The full observability stack from this README — Prometheus, Loki, Tempo, OTEL Collector, Grafana — already running
-  on the cluster via Helm, mirroring the Compose setup above.
+* The full observability stack from this README — Prometheus, Loki, Tempo, OTEL Collector, Grafana — running on the
+  cluster via Helm, mirroring the Compose setup above (see [Differences from Docker Compose](#differences-from-docker-compose)
+  for where this is expected to diverge next).
+* `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
+  own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
 * Dedicated, tainted nodes for databases and observability, plus generic worker nodes for everything else.
-
-Deploying `app-candidates` and `app-job-offers` themselves onto the cluster is still ahead.
 
 Cluster provisioning lives under [k8s-cluster/](k8s-cluster) — `ansible/` for node setup, `manifests/` for Helm
 values and Kubernetes manifests.
 
 Photo of the physical cluster coming soon.
 
-# Hints
+## Differences from Docker Compose
 
-Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested apps. Default configuration
-limits each app to 2 cores.
+The cluster currently mirrors the Compose observability setup exactly (same OTEL Collector pipeline, same
+single-binary Tempo). Two changes are planned next — tracked in detail in
+[`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md) — that will make the two environments
+diverge on purpose:
+
+* **Logs: Grafana Alloy (DaemonSet) instead of the OTEL Collector, in k8s only.** Today, in both environments, the
+  OTEL Java agent pushes logs over OTLP through the OTEL Collector to Loki — the same path as traces and metrics.
+  In k8s, an Alloy DaemonSet (one pod per node, the standard Kubernetes logging pattern) will read container stdout
+  directly and ship it to Loki, bypassing the Collector entirely for logs. This decouples log delivery from the
+  Collector's own health — a Collector crash (as happened during a 200rps Gatling burst on 2026-09-03, see the
+  handoff) no longer also stops logging. **Docker Compose keeps the current OTEL Collector path unchanged** — the
+  DaemonSet model only pays off when there are multiple nodes to collect from.
+* **Traces: `tempo-distributed` instead of single-binary Tempo, in k8s only.** Single-binary Tempo is one process
+  with a single hard memory ceiling; `tempo-distributed` splits it into separate distributor/ingester/compactor/querier
+  components that can be scaled independently. **Docker Compose keeps single-binary Tempo permanently** — a single
+  dev machine never needs to scale trace ingestion horizontally, so there's no problem for the distributed
+  architecture to solve there.
+
+```mermaid
+flowchart LR
+    gw["Cilium Gateway API\n192.168.10.100"]
+
+    subgraph candidates_ns["namespace: candidates"]
+        candidates["app-candidates"]
+        candidatesdb[("postgres-candidates")]
+    end
+
+    subgraph joboffers_ns["namespace: job-offers"]
+        joboffers["app-job-offers"]
+        joboffersdb[("postgres-job-offers")]
+    end
+
+    subgraph daemonset["Alloy DaemonSet\n(one pod per node)"]
+        alloy["Alloy"]
+    end
+
+    subgraph observability["Observability (namespace: observability)"]
+        otel["OTEL Collector\n(traces + metrics only)"]
+        prometheus["Prometheus"]
+        loki["Loki"]
+        subgraph tempo_dist["Tempo (distributed)"]
+            distributor["distributor"]
+            ingester["ingester"]
+            compactor["compactor"]
+            querier["querier"]
+        end
+        grafana["Grafana"]
+    end
+
+    gw -->|HTTP| candidates
+    candidates -->|HTTP| joboffers
+    candidates --- candidatesdb
+    joboffers --- joboffersdb
+
+    candidates -->|OTEL traces+metrics| otel
+    joboffers -->|OTEL traces+metrics| otel
+    otel --> prometheus
+    otel --> distributor
+    distributor --> ingester --> compactor
+    ingester --> querier
+
+    candidates -.->|stdout| alloy
+    joboffers -.->|stdout| alloy
+    alloy -->|push| loki
+
+    prometheus --> grafana
+    loki --> grafana
+    querier --> grafana
+```
+
+This diagram shows the **planned** target state, not what's live today — the cluster currently still matches the
+Compose diagram at the top of this README exactly.
 
 # Known issues
 
@@ -337,6 +414,6 @@ limits each app to 2 cores.
 # Future plans
 
 * Prepare local setup using Minikube.
-* Deploy `app-candidates` and `app-job-offers` onto the home Kubernetes cluster (see [Home Kubernetes cluster](#home-kubernetes-cluster)).
-* Prepare CI/CD for above.
+* Migrate k8s logging to Grafana Alloy and traces to `tempo-distributed` (see [Differences from Docker Compose](#differences-from-docker-compose)).
+* Prepare CI/CD for the home Kubernetes cluster.
 * Implement backpressure or circuit breaker.
