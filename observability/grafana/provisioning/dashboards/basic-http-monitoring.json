@@ -110,9 +110,8 @@
             "mean"
           ],
           "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "width": 500
+          "placement": "bottom",
+          "showLegend": true
         },
         "timezone": [
           "browser"
@@ -248,9 +247,8 @@
             "sum"
           ],
           "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "width": 500
+          "placement": "bottom",
+          "showLegend": true
         },
         "timezone": [
           "browser"
