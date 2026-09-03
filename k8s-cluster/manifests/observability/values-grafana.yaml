@@ -89,7 +89,11 @@ datasources:
         type: tempo
         uid: tempo
         access: proxy
-        url: http://tempo.observability.svc.cluster.local:3200
+        # tempo-query-frontend, not tempo — queries go through the query-frontend
+        # now that Tempo runs as tempo-distributed (values-tempo-distributed.yaml).
+        # Same port (3200) as the old single-binary Service — verified via
+        # `helm template` against the real chart, not guessed.
+        url: http://tempo-query-frontend.observability.svc.cluster.local:3200
         isDefault: false
         editable: false
         jsonData:

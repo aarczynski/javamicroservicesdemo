@@ -1,0 +1,170 @@
+# kubectl apply -f minio.yaml
+#
+# Shared object storage backend for tempo-distributed's block-builder/backend-worker/
+# querier (see values-tempo-distributed.yaml) — k8s only, no Compose equivalent.
+#
+# Why this exists: storage.trace.backend: local in the tempo-distributed chart mounts
+# an emptyDir PER POD (verified via `helm template`) — block-builder would write trace
+# blocks nobody else, including querier, can read. tempo-distributed needs a real
+# network-accessible backend shared across pods; MinIO is the lightweight, self-hosted
+# S3-compatible option, matching the "local storage, no cloud dependency" spirit of the
+# rest of this cluster.
+#
+# NOT via Helm: MinIO's own chart (minio/minio, charts.min.io) is stale — latest chart
+# version (5.4.0) is still pinned to appVersion RELEASE.2024-12-18, ~21 months old as of
+# this file being written (2026-09-03), while everything else in this repo's charts gets
+# bumped every few weeks. MinIO Inc. deprecated the chart/Operator/Console in favor of
+# their commercial product; the community `minio/minio` and `minio/mc` server/client
+# images are still published (verified via the Docker Hub registry API — latest tags
+# 2025-09/2025-08 respectively, both multi-arch including arm64), so plain YAML against
+# those images — same pattern already used for Postgres in this repo — is the honest
+# choice instead of pinning to an abandoned chart.
+#
+# Credentials in plaintext below, same posture as postgres.yaml's Secret in this repo —
+# LAN-only homelab cluster, not internet-exposed.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: observability
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: minioadmin
+  MINIO_ROOT_PASSWORD: minioadmin123
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      # Colocated with the tempo-distributed components that actually talk to it
+      # (block-builder, backend-worker, querier) — see values-tempo-distributed.yaml.
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-observability-2
+      tolerations:
+        - key: role
+          operator: Equal
+          value: observability
+          effect: NoSchedule
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: observability
+spec:
+  type: ClusterIP
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+
+---
+# One-shot bucket creation — MinIO doesn't auto-create buckets on startup. Re-running
+# this Job (kubectl delete job/minio-create-bucket then re-apply) is safe: `mc mb
+# --ignore-existing` no-ops if the bucket is already there.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-create-bucket
+  namespace: observability
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-observability-2
+      tolerations:
+        - key: role
+          operator: Equal
+          value: observability
+          effect: NoSchedule
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          command:
+            - sh
+            - -c
+            - |
+              mc alias set local http://minio.observability.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" &&
+              mc mb --ignore-existing local/tempo-traces

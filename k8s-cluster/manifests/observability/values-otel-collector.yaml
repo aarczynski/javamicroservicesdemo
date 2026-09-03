@@ -2,9 +2,9 @@
 # helm install otel-collector open-telemetry/opentelemetry-collector -n observability -f values-otel-collector.yaml --version 0.171.0
 #
 # Endpoints point at in-cluster Service DNS names (verified via `helm template` against
-# the actually-rendered prometheus/tempo Services in this same directory):
+# the actually-rendered prometheus/tempo-distributed Services in this same directory):
 #   prometheus-server.observability.svc.cluster.local:80 (chart Service port — not 9090)
-#   tempo.observability.svc.cluster.local:4317
+#   tempo-distributor.observability.svc.cluster.local:4317
 #
 # No Loki endpoint here (unlike observability/otel-collector/otel-collector.yml for
 # Compose) — see the "logs" pipeline note below, logs bypass this collector in k8s.
@@ -66,7 +66,10 @@ alternateConfig:
       endpoint: "http://prometheus-server.observability.svc.cluster.local:80/api/v1/write"
 
     otlp_grpc/tempo:
-      endpoint: "tempo.observability.svc.cluster.local:4317"
+      # tempo-distributor, not tempo — Tempo runs as tempo-distributed now, this
+      # points at the distributor's OTLP receiver (see values-tempo-distributed.yaml).
+      # Verified via `helm template` against the real chart, not guessed.
+      endpoint: "tempo-distributor.observability.svc.cluster.local:4317"
       tls:
         insecure: true
 

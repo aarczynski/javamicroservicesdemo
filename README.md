@@ -321,8 +321,8 @@ Current state:
 * **MetalLB** (L2 mode) providing `LoadBalancer` services on the home LAN, IP pool `192.168.10.100`–`192.168.10.199`.
 * **`local-path-provisioner`** for node-local persistent storage.
 * The full observability stack from this README — Prometheus, Loki, Tempo, OTEL Collector, Grafana — running on the
-  cluster via Helm, mirroring the Compose setup above (see [Differences from Docker Compose](#differences-from-docker-compose)
-  for where this is expected to diverge next).
+  cluster via Helm, plus two k8s-only pieces (Alloy for logs, Kafka + MinIO for `tempo-distributed`) that Compose
+  doesn't need — see [Differences from Docker Compose](#differences-from-docker-compose) for why.
 * `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
   own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
 * Dedicated, tainted nodes for databases and observability, plus generic worker nodes for everything else.
@@ -334,23 +334,30 @@ Photo of the physical cluster coming soon.
 
 ## Differences from Docker Compose
 
-The cluster currently mirrors the Compose observability setup exactly (same OTEL Collector pipeline, same
-single-binary Tempo). Two changes are planned next — tracked in detail in
-[`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md) — that will make the two environments
-diverge on purpose:
+The cluster diverges from Compose on purpose in two places — implemented, pending deployment/verification on the
+physical cluster; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md):
 
-* **Logs: Grafana Alloy (DaemonSet) instead of the OTEL Collector, in k8s only.** Today, in both environments, the
-  OTEL Java agent pushes logs over OTLP through the OTEL Collector to Loki — the same path as traces and metrics.
-  In k8s, an Alloy DaemonSet (one pod per node, the standard Kubernetes logging pattern) will read container stdout
-  directly and ship it to Loki, bypassing the Collector entirely for logs. This decouples log delivery from the
-  Collector's own health — a Collector crash (as happened during a 200rps Gatling burst on 2026-09-03, see the
-  handoff) no longer also stops logging. **Docker Compose keeps the current OTEL Collector path unchanged** — the
-  DaemonSet model only pays off when there are multiple nodes to collect from.
-* **Traces: `tempo-distributed` instead of single-binary Tempo, in k8s only.** Single-binary Tempo is one process
-  with a single hard memory ceiling; `tempo-distributed` splits it into separate distributor/ingester/compactor/querier
-  components that can be scaled independently. **Docker Compose keeps single-binary Tempo permanently** — a single
-  dev machine never needs to scale trace ingestion horizontally, so there's no problem for the distributed
-  architecture to solve there.
+* **Logs: Grafana Alloy (DaemonSet) instead of the OTEL Collector, in k8s only.** In Compose, the OTEL Java agent
+  pushes logs over OTLP through the OTEL Collector to Loki — the same path as traces and metrics. In k8s, apps set
+  `OTEL_LOGS_EXPORTER=none` instead, and an Alloy DaemonSet (one pod per node, the standard Kubernetes logging
+  pattern) reads container stdout directly and ships it to Loki, bypassing the Collector entirely for logs. This
+  decouples log delivery from the Collector's own health — a Collector crash (as happened during a 200rps Gatling
+  burst on 2026-09-03, see the handoff) no longer also stops logging. **Docker Compose keeps the OTEL Collector log
+  path unchanged** — the DaemonSet model only pays off when there are multiple nodes to collect from.
+* **Traces: `tempo-distributed` instead of single-binary Tempo, in k8s only.** This isn't just "the same Tempo split
+  into more pods" — it's a genuine change of *deployment mode*, and that mode is what pulls in two new dependencies
+  Compose never needed. Per Tempo 3.0's own release notes: *"In monolithic mode, Tempo runs all components in-process
+  without Kafka"* vs *"In microservices mode, a Kafka-compatible system provides durable buffering between ingestion
+  and downstream components."* Compose runs Tempo monolithically (`target: all`, one process) — that's why it could
+  already move to Tempo 3.0.3 with zero extra infrastructure. k8s crosses into microservices mode specifically to get
+  per-component memory isolation (single-binary Tempo's single hard memory ceiling caused the 2026-09-03 OOM cascade
+  during that same load test) — and once distributor and live-store/block-builder are separate pods instead of one
+  process, Tempo 3.x requires Kafka as the transport between them. Separately, `storage.trace.backend: local` turned
+  out to mount an **emptyDir per pod** (verified via `helm template`, not assumed) — block-builder's blocks would be
+  invisible to querier on another pod — so trace storage also moved to MinIO (self-hosted S3-compatible object
+  storage), the one piece every component can reach over the network regardless of which pod it's on. **Docker
+  Compose keeps single-binary Tempo permanently** — one process never needs Kafka or shared object storage to talk to
+  itself.
 
 ```mermaid
 flowchart LR
@@ -374,11 +381,14 @@ flowchart LR
         otel["OTEL Collector\n(traces + metrics only)"]
         prometheus["Prometheus"]
         loki["Loki"]
+        kafka[("Kafka\n(single node, KRaft)\ningest buffer")]
+        minio[("MinIO\nshared trace block storage")]
         subgraph tempo_dist["Tempo (distributed)"]
             distributor["distributor"]
-            ingester["ingester"]
-            compactor["compactor"]
-            querier["querier"]
+            livestore["live-store"]
+            blockbuilder["block-builder"]
+            backend["backend-scheduler\n+ backend-worker\n(compaction)"]
+            querier["querier +\nquery-frontend"]
         end
         grafana["Grafana"]
     end
@@ -391,21 +401,28 @@ flowchart LR
     candidates -->|OTEL traces+metrics| otel
     joboffers -->|OTEL traces+metrics| otel
     otel --> prometheus
-    otel --> distributor
-    distributor --> ingester --> compactor
-    ingester --> querier
+    otel -->|OTLP traces| distributor
+    distributor --> kafka
+    kafka --> livestore
+    kafka --> blockbuilder
+    blockbuilder -->|write blocks| minio
+    backend -->|compact| minio
+    livestore --> querier
+    minio -->|read blocks| querier
 
     candidates -.->|stdout| alloy
     joboffers -.->|stdout| alloy
-    alloy -->|push| loki
+    alloy -->|push, trace_id/span_id\nas structured metadata| loki
 
     prometheus --> grafana
     loki --> grafana
     querier --> grafana
 ```
 
-This diagram shows the **planned** target state, not what's live today — the cluster currently still matches the
-Compose diagram at the top of this README exactly.
+Manifests for both: [`k8s-cluster/manifests/alloy/`](k8s-cluster/manifests/alloy), Tempo's
+[`values-tempo-distributed.yaml`](k8s-cluster/manifests/observability/values-tempo-distributed.yaml), and their two
+new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka) and
+[`k8s-cluster/manifests/minio/`](k8s-cluster/manifests/minio).
 
 # Known issues
 
@@ -414,6 +431,7 @@ Compose diagram at the top of this README exactly.
 # Future plans
 
 * Prepare local setup using Minikube.
-* Migrate k8s logging to Grafana Alloy and traces to `tempo-distributed` (see [Differences from Docker Compose](#differences-from-docker-compose)).
+* Deploy Alloy, Kafka, MinIO and `tempo-distributed` to the physical cluster and verify end-to-end (manifests written,
+  not yet applied — see [Differences from Docker Compose](#differences-from-docker-compose)).
 * Prepare CI/CD for the home Kubernetes cluster.
 * Implement backpressure or circuit breaker.

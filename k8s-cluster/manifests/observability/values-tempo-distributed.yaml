@@ -1,0 +1,180 @@
+# helm repo add grafana-community https://grafana-community.github.io/helm-charts
+# helm install tempo grafana-community/tempo-distributed -n observability -f values-tempo-distributed.yaml --version 3.5.1
+#
+# Replaces values-tempo.yaml (single-binary Tempo, 2.10.8 — permanently stuck below
+# Compose's 3.0.3, see the removed pitfall-4 comments in that file's git history).
+# tempo-distributed's chart is current with Tempo 3.x (appVersion 3.0.3, matches
+# Compose) because it models the *microservices* architecture Tempo 3.0 actually
+# shipped: distributor -> Kafka -> {live-store, block-builder} -> {backend-scheduler,
+# backend-worker} -> {querier, query-frontend}. No more ingester/compactor — those
+# don't exist in this chart version at all. See the "Differences from Docker Compose"
+# section in the README for the full monolithic-vs-microservices explanation with a
+# diagram, and k8s-cluster/manifests/kafka/ + k8s-cluster/manifests/minio/ for the two
+# dependencies this pulls in that Compose's monolithic Tempo never needed.
+#
+# Verified (not assumed) before writing this file, all via `helm template` against
+# the real chart (no cluster contact) plus the chart's own values.yaml comments:
+#   - storage.trace.backend: local mounts an emptyDir PER POD, not a shared volume —
+#     genuinely broken for multi-pod operation (querier can't see block-builder's
+#     blocks). Real reason this needs MinIO, not a chart quirk to work around.
+#   - traces.otlp.grpc.enabled defaults to FALSE — otel-collector's OTLP traces would
+#     silently have nowhere to land without the override below.
+#   - Kafka is not optional once liveStore/blockBuilder are enabled — chart comment:
+#     "Required for Tempo 3.0 microservices mode. Distributors write spans to Kafka."
+#   - global.goSettings auto-injects GOMEMLIMIT (goMemLimitFactor: 0.85) and GOGC (80)
+#     per component from its own resources.limits.memory — chart default, left as-is.
+#     Unlike the old single-binary chart, no manual GOMEMLIMIT/ballast tuning needed
+#     here as long as every component below has an explicit memory limit.
+
+traces:
+  otlp:
+    grpc:
+      enabled: true
+
+ingest:
+  kafka:
+    address: "tempo-kafka-kafka-bootstrap.observability.svc.cluster.local:9092"
+    # 1 partition, matching the single-node Kafka cluster (k8s-cluster/manifests/kafka/)
+    # — live-store/block-builder replicas below must equal this.
+    auto_create_topic_default_partitions: 1
+
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: tempo-traces
+      endpoint: minio.observability.svc.cluster.local:9000
+      access_key: minioadmin
+      secret_key: minioadmin123
+      insecure: true # MinIO over plain HTTP, internal-only traffic
+      forcepathstyle: true # required for MinIO (no virtual-hosted-style bucket DNS)
+
+# No memcached — Compose's single-binary Tempo has no cache config either; adding one
+# here would be new behavior, not parity. Chart defaults to memcached.enabled: true
+# with cache.caches wired to it, so both need to be turned off together.
+memcached:
+  enabled: false
+cache:
+  caches: []
+
+backendScheduler:
+  config:
+    provider:
+      compaction:
+        compaction:
+          block_retention: 168h # 7d, matches Compose's observability/tempo/tempo.yml
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-2
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+backendWorker:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-2
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+blockBuilder:
+  replicas: 1 # must equal ingest.kafka.auto_create_topic_default_partitions
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-2
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+liveStore:
+  replicas: 1 # must equal ingest.kafka.auto_create_topic_default_partitions
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-2
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+# distributor/querier/query-frontend grouped on observability-1 (the busier node —
+# these three are comparatively light, mostly proxy/coordinate rather than hold data)
+# — see values-strimzi-operator.yaml for the placement rationale.
+distributor:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-1
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+querier:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-1
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+
+queryFrontend:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-1
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
