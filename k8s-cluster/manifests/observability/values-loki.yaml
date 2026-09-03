@@ -35,12 +35,15 @@ singleBinary:
   # and left it unable to serve wide-time-range queries (e.g. the "Logs Volume" dashboard panel
   # timed out) even after recovering — the 512Mi budget was sized for ambient load (5-10rps),
   # not a burst. See values-tempo.yaml for the matching fix and full incident context.
+  # cpu 500m->1500m on 2026-09-03 (second burst test, tempo-distributed this time): second-most
+  # CPU-throttled pod in the cluster (throttled_seconds rate 0.49 at peak) while observability-1
+  # stayed under 23% CPU busy — undersized limit, not a saturated node.
   resources:
     requests:
       cpu: 100m
       memory: 512Mi
     limits:
-      cpu: 500m
+      cpu: 1500m
       memory: 1Gi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-1

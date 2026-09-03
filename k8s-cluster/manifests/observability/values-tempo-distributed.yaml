@@ -96,13 +96,26 @@ backendWorker:
 
 blockBuilder:
   replicas: 1 # must equal ingest.kafka.auto_create_topic_default_partitions
+  # cpu 500m->1000m, memory 512Mi->1.5Gi->3Gi on 2026-09-03: a 200rps Gatling burst
+  # OOMKilled this repeatedly (CrashLoopBackOff) — the flush-to-MinIO memory spike
+  # outpaces the 15-30s cAdvisor scrape interval, so working-set metrics never showed
+  # >150MiB even right before each kill. Both nodes had 77-88% idle CPU throughout, so
+  # this was a too-tight default limit, not a physical capacity problem — same root
+  # cause as the old single-binary Tempo OOM (needed 2Gi), just isolated to one
+  # component now. Raising to 1.5Gi still crash-looped: every failed restart left the
+  # `block-builder` Kafka consumer group's offset uncommitted, so the backlog (verified
+  # via `kafka-consumer-groups.sh --describe`: 14205 messages of lag) compounded across
+  # attempts instead of shrinking — needs enough memory to consume the whole backlog in
+  # one pass to break the spiral, not just steady-state throughput. 3Gi is generous
+  # given the node has 5.6GiB free at 28% memory allocated; revisit down once caught up
+  # and stable if it proves excessive for steady state.
   resources:
     requests:
       cpu: 100m
       memory: 128Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 1000m
+      memory: 3072Mi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:
@@ -113,13 +126,23 @@ blockBuilder:
 
 liveStore:
   replicas: 1 # must equal ingest.kafka.auto_create_topic_default_partitions
+  # cpu 500m->1500m on 2026-09-03: top CPU-throttled pod in the cluster during a 200rps
+  # burst (throttled_seconds rate 0.63 at peak) while both observability nodes stayed
+  # under 23% CPU busy — the limit was undersized relative to available headroom, not a
+  # sign of a saturated node.
+  # memory 768Mi->1.5Gi same day, found immediately after raising cpu above: local storage
+  # is an emptyDir wiped on every pod restart, so live-store falls back to replaying the
+  # Kafka lookback window (up to the topic's 1h retention) on startup — this catch-up
+  # ingests far more data per second than steady-state traffic ever does, OOMKilled
+  # (exit 137) within seconds of restart even though observed steady-state peak was only
+  # 523Mi. The steady-state number understated the real requirement.
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 768Mi
+      cpu: 1500m
+      memory: 1536Mi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:
@@ -132,12 +155,14 @@ liveStore:
 # these three are comparatively light, mostly proxy/coordinate rather than hold data)
 # — see values-strimzi-operator.yaml for the placement rationale.
 distributor:
+  # cpu 200m->1000m on 2026-09-03: throttled under the same 200rps burst that OOMKilled
+  # blockBuilder and throttled liveStore (see comments there) — same fix, same reasoning.
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
     limits:
-      cpu: 200m
+      cpu: 1000m
       memory: 128Mi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-1
