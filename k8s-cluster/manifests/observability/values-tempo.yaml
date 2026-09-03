@@ -22,18 +22,22 @@ tempo:
   # that usage still climbs to ~1000-1007Mi (right at the 1024Mi limit) before OOMKilled, on a
   # repeating ~45-60min sawtooth. Root cause: Go's GC triggers off GOGC (heap-doubling), not the
   # cgroup limit, so without GOMEMLIMIT it can overshoot the container limit before a GC cycle
-  # fires. GOMEMLIMIT gives the runtime a soft target so GC kicks in proactively. Set to 800MiB,
-  # leaving ~224Mi headroom under the 1Gi limit for non-heap overhead (goroutine stacks, cgo, OS).
+  # fires. GOMEMLIMIT gives the runtime a soft target so GC kicks in proactively.
+  # Raised 1Gi->2Gi / GOMEMLIMIT 800MiB->1600MiB on 2026-09-03 after a Gatling burst test
+  # (200rps, ~40min) drove working set to the 1024Mi ceiling and triggered a sustained
+  # CrashLoopBackOff (8+ OOMKilled in the test window, still looping at ambient load
+  # afterwards) — the 1Gi budget was sized for ambient load (5-10rps), not a burst. Both
+  # observability nodes have ample headroom (7.75Gi total, ~1.5-3Gi committed) for this.
   extraEnv:
     - name: GOMEMLIMIT
-      value: "800MiB"
+      value: "1600MiB"
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
-      memory: 1Gi
+      memory: 2Gi
   # storage.trace.backend defaults to "local" already — matches compose.yml
 
 persistence:

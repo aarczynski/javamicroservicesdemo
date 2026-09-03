@@ -91,13 +91,17 @@ alternateConfig:
         processors: [batch]
         exporters: [otlp_http/loki]
 
+# Raised 512Mi->1Gi on 2026-09-03: a Gatling burst test (200rps, ~40min) OOMKilled this
+# repeatedly (6+ times in the test window) — the 512Mi budget was sized for ambient load
+# (5-10rps from load-background), not a burst. See values-tempo.yaml for the matching fix
+# and full incident context.
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 256Mi
   limits:
     cpu: 500m
-    memory: 512Mi
+    memory: 1Gi
 
 nodeSelector:
   kubernetes.io/hostname: k8s-rpi-observability-1

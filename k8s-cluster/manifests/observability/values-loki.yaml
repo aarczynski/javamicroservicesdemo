@@ -31,13 +31,17 @@ singleBinary:
     enabled: true
     storageClass: local-path
     size: 10Gi
+  # Raised 512Mi->1Gi on 2026-09-03: a Gatling burst test (200rps, ~40min) OOMKilled this once
+  # and left it unable to serve wide-time-range queries (e.g. the "Logs Volume" dashboard panel
+  # timed out) even after recovering — the 512Mi budget was sized for ambient load (5-10rps),
+  # not a burst. See values-tempo.yaml for the matching fix and full incident context.
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 1Gi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-1
   tolerations:
