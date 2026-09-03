@@ -373,9 +373,7 @@ flowchart LR
         joboffersdb[("postgres-job-offers")]
     end
 
-    subgraph daemonset["Alloy DaemonSet\n(one pod per node)"]
-        alloy["Alloy"]
-    end
+    alloy["Alloy DaemonSet\n(one pod per node)"]
 
     subgraph observability["Observability (namespace: observability)"]
         otel["OTEL Collector\n(traces + metrics only)"]
