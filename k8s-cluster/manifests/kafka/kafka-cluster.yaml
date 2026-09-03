@@ -47,7 +47,7 @@ spec:
       - id: 0
         type: persistent-claim
         size: 5Gi
-        storageClass: local-path
+        class: local-path
         kraftMetadata: shared
   template:
     pod:
