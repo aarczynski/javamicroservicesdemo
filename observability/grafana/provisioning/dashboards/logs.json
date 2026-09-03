@@ -163,7 +163,7 @@
           },
           "direction": "backward",
           "editorMode": "builder",
-          "expr": "sum by(detected_level) (count_over_time({service_name=~\"$app\"} | detected_level=~\"$level\" |~ `(?i)$searchText` [$__auto]))",
+          "expr": "sum by(detected_level) (count_over_time({service_name=~\"$app\"} | detected_level=~\"$level\" [$__auto]))",
           "legendFormat": "{{level}}",
           "queryType": "range",
           "refId": "A"
@@ -218,7 +218,7 @@
     }
   ],
   "preload": false,
-  "refresh": "15s",
+  "refresh": "",
   "schemaVersion": 41,
   "tags": ["microservices", "logs"],
   "templating": {
