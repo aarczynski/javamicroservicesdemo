@@ -334,8 +334,8 @@ Photo of the physical cluster coming soon.
 
 ## Differences from Docker Compose
 
-The cluster diverges from Compose on purpose in two places — implemented, pending deployment/verification on the
-physical cluster; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md):
+The cluster diverges from Compose on purpose in two places — deployed to the physical cluster and verified
+end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md):
 
 * **Logs: Grafana Alloy (DaemonSet) instead of the OTEL Collector, in k8s only.** In Compose, the OTEL Java agent
   pushes logs over OTLP through the OTEL Collector to Loki — the same path as traces and metrics. In k8s, apps set
@@ -428,8 +428,8 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 # Future plans
 
-* Prepare local setup using Minikube.
-* Deploy Alloy, Kafka, MinIO and `tempo-distributed` to the physical cluster and verify end-to-end (manifests written,
-  not yet applied — see [Differences from Docker Compose](#differences-from-docker-compose)).
+* Local Kubernetes (Minikube or kind) running the same manifests as the physical cluster, purely to test k8s-specific
+  changes (Alloy, `tempo-distributed`, Kafka, MinIO) before pushing to the RPi cluster — not a replacement for Compose,
+  which stays the fast day-to-day dev loop for application code.
 * Prepare CI/CD for the home Kubernetes cluster.
 * Implement backpressure or circuit breaker.
