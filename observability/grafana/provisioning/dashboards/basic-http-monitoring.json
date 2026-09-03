@@ -697,7 +697,9 @@
     "from": "now-30m",
     "to": "now"
   },
-  "timepicker": {},
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "15s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+  },
   "timezone": "browser",
   "title": "HTTP Monitoring",
   "uid": "e1f890c5-2799-411b-b267-f344670afe6c",
