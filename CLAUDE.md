@@ -319,14 +319,17 @@ This module runs burst load tests against `app-candidates` using Gatling.
 
 ### Load profile shape
 
+Each step takes exactly `stepDuration`: half ramping to the next RPS level, half holding
+it. The last step's holding half doubles as the peak hold — no separate peak-steady
+phase. Cooldown ramps from `maxRps` to 0 over `stepDuration`. Total: `(ramps + 1) × stepDuration`.
+
 With defaults (`maxRps=500`, `stepDuration=60s`, `ramps=5`):
-- Ramp-up: 5 steps × 3 min each = 15 min (0→100, 100→200, … up to 500 RPS)
-- Peak steady: 3 min at 500 RPS
-- Cooldown: 5 min ramp down to 0
-- **Total: ~23 min**
+- Ramp-up: 5 steps × 1 min each = 5 min (0→100, 100→200, … up to 500 RPS, 30s ramp + 30s hold per step)
+- Cooldown: 1 min ramp down to 0
+- **Total: 6 min**
 
 Smoke test example (`maxRps=20`, `stepDuration=30s`, `ramps=2`):
-- **Total: ~6 min**, peak 20 RPS
+- **Total: 1.5 min**, peak 20 RPS
 
 ### Rules for changes to this module
 - All load profile constants (`maxRps`, `stepDuration`, `ramps`) must be read via `CliParamProvider` — no hardcoded values in `CandidateSimulation`.

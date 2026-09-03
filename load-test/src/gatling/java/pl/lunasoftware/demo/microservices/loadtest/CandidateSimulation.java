@@ -81,25 +81,25 @@ public class CandidateSimulation extends Simulation {
     private OpenInjectionStep[] buildInjectionSteps() {
         return Stream.concat(
                 buildRampUpSteps(),
-                Stream.of(buildPeakSteady(), buildCooldownStep())
+                Stream.of(buildCooldownStep())
         ).toArray(OpenInjectionStep[]::new);
     }
 
+    // Each step takes exactly stepDuration: half ramping to the next RPS level, half
+    // holding it — the last step's plateau doubles as the peak hold, so there's no
+    // separate peak-steady phase.
     private Stream<OpenInjectionStep> buildRampUpSteps() {
+        Duration half = stepDuration.dividedBy(2);
         return IntStream.range(0, ramps)
                 .boxed()
                 .flatMap(i -> Stream.of(
-                        rampUsersPerSec(stepRps * i).to(stepRps * (i + 1)).during(stepDuration).randomized(),
-                        constantUsersPerSec(stepRps * (i + 1)).during(stepDuration.multipliedBy(2)).randomized()
+                        rampUsersPerSec(stepRps * i).to(stepRps * (i + 1)).during(half).randomized(),
+                        constantUsersPerSec(stepRps * (i + 1)).during(half).randomized()
                 ));
     }
 
-    private OpenInjectionStep buildPeakSteady() {
-        return constantUsersPerSec(maxRps).during(stepDuration.multipliedBy(3)).randomized();
-    }
-
     private OpenInjectionStep buildCooldownStep() {
-        return rampUsersPerSec(maxRps).to(0).during(stepDuration.multipliedBy(5)).randomized();
+        return rampUsersPerSec(maxRps).to(0).during(stepDuration).randomized();
     }
 
     private HttpProtocolBuilder httpProtocolBuilder() {
