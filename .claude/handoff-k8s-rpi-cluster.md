@@ -474,6 +474,23 @@ Po ustabilizowaniu switcha (patrz Test #3 wyżej) użytkownik dołożył 3 nowe 
 
 **Do zrobienia w kolejnej sesji:** zweryfikować throttling per-kontener na `observability-1` po rebalansie (czy `prometheus-server`/`tempo` nadal są throttlowane, czy sam spadek overcommitu to rozwiązał); rozważyć czy `db-3` dostaje Postgresa/CloudNativePG teraz czy czeka na plan HA (pkt 11); `worker-4` jeśli użytkownik zechce dopełnić plan 4 workerów.
 
+## Grafana — wolne ładowanie dashboardów — zdiagnozowane i naprawione (2026-09-03)
+
+Zgłoszone przez użytkownika: panel "Logs Volume" (góra dashboardu "Logs") ładował się wolno, "HTTP Monitoring" też trochę wolny. Zamyka punkt 17 z sekcji "Plany na koniec" (wisiał od 2026-08-27).
+
+**Diagnoza (zmierzona bezpośrednio na klastrze, curl przez proxy Grafany do Loki/Prometheusa, bez zmian w klastrze):**
+- **HTTP Monitoring/JVM Monitoring miały `refresh: "5s"`** — co 5s odpalały ~14 zapytań PromQL naraz (5 percentyli + średnia × 2 panele Response Times, plus RPS i Error Responses). Same zapytania szybkie (20-90ms), Prometheus/Loki nieobciążone w danym momencie — ale ciągłe odświeżanie i tak dawało wrażenie spowolnienia na Grafanie hostowanej na RPi5.
+- **Panel "Logs Volume"** dokładał do agregatu `count_over_time` filtr tekstowy `|~ \`(?i)$searchText\`` mimo pustej domyślnej wartości — Loki i tak musi to wykonać jako pełny line-filter zamiast szybkiej ścieżki indeksowej. Zmierzony narzut na samym agregacie: mały (~50ms), ale na panelu "Logs" (surowe linie, ten sam filtr) — **1.4s→3.8s (+162%)**. Zachowanie mirroruje to, co Grafana Explore robi natywnie w swoim wbudowanym histogramie "Logs volume" (celowo ignoruje filtry tekstowe).
+
+**Fixy zaaplikowane i wdrożone (4 commity, `d0d08c4`→`7da6111`, branch `k8s-observability-stack`, zweryfikowane live po `kubectl apply` na `dashboards-configmap.yaml`):**
+1. `refresh: 5s/30s` → `15s` na wszystkich 4 dashboardach (HTTP Monitoring, JVM Monitoring, Kubernetes Cluster, Logs).
+2. **Pułapka odkryta przy weryfikacji:** samo ustawienie `refresh: "15s"` nie wystarczyło — `timepicker.refresh_intervals` był pusty (`{}`), więc Grafana użyła swojej wbudowanej domyślnej listy (`5s,10s,30s,1m,...`), w której **`15s` nie istnieje** — picker pokazywał "Off" mimo poprawnej wartości w JSON-ie. Fix: dopisany jawny `timepicker.refresh_intervals` z `15s` na wszystkich 4 dashboardach.
+3. Panel "Logs Volume": usunięty filtr `|~ \`(?i)$searchText\`` z zapytania (filtr `detected_level=~"$level"` zostawiony — tani, potrzebny do kolorowania/legendy info/warn/error).
+4. Dashboard "Logs" świadomie **zostawiony bez auto-refresh** (użytkownik: służy do przeszukiwania w danym momencie, nie do biernego monitoringu — auto-refresh w trakcie scrollowania przeszkadzał).
+5. Legenda na "Requests per second"/"Error Responses" (HTTP Monitoring) przeniesiona z prawej strony (kolumna 500px) na dół — dla spójności z pozostałymi dwoma panelami tego dashboardu, które już tak miały.
+
+**Ważna uwaga (odpowiedź na pytanie użytkownika o legendę):** klikanie w legendę wykresu (info/warn/error) w Grafanie **nie filtruje innych paneli** — izoluje/przełącza widoczność serii wyłącznie lokalnie na tym samym wykresie. Grafana OSS nie ma wbudowanego mechanizmu "klik w legendę → filtruj inny panel/zmienną" bez dodatkowego pluginu. Nie ma też opcji "legenda widoczna, ale nieklikalna" w standardowym panelu timeseries — legenda została więc po prostu zostawiona (klikalność jest nieszkodliwa, nic nie odpytuje ponownie).
+
 ## Ansible
 
 Katalog: `k8s-cluster/ansible/` w repo (nie wchodzi w Gradle build, skomitowany na branchu `k8s-observability-stack`).
@@ -539,4 +556,4 @@ Ustalone 2026-08-26 podczas dyskusji architektonicznej — do realizacji po ogar
     - Po migracji: usunąć z handoffu i z `values-tempo.yaml` cały kontekst o dryfie wersji (ta sekcja + komentarze w pliku) — stanie się nieaktualny.
 15. **GitOps — cel na koniec planu.** Użytkownik chce, żeby stan klastra finalnie był w pełni odtwarzalny z repo, bez ręcznego `helm install`/`kubectl apply` z pamięci — szczególnie na wypadek przeformatowania RPi. Kandydaci: **ArgoCD** lub **Flux**, pilnujące zgodności klastra z `k8s-cluster/manifests/`. Kontekst decyzji: obecny stan to częściowy IaC — Ansible robi node prep, ale `kubeadm init`/`join` jest ręczny i instalacje Helm były robione ad-hoc przez `--set`/`-f values.yaml` z linii komend. **Kolejność w planie: GitOps na końcu**, po ogarnięciu ingressu, deployu baz i appek — nie teraz, żeby nie wprowadzać dodatkowego narzędzia przedwcześnie. Do rozważenia przy realizacji: czy przy okazji też zautomatyzować `kubeadm init`/`join` w Ansible (osobna decyzja, nie blokuje GitOps dla warstwy aplikacyjnej/CR-ów).
 16. **Grafana: metryki gubią się podczas load testu, gdy appka "zdycha".** Zgłoszone przez użytkownika 2026-08-27, jeszcze niezbadane — hipotezy do sprawdzenia: gap w danych Prometheusa podczas restartu poda (scrape interval vs. czas restartu), otel-collector buforujący dane w pamięci i tracący je przy zabiciu kontenera przed flushem, brak/niewłaściwa obsługa staleness markerów. Do zrobienia po `tempo-distributed`/GitOps.
-17. **Grafana: dashboard "Logs" długo się ładuje.** Zgłoszone przez użytkownika 2026-08-27, jeszcze niezbadane — prawdopodobne przyczyny do sprawdzenia: zapytania Loki bez ograniczenia zakresu/etykiet (pełny skan), brak indeksowanych labeli w kluczowych panelach, zbyt szeroki domyślny zakres czasu w dashboardzie. Do zrobienia po `tempo-distributed`/GitOps.
+17. ~~Grafana: dashboard "Logs" długo się ładuje.~~ — **zamknięte 2026-09-03**, patrz sekcja "Grafana — wolne ładowanie dashboardów — zdiagnozowane i naprawione" wyżej (nie czekało na `tempo-distributed`/GitOps — zrobione od razu, bo diagnoza była szybka i nie wymagała żadnej z tamtych migracji).
