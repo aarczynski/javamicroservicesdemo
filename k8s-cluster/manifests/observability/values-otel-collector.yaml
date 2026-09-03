@@ -2,10 +2,12 @@
 # helm install otel-collector open-telemetry/opentelemetry-collector -n observability -f values-otel-collector.yaml --version 0.171.0
 #
 # Endpoints point at in-cluster Service DNS names (verified via `helm template` against
-# the actually-rendered prometheus/tempo/loki Services in this same directory):
+# the actually-rendered prometheus/tempo Services in this same directory):
 #   prometheus-server.observability.svc.cluster.local:80 (chart Service port — not 9090)
 #   tempo.observability.svc.cluster.local:4317
-#   loki.observability.svc.cluster.local:3100
+#
+# No Loki endpoint here (unlike observability/otel-collector/otel-collector.yml for
+# Compose) — see the "logs" pipeline note below, logs bypass this collector in k8s.
 
 mode: deployment
 replicaCount: 1
@@ -68,9 +70,6 @@ alternateConfig:
       tls:
         insecure: true
 
-    otlp_http/loki:
-      endpoint: "http://loki.observability.svc.cluster.local:3100/otlp"
-
   service:
     extensions: [health_check]
     pipelines:
@@ -86,10 +85,10 @@ alternateConfig:
         receivers: [otlp]
         processors: [filter/db_spans]
         exporters: [span_metrics]
-      logs:
-        receivers: [otlp]
-        processors: [batch]
-        exporters: [otlp_http/loki]
+      # No logs pipeline here (unlike observability/otel-collector/otel-collector.yml
+      # for Compose): k8s apps set OTEL_LOGS_EXPORTER=none and ship logs via the
+      # Alloy DaemonSet instead (k8s-cluster/manifests/alloy/values-alloy.yaml) —
+      # a collector OOM here no longer takes logging down with it.
 
 # Raised 512Mi->1Gi on 2026-09-03: a Gatling burst test (200rps, ~40min) OOMKilled this
 # repeatedly (6+ times in the test window) — the 512Mi budget was sized for ambient load

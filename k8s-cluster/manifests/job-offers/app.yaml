@@ -53,6 +53,12 @@ spec:
               value: "true"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
+            # Logs now go through Alloy (reads stdout directly, see
+            # k8s-cluster/manifests/alloy/values-alloy.yaml) instead of the
+            # agent's own OTLP log export — traces/metrics OTLP unaffected.
+            # Compose keeps the agent's OTLP log export (no Alloy there).
+            - name: OTEL_LOGS_EXPORTER
+              value: none
           readinessProbe:
             httpGet:
               path: /actuator/health
