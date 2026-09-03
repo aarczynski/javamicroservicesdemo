@@ -112,6 +112,19 @@ alloy:
         // line before the regex below can match it.
         stage.cri {}
 
+        // Without this, a multi-line Java stack trace (each "at ...\n"/"Caused
+        // by: ...\n" line is its own physical line in the container's log file)
+        // ships to Loki as one fragment PER LINE instead of one entry — found
+        // 2026-09-03 by grepping Loki for "error|timeout|exception" during a
+        // load test and seeing bare "at feign.FeignException..." lines with no
+        // parent ERROR entry. firstline matches logging.pattern.console's
+        // leading timestamp (application.yml); anything not matching it is a
+        // continuation of the previous entry, not a new log line.
+        stage.multiline {
+          firstline     = "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}"
+          max_wait_time = "3s"
+        }
+
         // See the file header: this regex is the whole Loki->Tempo link for
         // k8s logs. `logging.pattern.console` prints these two MDC keys,
         // which the OTel javaagent's logback-mdc instrumentation populates
