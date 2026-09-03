@@ -17,6 +17,10 @@ const PERIODS = 12;     // run 12 × 5 min = 1 hour before k6 restarts.
 // retention for k6's end-of-run summary) and the container has no memory limit headroom
 // to spare, so it must cycle well before it would otherwise get OOMKilled mid-run.
 
+// Matches load-test's CandidateSimulation.NOT_FOUND_RATE_PER_MILLE, so ambient
+// load and burst load produce the same 404 rate for observability dashboards.
+const NOT_FOUND_RATE_PER_MILLE = 1;
+
 // Generates PERIODS full sine periods as ramping-arrival-rate stages.
 // entrypoint.sh loops the script so k6 restarts every hour, well short of the memory ceiling.
 function generateStages() {
@@ -58,8 +62,21 @@ export const options = {
     thresholds: {},
 };
 
+// RFC4122 v4 UUID via Math.random() — good enough for a nonexistent-candidate
+// probe, no need for crypto-grade randomness.
+function randomUuidV4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+}
+
 export default function () {
-    const candidateId = candidateIds[Math.floor(Math.random() * candidateIds.length)];
+    const triggerNotFound = Math.random() < NOT_FOUND_RATE_PER_MILLE / 1000;
+    const candidateId = triggerNotFound
+        ? randomUuidV4()
+        : candidateIds[Math.floor(Math.random() * candidateIds.length)];
     const host = __ENV.TARGET_HOST || 'http://app-candidates:8080';
 
     http.get(`${host}/api/v1/candidates/${candidateId}/matching-offers`, {
