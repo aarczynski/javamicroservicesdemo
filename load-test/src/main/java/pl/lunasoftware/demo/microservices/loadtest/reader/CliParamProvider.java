@@ -12,7 +12,7 @@ public class CliParamProvider {
     static final String STEP_DURATION_PARAM = "stepDuration";
     static final String RAMPS_PARAM = "ramps";
 
-    private static final int DEFAULT_MAX_RPS = 500;
+    private static final int DEFAULT_MAX_RPS = 100;
     private static final Duration DEFAULT_STEP_DURATION = Duration.ofSeconds(60);
     private static final int DEFAULT_RAMPS = 5;
 

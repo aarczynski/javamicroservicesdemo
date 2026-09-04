@@ -47,7 +47,7 @@ class CliParamProviderSpec extends Specification {
         def actual = CliParamProvider.readMaxRps()
 
         then:
-        actual == 500
+        actual == 100
     }
 
     def "should read maxRps"() {

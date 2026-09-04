@@ -313,7 +313,7 @@ This module runs burst load tests against `app-candidates` using Gatling.
 |-----------------------|---------|-------------|
 | `candidatesDataFile`  | —       | Path to SQL file with candidate UUIDs (required) |
 | `targetHost`          | `http://localhost:8080` | Base URL of `app-candidates` |
-| `maxRps`              | `500`   | Peak requests per second (global maximum, reached at the top of the last ramp) |
+| `maxRps`              | `100`   | Peak requests per second (global maximum, reached at the top of the last ramp) |
 | `stepDuration`        | `60s`   | Base time unit for each phase (`30s`, `5m`, `1h`) |
 | `ramps`               | `5`     | Number of ramp-up steps |
 
@@ -323,8 +323,8 @@ Each step takes exactly `stepDuration`: half ramping to the next RPS level, half
 it. The last step's holding half doubles as the peak hold — no separate peak-steady
 phase. Cooldown ramps from `maxRps` to 0 over `stepDuration`. Total: `(ramps + 1) × stepDuration`.
 
-With defaults (`maxRps=500`, `stepDuration=60s`, `ramps=5`):
-- Ramp-up: 5 steps × 1 min each = 5 min (0→100, 100→200, … up to 500 RPS, 30s ramp + 30s hold per step)
+With defaults (`maxRps=100`, `stepDuration=60s`, `ramps=5`):
+- Ramp-up: 5 steps × 1 min each = 5 min (0→20, 20→40, … up to 100 RPS, 30s ramp + 30s hold per step)
 - Cooldown: 1 min ramp down to 0
 - **Total: 6 min**
 
