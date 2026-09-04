@@ -616,6 +616,36 @@ Passwordless sudo już skonfigurowane na wszystkich node'ach — `--ask-become-p
 
 `kubeadm init`/`join` pozostaje ręczny (tokeny tymczasowe, 24h) — Ansible robi tylko node prep (hostname, kubelet/kubeadm/containerd), nie sam bootstrap klastra.
 
+## Gateway SYN-retrans — NIE był problemem `observability-1`; dowody pakietowe wskazują na trasę Mac↔klaster (2026-09-04)
+
+**Kontekst:** load test z wieczora 2026-09-03 (200rps, 750k requestów) dał 1.46% błędów, wszystkie identyczne: `ConnectTimeoutException` do `192.168.10.100:80` (Gateway). Diagnoza (czysto Prometheus przez proxy Grafany + `kubectl exec` do Kafki/cilium, zero SSH): `node_netstat_TcpExt_TCPSynRetrans` na **wyłącznie jednym node'zie, `k8s-rpi-observability-1`**, wzrosło o 9880 w oknie testu — zero zmiany na pozostałych 11 node'ach. Logi MetalLB speakerów potwierdziły: `metallb-speaker-bv4g7` (na `observability-1`) miał 130 zdarzeń `serviceAnnounced` dla `.100` vs 4-32 na pozostałych — czyli **ten node fizycznie odbierał cały ruch zewnętrzny do Gateway**, i akurat to on jest najciężej obciążonym node'em w klastrze (Prometheus, Grafana, Loki, otel-collector, 3 komponenty Tempo). Wykluczone jako przyczyna: CPU (max 25%), `node_softnet_dropped_total` (zero), `ListenOverflows`/`ListenDrops` (zero), Tomcat/appka (p99 server-side tylko 179ms w tym samym oknie) — Hubble też nie złapał żadnego `DROPPED` w 12 min kontrolowanego repro, więc to nie jest świadomy drop na poziomie polityki Cilium/eBPF, tylko coś niżej w stosie.
+
+**Zweryfikowane kontrolowanym repro (12 min, 200rps, 3min sustained peak):** 1.61% KO, identyczny błąd, `SynRetrans` +1361 wyłącznie na `observability-1`, zero na reszcie — powtarzalne 1:1 z wieczora.
+
+**Root cause:** `.100` nie miało żadnego przypięcia do konkretnego node'a (`L2Advertisement` bez `nodeSelectors`) — MetalLB wybrał `observability-1` przypadkiem (pierwszy speaker, który odpowiedział przy starcie klastra, `2026-09-03T11:00:08Z`).
+
+**Fix wdrożony tego samego dnia** (jawne "zrób to za mnie", Claude wykonał bezpośrednio):
+1. **Nowy podział ról workerów** (decyzja użytkownika, lepsza niż moja pierwsza propozycja "wolne node'y dzisiaj") — `worker-1`/`worker-2` otaintowane `role=platform:NoSchedule` (rola: Gateway ingress, przyszły Keycloak), `worker-3`-`worker-6` zostają czyste dla appek javowych. **Zero zmian w manifestach appek** — nie mają tolerancji, więc scheduler naturalnie je omija na tainted node'ach, także przyszłe repliki z HPA.
+2. **`k8s-cluster/manifests/metallb/ip-address-pool.yaml`** — `.100` wydzielone z `default-pool` (`.101-.199` teraz) do nowej `gateway-pool` (`.100/32`).
+3. **`k8s-cluster/manifests/metallb/l2-advertisement.yaml`** — nowy `gateway-l2`, `nodeSelectors` → `kubernetes.io/hostname In [k8s-rpi-worker-1, k8s-rpi-worker-2]`.
+4. **`k8s-cluster/manifests/metallb/values-metallb.yaml`** (nowy plik — dotąd tolerancje speakera były tylko w historii `--set` z 2026-08-26, teraz trackowane) + `values-alloy.yaml` + `values-prometheus.yaml` (node-exporter) — dopisana tolerancja `role=platform` do wszystkich trzech DaemonSetów, żeby nadal pokrywały `worker-1`/`worker-2` mimo nowego tainta. Cilium/`cilium-envoy` nie wymagały zmian — mają `operator: Exists` (tolerują wszystko).
+5. **Zweryfikowane end-to-end:** `metallb-speaker-b76w6` (na `worker-2`) ogłasza teraz `.100` z `pool: gateway-pool`; stary announcer (`observability-1`) przestał; `app-candidates`/`app-job-offers` bez zmian na `worker-5`/`worker-3`; `curl http://192.168.10.100/actuator/health` → `200`, connect 7ms.
+
+Dokumentacja tabeli taintów/IP-ków też w `CLAUDE.md` i `README.md` (sekcje "Home Kubernetes Cluster"/"Node taints") — human-readable referencja, żeby nie trzeba było grzebać w handoffie po te fakty.
+
+### Weryfikacja fixu (2026-09-04, ten sam dzień) — fix NIE pomógł, teza o `observability-1` obalona
+
+Powtórzony kontrolowany 12-minutowy repro (200rps, 3min sustained peak) po wdrożeniu powyższego fixu. **Wynik: 1.59% KO, identyczny błąd — praktycznie bez zmiany względem 1.61% sprzed fixu.** `SynRetrans` w tym oknie: `observability-1` i `worker-1` całkowicie płaskie (zero), ale **`worker-2` (nowy announcer) +1330** — dokładnie ta sama skala co wcześniej na `observability-1` (+1361). **Problem przeniósł się razem z rolą announcera, nie zniknął.** To obala pierwotną hipotezę ("`observability-1` jest przeciążony, stąd problem") — `worker-2` jest praktycznie pustym node'em i miał identyczny problem.
+
+**Trzeci, najgłębszy poziom diagnozy (ten sam dzień) — packet capture przez `tcpdump`, nie tylko Prometheus/Hubble.** `tcpdump` niedostępny w obrazie cilium-agenta — postawiony tymczasowy pod `netdebug` (obraz `nicolaka/netshoot`, ma `tcpdump`+`tshark`) z `hostNetwork: true`, przypięty na `worker-2` (`nodeSelector`+`toleration` na `role=platform`), bez SSH — czysto przez `kubectl apply`/`exec`. Przechwycony cały ruch port 80 przez kolejny 12-min repro (906 279 pakietów, 82MB), przeanalizowany przez `tshark`:
+- **Klient (`ip.src` retransmitowanych SYN) to `192.168.0.4`** — Mac użytkownika, na sieci **domyślnej** `192.168.0.0/24`, NIE na VLAN-ie klastra `192.168.10.0/24` — ruch do `.100` musi przejść przez router (inter-VLAN routing), nie tylko przez WiFi.
+- **1255 retransmitowanych SYN od klienta** (klient nie dostał SYN-ACK w porę, więc próbował ponownie) + **761 retransmitowanych SYN-ACK od serwera** (serwer nie dostał ACK w porę) — strata w OBIE strony na tej samej trasie, klasyczna sygnatura niestabilnego łącza (WiFi pod obciążeniem), nie jednostronnego problemu po stronie klastra.
+- **694 unikalnych połączeń z retransmitowanym SYN-ACK — 0 z nich (0/694) kiedykolwiek dostało finalny ACK od klienta.** Całkowita utrata handshake'u w oknie 1s timeoutu Gatlinga, nie tylko opóźnienie.
+
+**Wniosek:** dowód pakietowy (nie tylko wnioskowanie przez wykluczenie) wskazuje na **trasę między Makiem a klastrem** (WiFi i/lub routing między VLAN-ami), nie na sam klaster/Kubernetes/Cilium. Zmiana node'a announcera (worker-1/worker-2 zamiast observability-1) **zostaje** — to sensowna, trwała architektura (patrz tabela taintów), tylko nie była fixem na ten konkretny problem.
+
+**Do zrobienia w kolejnej sesji:** użytkownik podłączy Maca kablem bezpośrednio do VLAN-u Cloud (`192.168.10.0/24`), pomijając WiFi i inter-VLAN routing całkowicie — potem powtórzyć ten sam 12-minutowy repro i porównać. Jeśli błędy znikną/mocno spadną — ostateczne potwierdzenie, że to WiFi/routing, nie klaster. Jeśli **przetrwają** nawet z kabla w tym samym VLAN-ie — oznacza to, że przyczyna jednak leży w klastrze (np. coś specyficznego dla obsługi `LoadBalancer` Service pod Cilium przy tym tempie nowych połączeń) i trzeba wrócić do `tcpdump` na strumieniach, gdzie strata rzeczywiście się dzieje (capture jednocześnie po obu stronach: na node'zie announcera i możliwie blisko klienta).
+
 ## Następny krok (do zrobienia w kolejnej sesji)
 
 Gotowe: node'y, MetalLB, storage, cały stack observability, oba Postgresy i obie appki (`candidates`/`job-offers`) załadowane danymi i wdrożone, ambient load w klastrze (przypięty na `observability-1`), ingress przez Cilium Gateway API (klaster bez kube-proxy), `kube-state-metrics`/`node-exporter` + dashboard "Kubernetes Cluster" w Grafanie, Headlamp jako UI do przeglądu klastra — wszystko zweryfikowane end-to-end (patrz sekcje niżej).

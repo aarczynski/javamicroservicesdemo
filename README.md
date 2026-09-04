@@ -325,7 +325,56 @@ Current state:
   doesn't need — see [Differences from Docker Compose](#differences-from-docker-compose) for why.
 * `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
   own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
-* Dedicated, tainted nodes for databases and observability, plus generic worker nodes for everything else.
+* Dedicated, tainted nodes for databases, observability, and platform/ingress services, plus generic worker nodes for
+  the Java apps.
+
+### Services running in the cluster
+
+| Service | Category | What it does |
+|---|---|---|
+| Cilium | Networking | CNI (pod networking), replaces `kube-proxy` (`kubeProxyReplacement`), implements Gateway API |
+| Cilium Envoy | Networking | Proxy embedded in Cilium, handles the actual L7 traffic for the Gateway |
+| MetalLB | Networking | Assigns real LAN IPs to `LoadBalancer` Services (L2/ARP mode) |
+| Hubble (Relay + UI) | Networking | Visualizes and debugs live network flows / policy drops |
+| `local-path-provisioner` | Storage | Turns node-local disk into `PersistentVolume`s |
+| Prometheus | Observability | Scrapes and stores metrics |
+| Grafana | Observability | Dashboards — views metrics (Prometheus), logs (Loki), traces (Tempo) |
+| Loki | Observability | Stores and indexes logs |
+| Alloy | Observability | DaemonSet, reads container stdout on every node and ships it to Loki (k8s-only, see below) |
+| Tempo (`tempo-distributed`) | Observability | Trace storage/search, split into `distributor`/`querier`/`query-frontend`/`live-store`/`block-builder`/`backend-scheduler`/`backend-worker` |
+| OTEL Collector | Observability | Receives OTLP traces/metrics from the apps, forwards to Prometheus/Tempo |
+| Kafka (Strimzi operator) | Observability | Buffers trace spans between Tempo's ingestion and storage stages (k8s-only, see below) |
+| MinIO | Observability | S3-compatible object storage — holds Tempo's trace blocks (k8s-only, see below) |
+| `kube-state-metrics` | Observability | Exposes Kubernetes object state (pods, nodes, deployments...) as metrics |
+| `prometheus-node-exporter` | Observability | Exposes per-node OS/hardware metrics (CPU, RAM, disk, network) |
+| `metrics-server` | Observability | Lightweight CPU/RAM metrics powering `kubectl top` and Headlamp's resource view |
+| Headlamp | Cluster UI | Web UI to browse and manage the cluster (pods, deployments, logs...) |
+| `app-candidates` / `app-job-offers` | App | The two Java microservices this whole project is about |
+| `postgres-candidates` / `postgres-job-offers` | App | One Postgres instance per service |
+| `load-background` | App | k6 ambient traffic generator (k8s-only version of the module described above) |
+
+### IP addressing (`192.168.10.0/24`, the "Cloud" VLAN)
+
+| Range | Purpose |
+|---|---|
+| `.1`–`.99` | Static reservations for node IPs |
+| `.100`–`.199` | MetalLB pool — `LoadBalancer` IPs for k8s Services (`.100` Gateway, `.198` Headlamp, `.199` Grafana) |
+| `.200`–`.252` | Dynamic DHCP (Omada) |
+| `.253` | Managed switch (ES224G), static |
+| `.254` | Router (ER7406) interface for this network |
+
+### Node taints — what runs where
+
+| Node(s) | Taint | What runs there |
+|---|---|---|
+| `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
+| `db-1`/`db-2`/`db-3` | `role=database` | Postgres instances |
+| `observability-1`/`observability-2` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO |
+| `worker-1`/`worker-2` | `role=platform` | Gateway ingress, Hubble, MetalLB controller; future home for Keycloak |
+| `worker-3`–`worker-6` | none | `app-candidates`, `app-job-offers`, and future autoscaled replicas |
+
+DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
+run on every node regardless of taint.
 
 Cluster provisioning lives under [k8s-cluster/](k8s-cluster) — `ansible/` for node setup, `manifests/` for Helm
 values and Kubernetes manifests.

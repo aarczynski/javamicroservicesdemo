@@ -495,6 +495,26 @@ Alongside Docker Compose, this project is being deployed to a home Kubernetes cl
 
 Detailed, current state (node topology, architectural decisions, in-progress work, gotchas already hit) is tracked in `.claude/handoff-k8s-rpi-cluster.md` — read it at the start of any session touching the cluster, and keep it updated as work progresses.
 
+**IP addressing on the `192.168.10.0/24` VLAN ("Cloud"):**
+| Range | Purpose |
+|---|---|
+| `.1`–`.99` | Static reservations for node IPs (master/db/observability/worker) |
+| `.100`–`.199` | MetalLB IP pool (LoadBalancer IPs for k8s Services — e.g. `.100` Gateway, `.198` Headlamp, `.199` Grafana) |
+| `.200`–`.252` | Omada dynamic DHCP range |
+| `.253` | Static — managed switch (ES224G) |
+| `.254` | Router (ER7406), LAN3/VLAN 2 interface for this network |
+
+**Node taints — what can be scheduled where:**
+| Node(s) | Taint | What runs there |
+|---|---|---|
+| `master` | `node-role.kubernetes.io/control-plane:NoSchedule` | Control plane only (apiserver, etcd, scheduler, controller-manager) |
+| `db-1`, `db-2`, `db-3` | `role=database:NoSchedule` | Postgres instances |
+| `observability-1`, `observability-2` | `role=observability:NoSchedule` | Prometheus, Grafana, Loki, otel-collector, Tempo components, Kafka, MinIO |
+| `worker-1`, `worker-2` | `role=platform:NoSchedule` | Gateway ingress (`.100` L2 announcement, restricted here since 2026-09-04 — see handoff), Hubble Relay/UI, MetalLB controller, `local-path-provisioner`; future home for Keycloak |
+| `worker-3`–`worker-6` | none (generic) | `app-candidates`, `app-job-offers`, and future HPA replicas — kept clear of platform/observability noise on purpose |
+
+DaemonSets (Cilium, `cilium-envoy`, Alloy, `prometheus-node-exporter`, `metallb-speaker`) run on **every** node regardless of taint — each has explicit tolerations for `role=database`/`role=observability`/`role=platform`/control-plane. When adding a new taint value, remember to add a matching toleration to these five, or the DaemonSet silently stops covering that node.
+
 Conventions for this work stream:
 - Cluster resources as code live under `k8s-cluster/`: `ansible/` for node provisioning, `manifests/` for Helm chart values and plain Kubernetes manifests.
 - The version-pinning discipline above (standard `X.Y.Z` tags, no `-rc`/`-beta`, check release notes) applies to Helm charts too — additionally, **check `helm show chart <repo>/<chart> --version X` for a `deprecated: true` flag before adopting a chart**. Learned the hard way: `grafana.github.io/helm-charts` (repo `grafana`) is frozen — migrated wholesale to `grafana-community/helm-charts` (repo `grafana-community`) — use the latter for Loki, Tempo, and Grafana charts, or you silently get stale, unmaintained versions.
