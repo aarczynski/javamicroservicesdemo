@@ -117,31 +117,6 @@ Import them into the respective application databases (check [compose.yml](compo
 
 These files may be extremely large (several GB), thus they are not tracked in Git.
 
-### Row counts on the home k8s cluster
-
-Actual row counts in each database, as loaded on the physical Raspberry Pi cluster (see
-[Home Kubernetes cluster](#home-kubernetes-cluster)). Slightly above the generator's `100 000`/`50 000` defaults
-because each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of fixed demo rows on top of the
-bulk-generated data.
-
-**`app-candidates-db`:**
-
-| Table | Rows |
-|---|---|
-| `candidate` | 100,003 |
-| `candidate_skill` | 300,134 |
-| `candidate_preferred_employment_type` | 199,853 |
-
-**`app-job-offers-db`:**
-
-| Table | Rows |
-|---|---|
-| `job_offer` | 100,003 |
-| `job_offer_skill` | 299,943 |
-| `job_offer_employment_type` | 199,899 |
-| `company` | 50,003 |
-| `skill` | 58 |
-
 ## Starting microservices locally
 
 Run following command:
@@ -428,6 +403,30 @@ queueing further — confirmed by the overflow counter's increase (+12,496) matc
 almost exactly during the 800 RPS run. `hikaricp_connections_pending` on `app-candidates` also climbed to 14 in the
 same window, suggesting the Postgres connection pool is a contributing factor feeding that queue, not just the
 circuit breaker's default thresholds. Not yet root-caused to a single tunable — a candidate for a future session.
+
+### Row counts on the home k8s cluster
+
+Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's
+`100 000`/`50 000` defaults because each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of
+fixed demo rows on top of the bulk-generated data. Rounded to the nearest 50,000.
+
+**`app-candidates-db`:**
+
+| Table | Rows |
+|---|---|
+| `candidate` | ~100,000 |
+| `candidate_skill` | ~300,000 |
+| `candidate_preferred_employment_type` | ~200,000 |
+
+**`app-job-offers-db`:**
+
+| Table | Rows |
+|---|---|
+| `job_offer` | ~100,000 |
+| `job_offer_skill` | ~300,000 |
+| `job_offer_employment_type` | ~200,000 |
+| `company` | ~50,000 |
+| `skill` | 58 |
 
 ## Differences from Docker Compose
 
