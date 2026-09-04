@@ -108,6 +108,13 @@ public class CandidateSimulation extends Simulation {
         return http
                 .baseUrl(targetHost)
                 .acceptHeader("application/json")
-                .userAgentHeader("Gatling/Performance Test");
+                .userAgentHeader("Gatling/Performance Test")
+                // Each virtual user here fires exactly one request, so without a shared
+                // pool every user opens and closes its own connection — at a few hundred
+                // RPS that exhausts the client's ephemeral port range (TIME_WAIT sockets
+                // pile up faster than they're released) and fails with
+                // "BindException: Can't assign requested address" before the target
+                // system is anywhere near its own limit.
+                .shareConnections();
     }
 }
