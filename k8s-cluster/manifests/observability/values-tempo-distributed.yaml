@@ -117,13 +117,18 @@ blockBuilder:
   # one pass to break the spiral, not just steady-state throughput. 3Gi is generous
   # given the node has 5.6GiB free at 28% memory allocated; revisit down once caught up
   # and stable if it proves excessive for steady state.
+  # memory 3Gi->4.5Gi on 2026-09-04: same spiral recurred after the 700/800rps load-test
+  # series that same day (backlog this time 20801 messages, OOMKilled within ~13s of
+  # startup — even bigger than the 14205 that needed 3Gi). Node still had 5.9GiB free at
+  # 20% allocated, so bumping further to break the spiral again rather than tuning batch
+  # size — revisit down once caught up and stable.
   resources:
     requests:
       cpu: 100m
       memory: 128Mi
     limits:
       cpu: 1000m
-      memory: 3072Mi
+      memory: 4608Mi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:
