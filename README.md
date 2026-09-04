@@ -1,8 +1,6 @@
-# Work In Progress
-
 App to analyze distributed microservices system and DB performance using Gatling and OpenTelemetry.
 
-## Modules:
+# Modules:
 
 * **app-job-offers** - a microservice managing job offers. Data model consists of five tables: company, skill,
   job_offer, job_offer_skill, and job_offer_employment_type.
@@ -119,6 +117,31 @@ Import them into the respective application databases (check [compose.yml](compo
 
 These files may be extremely large (several GB), thus they are not tracked in Git.
 
+### Row counts on the home k8s cluster
+
+Actual row counts in each database, as loaded on the physical Raspberry Pi cluster (see
+[Home Kubernetes cluster](#home-kubernetes-cluster)). Slightly above the generator's `100 000`/`50 000` defaults
+because each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of fixed demo rows on top of the
+bulk-generated data.
+
+**`app-candidates-db`:**
+
+| Table | Rows |
+|---|---|
+| `candidate` | 100,003 |
+| `candidate_skill` | 300,134 |
+| `candidate_preferred_employment_type` | 199,853 |
+
+**`app-job-offers-db`:**
+
+| Table | Rows |
+|---|---|
+| `job_offer` | 100,003 |
+| `job_offer_skill` | 299,943 |
+| `job_offer_employment_type` | 199,899 |
+| `company` | 50,003 |
+| `skill` | 58 |
+
 ## Starting microservices locally
 
 Run following command:
@@ -130,12 +153,17 @@ make start
 Please note that the new v2 of Docker Compose is used. If you are using older Docker version, use `docker-compose`
 instead of `docker compose`.
 
-## Matching score
+## CPU limits when load testing
+
+Adjust CPU limits in [compose.yml](compose.yml) to avoid Gatling starving the load-tested apps. Default configuration
+limits each app to 2 cores.
+
+# Matching score
 
 `app-job-offers` scores each candidate–offer pair as a weighted sum of five sub-scores, all in `[0.0, 1.0]`:
 
 | Sub-score  | Weight | Description                                                                                                                                                              |
-|------------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Skills     | 45%    | Weighted coverage of offer skills adjusted for seniority gap and missing mandatory skills.                                                                               |
 | Salary     | 20%    | `1.0` when the offer ceiling meets or exceeds candidate expectations. Exponential decay when the offer ceiling falls below — score drops sharply as the gap grows.        |
 | Experience | 10%    | Exponential decay based on the gap between candidate years and the minimum expected for the required seniority.                                                          |
@@ -144,11 +172,11 @@ instead of `docker compose`.
 
 SQL bounding box pre-filters offers cheaply; Haversine and the full scoring run only on the reduced set.
 
-## Sample HTTP requests
+# Sample HTTP requests
 
 Check [http/requests.http](http/requests.http) file.
 
-## Background load (Grafana k6)
+# Background load (Grafana k6)
 
 The `load-background` module sends continuous ambient traffic to `app-candidates` 24/7.
 It runs as a Docker Compose service and starts only after both Spring Boot apps report healthy on `/actuator/health`.
@@ -163,7 +191,7 @@ the actual RPS depends on VU count and response time. This module uses the `ramp
 k6 control the request arrival rate directly (`MIN_RPS`–`MAX_RPS`) rather than deriving it from a fixed VU count; `VUS`
 below is just the number of VUs pre-allocated to sustain that rate with latency headroom.
 
-### Parameters
+## Parameters
 
 Overridable via `make` / environment variables:
 
@@ -182,7 +210,7 @@ overridable via `make`):
 | `PERIOD_S`  | `300` (5 min)  | Sine period                                                  |
 | `VUS`       | `5`            | Pre-allocated VUs — enough for peak RPS with latency headroom |
 
-### RPS profile
+## RPS profile
 
 Load oscillates sinusoidally between **5 and 10 RPS** with a 5-minute period:
 
@@ -197,7 +225,7 @@ RPS
      0    1    2    3    4    5    6
 ```
 
-### Starting together with services
+## Starting together with services
 
 ```shell
 make start-ambient
@@ -205,7 +233,7 @@ make start-ambient
 
 By default, k6 targets `http://app-candidates:8080` via Docker network.
 
-### Starting separately (services already running)
+## Starting separately (services already running)
 
 `ambient-load` always recreates the k6 container so env vars take effect immediately.
 
@@ -219,12 +247,12 @@ Override `targetHost` and/or `candidatesDataFile` (see [Parameters](#parameters)
 make ambient-load targetHost=http://192.168.0.140:8080 candidatesDataFile=/path/to/01-candidates.sql
 ```
 
-### Candidates data file
+## Candidates data file
 
 It is generated by the **data-generator** module. Path (relative to project root): `data-generator/output/candidates/01-candidates.sql`
 If the file is absent the service still starts — all requests will return 404.
 
-## Performance testing
+# Performance testing
 
 Gatling gradle plugin is used. Run the following command:
 
@@ -235,35 +263,35 @@ make candidateSimulation
 Load tests the endpoint that finds matching job offers for a given candidate (`GET /api/v1/candidates/{id}/matching-offers`).
 0.1% of requests intentionally are supposed to return HTTP 404 (Not Found) response.
 
-### Parameters
+## Parameters
 
 | Parameter           | Default                                              | Description                              |
-|---------------------|------------------------------------------------------|------------------------------------------|
+|---------------------|------------------------------------------------------|-------------------------------------------|
 | `targetHost`        | `http://localhost:8080`                              | Base URL of `app-candidates`             |
 | `candidatesDataFile`| `data-generator/output/candidates/01-candidates.sql` | SQL file with candidate UUIDs            |
-| `maxRps`            | `500`                                                | Peak RPS (global maximum, reached at the top of the last ramp) |
+| `maxRps`            | `100`                                                | Peak RPS (global maximum, reached at the top of the last ramp) |
 | `stepDuration`      | `60s`                                                | Base time unit for each phase (`30s`, `5m`, `1h`) |
 | `ramps`             | `5`                                                  | Number of ramp-up steps                  |
 
-### RPS profile (defaults: maxRps=500, stepDuration=60s, ramps=5)
+## RPS profile (defaults: maxRps=100, stepDuration=60s, ramps=5)
 
 ```
  RPS
- 500 |                             /-----\
- 400 |                       /-----      \
- 300 |                 /-----            \
- 200 |           /-----                  \
- 100 |     /-----                        \
-   0 +-----                              \-> t (min)
-     0  0.5 1  1.5 2  2.5 3  3.5 4  4.5 5  6
-     |<---------- ramp-up 5 min --------->|cool|
+ 100 |                             /-----\
+  80 |                       /-----       \
+  60 |                 /-----              \
+  40 |           /-----                     \
+  20 |     /-----                            \
+   0 +-----                                   \-> t (min)
+     0  0.5 1  1.5 2  2.5 3  3.5 4  4.5 5    6
+     |<---------- ramp-up 5 min --------->|-cool-|
                                             1 min
 ```
 
-5 steps of 100 RPS each. Each step takes exactly `stepDuration`: 30s linear ramp to the
+5 steps of 20 RPS each. Each step takes exactly `stepDuration`: 30s linear ramp to the
 next level + 30s steady at that level. The last step's steady half doubles as the peak
-hold (500 RPS, 30s) — no separate peak-steady phase.
-Cooldown: linear ramp from 500 to 0 RPS over `stepDuration` (1 min).
+hold (100 RPS, 30s) — no separate peak-steady phase.
+Cooldown: linear ramp from 100 to 0 RPS over `stepDuration` (1 min).
 Total: `(ramps + 1) × stepDuration` = 6 min.
 Load tests use files generated by `data-generator`. UUIDs for requests are randomly picked from the candidates SQL file.
 
@@ -279,43 +307,230 @@ Quick smoke test (peak 20 RPS, 1.5 min total):
 make candidateSimulation maxRps=20 stepDuration=30s ramps=2
 ```
 
-## Observability
+# Observability
 
 Apps use OTEL agent to export metrics, traces and logs to OTEL collector. It pushes all data to designated backends.
 Spring Boot Actuator and Micrometer are enabled.
 
-### Performance dashboard
+## Performance dashboard
 
 The dashboard is available
 under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c).
 It shows response times, and errors count.
 ![](./readme-assets/img/grafana-monitoring.png)
 
-### Logs dashboard
+## Logs dashboard
 
 The dashboard is available
 under [http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b](http://localhost:3000/d/ea015f6f-9746-431d-9113-a2e247c2207b).
 It allows viewing and searching logs.
 ![](./readme-assets/img/grafana-logs.png)
 
-### Traces
+## Traces
 
 Above dashboard has links to traces in Tempo. This allows to view detailed information about application performance
 when handling a particular HTTP request.
 ![](./readme-assets/img/grafana-traces.png)
 
-## Hints
+# Home Kubernetes cluster
 
-Adjust CPU limits in `docker-compose.yml` to avoid Gatling starvation by the load-tested apps. Default configuration
-limits each app to 2 cores.
+Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster running on 12× Raspberry Pi 5
+(8GB RAM, NVMe boot). Built with `kubeadm` rather than k3s — a deliberate choice to learn the full stack by picking
+and wiring up each piece by hand (CNI, storage, load-balancing, ingress) instead of relying on a batteries-included
+distribution.
+
+Current state:
+
+* **Cilium** as CNI, with Hubble for network observability, and as the ingress controller via Cilium Gateway API
+  (kube-proxy replaced by `kubeProxyReplacement`, required by Cilium's Gateway API support).
+* **MetalLB** (L2 mode) providing `LoadBalancer` services on the home LAN, IP pool `192.168.10.100`–`192.168.10.199`.
+* **`local-path-provisioner`** for node-local persistent storage.
+* The full observability stack from this README — Prometheus, Loki, Tempo, OTEL Collector, Grafana — running on the
+  cluster via Helm, plus two k8s-only pieces (Alloy for logs, Kafka + MinIO for `tempo-distributed`) that Compose
+  doesn't need — see [Differences from Docker Compose](#differences-from-docker-compose) for why.
+* `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
+  own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
+* Dedicated, tainted nodes for databases, observability, and platform/ingress services, plus generic worker nodes for
+  the Java apps.
+
+### Services running in the cluster
+
+| Service | Category | What it does |
+|---|---|---|
+| Cilium | Networking | CNI (pod networking), replaces `kube-proxy` (`kubeProxyReplacement`), implements Gateway API |
+| Cilium Envoy | Networking | Proxy embedded in Cilium, handles the actual L7 traffic for the Gateway |
+| MetalLB | Networking | Assigns real LAN IPs to `LoadBalancer` Services (L2/ARP mode) |
+| Hubble (Relay + UI) | Networking | Visualizes and debugs live network flows / policy drops |
+| `local-path-provisioner` | Storage | Turns node-local disk into `PersistentVolume`s |
+| Prometheus | Observability | Scrapes and stores metrics |
+| Grafana | Observability | Dashboards — views metrics (Prometheus), logs (Loki), traces (Tempo) |
+| Loki | Observability | Stores and indexes logs |
+| Alloy | Observability | DaemonSet, reads container stdout on every node and ships it to Loki (k8s-only, see below) |
+| Tempo (`tempo-distributed`) | Observability | Trace storage/search, split into `distributor`/`querier`/`query-frontend`/`live-store`/`block-builder`/`backend-scheduler`/`backend-worker` |
+| OTEL Collector | Observability | Receives OTLP traces/metrics from the apps, forwards to Prometheus/Tempo |
+| Kafka (Strimzi operator) | Observability | Buffers trace spans between Tempo's ingestion and storage stages (k8s-only, see below) |
+| MinIO | Observability | S3-compatible object storage — holds Tempo's trace blocks (k8s-only, see below) |
+| `kube-state-metrics` | Observability | Exposes Kubernetes object state (pods, nodes, deployments...) as metrics |
+| `prometheus-node-exporter` | Observability | Exposes per-node OS/hardware metrics (CPU, RAM, disk, network) |
+| `metrics-server` | Observability | Lightweight CPU/RAM metrics powering `kubectl top` and Headlamp's resource view |
+| Headlamp | Cluster UI | Web UI to browse and manage the cluster (pods, deployments, logs...) |
+| `app-candidates` / `app-job-offers` | App | The two Java microservices this whole project is about |
+| `postgres-candidates` / `postgres-job-offers` | App | One Postgres instance per service |
+| `load-background` | App | k6 ambient traffic generator (k8s-only version of the module described above) |
+
+### IP addressing (`192.168.10.0/24`, the "Cloud" VLAN)
+
+| Range | Purpose |
+|---|---|
+| `.1`–`.99` | Static reservations for node IPs |
+| `.100`–`.199` | MetalLB pool — `LoadBalancer` IPs for k8s Services (`.100` Gateway, `.198` Headlamp, `.199` Grafana) |
+| `.200`–`.252` | Dynamic DHCP (Omada) |
+| `.253` | Managed switch (ES224G), static |
+| `.254` | Router (ER7406) interface for this network |
+
+### Node taints — what runs where
+
+| Node(s) | Taint | What runs there |
+|---|---|---|
+| `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
+| `db-1`/`db-2`/`db-3` | `role=database` | Postgres instances |
+| `observability-1`/`observability-2` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO |
+| `worker-1`/`worker-2` | `role=platform` | Gateway ingress, Hubble, MetalLB controller; future home for Keycloak |
+| `worker-3`–`worker-6` | none | `app-candidates`, `app-job-offers`, and future autoscaled replicas |
+
+DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
+run on every node regardless of taint.
+
+Cluster provisioning lives under [k8s-cluster/](k8s-cluster) — `ansible/` for node setup, `manifests/` for Helm
+values and Kubernetes manifests.
+
+Photo of the physical cluster coming soon.
+
+### Measured capacity
+
+Sustained-load ceiling of the physical cluster, measured with `load-test` (`stepDuration=2m ramps=2`, i.e. a ramp to
+the target RPS followed by a 1-minute hold) against the Gateway (`http://192.168.10.100`), client run from a Mac wired
+directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client introduces its own packet loss unrelated to the
+cluster — see [Known issues](#known-issues)):
+
+| Peak RPS | KO rate | p99 latency | Verdict |
+|---|---|---|---|
+| 500 | 0% | 93ms | clean |
+| 600 | 0% | 254ms | clean, latency visibly rising |
+| 700 | 1.76% | 3.9s | fails |
+| 800 | 7.43% | 4.0s | fails |
+
+**Ceiling: ~600 RPS sustained.** Above that, both `app-candidates` and `app-job-offers` keep running without
+restarting or saturating CPU — the failure isn't the apps or the databases. It's the Cilium Gateway's Envoy proxy
+tripping its default circuit breaker (`envoy_cluster_circuit_breakers_default_cx_open`, `envoy_cluster_upstream_rq_pending_overflow`)
+once the request queue to `app-candidates` grows faster than the app can drain it, returning `503` instead of
+queueing further — confirmed by the overflow counter's increase (+12,496) matching the Gatling KO count (12,490)
+almost exactly during the 800 RPS run. `hikaricp_connections_pending` on `app-candidates` also climbed to 14 in the
+same window, suggesting the Postgres connection pool is a contributing factor feeding that queue, not just the
+circuit breaker's default thresholds. Not yet root-caused to a single tunable — a candidate for a future session.
+
+## Differences from Docker Compose
+
+The cluster diverges from Compose on purpose in two places — deployed to the physical cluster and verified
+end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md):
+
+* **Logs: Grafana Alloy (DaemonSet) instead of the OTEL Collector, in k8s only.** In Compose, the OTEL Java agent
+  pushes logs over OTLP through the OTEL Collector to Loki — the same path as traces and metrics. In k8s, apps set
+  `OTEL_LOGS_EXPORTER=none` instead, and an Alloy DaemonSet (one pod per node, the standard Kubernetes logging
+  pattern) reads container stdout directly and ships it to Loki, bypassing the Collector entirely for logs. This
+  decouples log delivery from the Collector's own health — a Collector crash (as happened during a 200rps Gatling
+  burst on 2026-09-03, see the handoff) no longer also stops logging. **Docker Compose keeps the OTEL Collector log
+  path unchanged** — the DaemonSet model only pays off when there are multiple nodes to collect from.
+* **Traces: `tempo-distributed` instead of single-binary Tempo, in k8s only.** This isn't just "the same Tempo split
+  into more pods" — it's a genuine change of *deployment mode*, and that mode is what pulls in two new dependencies
+  Compose never needed. Per Tempo 3.0's own release notes: *"In monolithic mode, Tempo runs all components in-process
+  without Kafka"* vs *"In microservices mode, a Kafka-compatible system provides durable buffering between ingestion
+  and downstream components."* Compose runs Tempo monolithically (`target: all`, one process) — that's why it could
+  already move to Tempo 3.0.3 with zero extra infrastructure. k8s crosses into microservices mode specifically to get
+  per-component memory isolation (single-binary Tempo's single hard memory ceiling caused the 2026-09-03 OOM cascade
+  during that same load test) — and once distributor and live-store/block-builder are separate pods instead of one
+  process, Tempo 3.x requires Kafka as the transport between them. Separately, `storage.trace.backend: local` turned
+  out to mount an **emptyDir per pod** (verified via `helm template`, not assumed) — block-builder's blocks would be
+  invisible to querier on another pod — so trace storage also moved to MinIO (self-hosted S3-compatible object
+  storage), the one piece every component can reach over the network regardless of which pod it's on. **Docker
+  Compose keeps single-binary Tempo permanently** — one process never needs Kafka or shared object storage to talk to
+  itself.
+
+```mermaid
+flowchart LR
+    gw["Cilium Gateway API\n192.168.10.100"]
+
+    subgraph candidates_ns["namespace: candidates"]
+        candidates["app-candidates"]
+        candidatesdb[("postgres-candidates")]
+    end
+
+    subgraph joboffers_ns["namespace: job-offers"]
+        joboffers["app-job-offers"]
+        joboffersdb[("postgres-job-offers")]
+    end
+
+    alloy["Alloy DaemonSet\n(one pod per node)"]
+
+    subgraph observability["Observability (namespace: observability)"]
+        otel["OTEL Collector\n(traces + metrics only)"]
+        prometheus["Prometheus"]
+        loki["Loki"]
+        kafka[("Kafka\n(single node, KRaft)\ningest buffer")]
+        minio[("MinIO\nshared trace block storage")]
+        subgraph tempo_dist["Tempo (distributed)"]
+            distributor["distributor"]
+            livestore["live-store"]
+            blockbuilder["block-builder"]
+            backend["backend-scheduler\n+ backend-worker\n(compaction)"]
+            querier["querier +\nquery-frontend"]
+        end
+        grafana["Grafana"]
+    end
+
+    gw -->|HTTP| candidates
+    candidates -->|HTTP| joboffers
+    candidates --- candidatesdb
+    joboffers --- joboffersdb
+
+    candidates -->|OTEL traces+metrics| otel
+    joboffers -->|OTEL traces+metrics| otel
+    otel --> prometheus
+    otel -->|OTLP traces| distributor
+    distributor --> kafka
+    kafka --> livestore
+    kafka --> blockbuilder
+    blockbuilder -->|write blocks| minio
+    backend -->|compact| minio
+    livestore --> querier
+    minio -->|read blocks| querier
+
+    candidates -.->|stdout| alloy
+    joboffers -.->|stdout| alloy
+    alloy -->|push, trace_id/span_id\nas structured metadata| loki
+
+    prometheus --> grafana
+    loki --> grafana
+    querier --> grafana
+```
+
+Manifests for both: [`k8s-cluster/manifests/alloy/`](k8s-cluster/manifests/alloy), Tempo's
+[`values-tempo-distributed.yaml`](k8s-cluster/manifests/observability/values-tempo-distributed.yaml), and their two
+new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka) and
+[`k8s-cluster/manifests/minio/`](k8s-cluster/manifests/minio).
 
 # Known issues
 
 * Spring percentile metrics do not work with OTEL Agent.
+* Running `load-test` against the Gateway from a client on Wi-Fi, or on a different VLAN than the cluster, produces
+  `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
+  route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
+  the cluster's VLAN for load tests that need clean results.
 
 # Future plans
 
-* Prepare local setup using Minikube.
-* Deploy it on some remote servers and orchestrate cloud using K8S, consider using Terraform.
-* Prepare CI/CD for above.
+* Local Kubernetes (Minikube or kind) running the same manifests as the physical cluster, purely to test k8s-specific
+  changes (Alloy, `tempo-distributed`, Kafka, MinIO) before pushing to the RPi cluster — not a replacement for Compose,
+  which stays the fast day-to-day dev loop for application code.
+* Prepare CI/CD for the home Kubernetes cluster.
 * Implement backpressure or circuit breaker.

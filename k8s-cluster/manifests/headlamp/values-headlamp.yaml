@@ -1,0 +1,42 @@
+# helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
+# kubectl apply -f namespace.yaml
+# helm install headlamp headlamp/headlamp -n headlamp -f values-headlamp.yaml --version 0.45.0
+#
+# Chosen over the official Kubernetes Dashboard: that project is archived
+# (moved to kubernetes-retired/dashboard, upstream README itself points at
+# Headlamp as the replacement) — checked 2026-08-27 via the GitHub API.
+
+config:
+  # UNSAFE per upstream's own naming: every browser session is auto-authenticated
+  # as the pod's own ServiceAccount (bound to cluster-admin below), no login
+  # screen, no token. Deliberate choice, same risk profile already accepted for
+  # Grafana on this cluster (anonymous admin, LAN-only, no exposure outside the
+  # home network) — but note the blast radius here is bigger: Grafana's
+  # anonymous access is view-only dashboards, this is full cluster-admin
+  # edit/delete for anyone who can reach the Service.
+  unsafeUseServiceAccountToken: true
+
+clusterRoleBinding:
+  create: true
+  clusterRoleName: cluster-admin
+
+service:
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: "192.168.10.198"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-observability-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: observability
+    effect: NoSchedule

@@ -1,0 +1,47 @@
+# helm repo add strimzi https://strimzi.io/charts/
+# helm install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n observability -f values-strimzi-operator.yaml --version 1.2.0
+#
+# Installs the Strimzi cluster operator + its CRDs (Kafka, KafkaNodePool, ...) —
+# strimzi/strimzi-kafka-operator, NOT grafana-community, this is a CNCF project
+# with its own chart repo, unrelated to the grafana.github.io/helm-charts freeze.
+# Verified not stale: latest release (1.2.0) published 2026-08-20, two weeks
+# before this file was written (`gh release list --repo strimzi/strimzi-kafka-operator`).
+#
+# Strimzi 1.x dropped ZooKeeper entirely — KRaft (Kafka's own Raft-based metadata
+# quorum) is the only mode, which is what makes a single-node Kafka viable here:
+# one node acting as both controller and broker, no second stateful component.
+# See kafka-cluster.yaml for the actual Kafka cluster (KafkaNodePool + Kafka CRs)
+# this operator reconciles.
+#
+# HELM CAVEAT: this chart bundles the CRDs as templates, installed on first
+# `helm install` but NOT auto-updated on `helm upgrade` (a standard Helm
+# limitation, not Strimzi-specific) — a future chart version bump needing new/
+# changed CRD fields needs a manual `kubectl apply` of the new CRDs first.
+#
+# Why Kafka at all: tempo-distributed (values-tempo-distributed.yaml) requires it —
+# Tempo 3.x's distributor writes spans to Kafka, live-store/block-builder consume
+# from it. Not needed in monolithic mode (Compose, and this cluster until now) —
+# see the "Differences from Docker Compose" section in the README for the full
+# monolithic-vs-microservices explanation with a diagram.
+
+# watchNamespaces defaults to .Release.Namespace (observability) — Kafka here
+# exists only to serve the observability stack, no reason to watch cluster-wide.
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 500m
+    memory: 384Mi
+
+# Grouped with the lighter Tempo components (distributor/querier/query-frontend,
+# see values-tempo-distributed.yaml) rather than the Kafka broker itself — the
+# operator just reconciles CRs, it doesn't need to sit next to the data it manages.
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-observability-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: observability
+    effect: NoSchedule

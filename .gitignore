@@ -44,3 +44,6 @@ out/
 ### RPi setup
 compose-override.yml
 compose-override.yaml
+
+### Claude Code local settings ###
+.claude/settings.local.json

@@ -1,0 +1,107 @@
+# kubectl apply -f kafka-cluster.yaml
+#
+# Single-node, KRaft-mode Kafka cluster (Strimzi 1.2.0 — dropped ZooKeeper entirely,
+# KRaft is the only mode). One node does both "controller" and "broker" duty
+# (`roles: [controller, broker]`) — no separate controller quorum, matching the
+# single-instance, SPOF-accepted posture already used for both Postgres nodes in
+# this cluster. Based on Strimzi's own canonical single-node example
+# (examples/kafka/kafka-single-node.yaml in strimzi/strimzi-kafka-operator @ 1.2.0),
+# adjusted for this cluster's storage class/placement and a 1-partition topic
+# (matches tempo-distributed's live-store/block-builder replicas: 1 each — replica
+# count must equal partition count, see values-tempo-distributed.yaml).
+#
+# Exists only to feed tempo-distributed's ingest path (distributor -> Kafka ->
+# live-store/block-builder) — not a general-purpose message bus. See the
+# "Differences from Docker Compose" section in the README for why Compose doesn't
+# need this (Tempo runs monolithic there, no Kafka in that mode).
+
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: observability
+  labels:
+    strimzi.io/cluster: tempo-kafka
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  # Explicit heap instead of Kafka/JVM auto-sizing off the container limit — same
+  # discipline as GOMEMLIMIT on Tempo/otel-collector/Loki elsewhere in this repo,
+  # leaves ~640Mi headroom under the 1Gi limit for off-heap (page cache, direct
+  # buffers, JVM/thread overhead).
+  jvmOptions:
+    "-Xms": "384m"
+    "-Xmx": "384m"
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 5Gi
+        class: local-path
+        kraftMetadata: shared
+  template:
+    pod:
+      # Strimzi's PodTemplate has no plain nodeSelector field, only affinity —
+      # verified against the KafkaNodePoolTemplate/PodTemplate source
+      # (api/src/main/java/io/strimzi/api/kafka/model/{nodepool,common/template}).
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - k8s-rpi-observability-2
+      tolerations:
+        - key: role
+          operator: Equal
+          value: observability
+          effect: NoSchedule
+
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: tempo-kafka
+  namespace: observability
+  annotations:
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 4.3.1
+    metadataVersion: 4.3-IV0
+    listeners:
+      # Internal-only, unencrypted — same trust model as otel-collector -> Tempo's
+      # otlp_grpc/tempo exporter (tls.insecure: true), all traffic stays inside the
+      # cluster network. Bootstrap Service: tempo-kafka-kafka-bootstrap:9092.
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      # Single broker, no replicas to replicate to — matches Strimzi's own
+      # single-node example. Kafka's replication defaults (factor 3) would
+      # otherwise refuse to create the topic on a 1-broker cluster.
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      # Traces are consumed by live-store/block-builder within seconds — this
+      # topic is a transient ingest buffer, not a durable log. Short retention
+      # keeps the 5Gi PVC above from ever filling up under sustained load.
+      log.retention.hours: 1
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

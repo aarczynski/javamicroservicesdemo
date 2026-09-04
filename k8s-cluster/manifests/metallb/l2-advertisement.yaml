@@ -1,0 +1,29 @@
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - default-pool
+
+---
+# Restricts the Gateway's L2 announcement to the two nodes tainted
+# role=platform:NoSchedule (worker-1/worker-2) — see ip-address-pool.yaml for
+# why this IP got its own pool, and CLAUDE.md's node/taint table for the
+# worker-1/2 vs worker-3-6 split.
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: gateway-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - gateway-pool
+  nodeSelectors:
+    - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+            - k8s-rpi-worker-1
+            - k8s-rpi-worker-2

@@ -1,0 +1,114 @@
+# kubectl apply -f namespace.yaml -f postgres.yaml
+# Mirrors compose.yml's postgres-candidates service (image, credentials, db name).
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-candidates-credentials
+  namespace: candidates
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: password
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-candidates-data
+  namespace: candidates
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-candidates
+  namespace: candidates
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres-candidates
+  template:
+    metadata:
+      labels:
+        app: postgres-candidates
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-db-1
+      tolerations:
+        - key: role
+          operator: Equal
+          value: database
+          effect: NoSchedule
+      containers:
+        - name: postgres
+          image: postgres:18.3
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: app-candidates-db
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-candidates-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-candidates-credentials
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-candidates-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-candidates
+  namespace: candidates
+spec:
+  type: LoadBalancer
+  selector:
+    app: postgres-candidates
+  ports:
+    - port: 5432
+      targetPort: 5432

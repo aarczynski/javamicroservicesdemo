@@ -1,0 +1,45 @@
+# helm repo add cilium https://helm.cilium.io/
+# helm upgrade cilium cilium/cilium -n kube-system -f values-cilium.yaml --version 1.19.5
+#
+# Mirrors the values Cilium was originally bootstrapped with (cluster.name,
+# hubble, ipam, operator, routingMode/tunnelProtocol), plus kube-proxy
+# replacement + Gateway API — added 2026-08-27 to unlock Cilium Gateway API
+# as the ingress path, without introducing a separate ingress controller.
+#
+# Gateway API CRDs (standard channel, v1.4.1 — the version Cilium 1.19
+# requires) must be installed separately before this upgrade:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+#   (...gateways, httproutes, referencegrants, grpcroutes — same pattern)
+#
+# kubeProxyReplacement requires k8sServiceHost/k8sServicePort pointing at the
+# control-plane API server, since Cilium can no longer discover it via
+# kube-proxy-managed iptables rules.
+cluster:
+  name: kubernetes
+
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.io/loadBalancerIPs: "192.168.10.197"
+
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList: 10.244.0.0/16
+
+operator:
+  replicas: 1
+
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+kubeProxyReplacement: "true"
+k8sServiceHost: "192.168.10.1"
+k8sServicePort: "6443"
+
+gatewayAPI:
+  enabled: true

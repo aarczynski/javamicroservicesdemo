@@ -1,0 +1,190 @@
+# helm repo add grafana https://grafana.github.io/helm-charts
+# helm install alloy grafana/alloy -n observability -f values-alloy.yaml --version 1.12.1
+#
+# NOTE: unlike Grafana/Loki/Tempo (see pitfall 1 in the observability values
+# files), the Alloy chart is NOT part of the grafana.github.io/helm-charts ->
+# grafana-community migration — grafana-community has no `alloy` chart at all
+# (verified via `helm search repo grafana-community/alloy`, zero results,
+# 2026-09-03). `grafana/alloy` is the correct, actively-published repo for
+# this chart (verified not `deprecated: true`, latest version published
+# 2026-08-24 — a week before this file was written).
+#
+# Replaces the OTel javaagent's direct OTLP log export as the log path for
+# k8s only (Compose is untouched, still ships logs via the agent -> otel-
+# collector -> Loki OTLP path — see observability/otel-collector/otel-collector.yml).
+# One pod per node (DaemonSet), including tainted nodes, reading each node's
+# own /var/log/pods directly — same placement pattern as the MetalLB speaker
+# and prometheus-node-exporter DaemonSets.
+#
+# *** trace_id/span_id -> Loki structured metadata is IMPLEMENTED BY THE
+# REGEX IN THE CONFIG BELOW, matched against the console log line produced by
+# `logging.pattern.console` (see app-candidates/job-offers src/main/resources/
+# application.yml). It is the only thing keeping the Loki "View in Tempo"
+# derived-field link (values-grafana.yaml) alive now that logs bypass the
+# OTel javaagent's direct OTLP export in k8s. Changing the console pattern
+# without updating this regex silently breaks that link — no error, the
+# field just stops appearing. ***
+
+alloy:
+  configMap:
+    create: true
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        // Every Alloy replica only has the current node's log files under
+        // /var/log/pods (hostPath) — without this, every replica would
+        // enumerate every pod in the cluster and fail to find most of them
+        // locally. HOSTNAME comes from the chart's default env (downward API,
+        // spec.nodeName) — not the container's own Linux hostname.
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          regex         = env("HOSTNAME")
+          action        = "keep"
+        }
+
+        // Only the two application namespaces — mirrors what Compose ships to
+        // Loki today (app-candidates/app-job-offers only, no infra logs),
+        // keeps volume and label cardinality comparable across environments.
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "candidates|job-offers"
+          action        = "keep"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+
+        // "service_name", not "app" — matches the OTEL_SERVICE_NAME resource
+        // attribute the OTel javaagent's OTLP log export used to set. Keeps
+        // the existing "Logs" dashboard's $app variable (label_values(service_name))
+        // and its saved panel queries working unmodified.
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "service_name"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+
+        // Kubelet writes each container's log to
+        // /var/log/pods/<namespace>_<pod-name>_<pod-uid>/<container>/*.log —
+        // the leading "*" glob absorbs the "<namespace>_<pod-name>_" prefix
+        // so only the pod UID needs to be captured explicitly.
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          target_label  = "__path__"
+          replacement   = "/var/log/pods/*$1/*.log"
+        }
+      }
+
+      local.file_match "pod_logs" {
+        path_targets = discovery.relabel.pod_logs.output
+      }
+
+      loki.source.file "pod_logs" {
+        targets    = local.file_match.pod_logs.targets
+        forward_to = [loki.process.pod_logs.receiver]
+      }
+
+      loki.process "pod_logs" {
+        // containerd (this cluster's CRI) wraps every stdout line as
+        // "<timestamp> <stream> <P|F> <line>" — unwrap to the app's own log
+        // line before the regex below can match it.
+        stage.cri {}
+
+        // Without this, a multi-line Java stack trace (each "at ...\n"/"Caused
+        // by: ...\n" line is its own physical line in the container's log file)
+        // ships to Loki as one fragment PER LINE instead of one entry — found
+        // 2026-09-03 by grepping Loki for "error|timeout|exception" during a
+        // load test and seeing bare "at feign.FeignException..." lines with no
+        // parent ERROR entry. firstline matches logging.pattern.console's
+        // leading timestamp (application.yml); anything not matching it is a
+        // continuation of the previous entry, not a new log line.
+        stage.multiline {
+          firstline     = "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}"
+          max_wait_time = "3s"
+        }
+
+        // See the file header: this regex is the whole Loki->Tempo link for
+        // k8s logs. `logging.pattern.console` prints these two MDC keys,
+        // which the OTel javaagent's logback-mdc instrumentation populates
+        // automatically from the active span context.
+        stage.regex {
+          expression = "trace_id=(?P<trace_id>[0-9a-f]{32}) span_id=(?P<span_id>[0-9a-f]{16})"
+        }
+
+        // Structured metadata, not index labels — trace_id/span_id are
+        // effectively unique per line, promoting them to real Loki labels
+        // would blow up the index. Grafana's derivedFields (matcherType:
+        // label) reads structured metadata the same way it reads labels.
+        stage.structured_metadata {
+          values = {
+            trace_id = "",
+            span_id  = "",
+          }
+        }
+
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+  # No extraEnv needed for HOSTNAME: the chart already sets it (and
+  # K8S_NODE_NAME) from spec.nodeName by default for every controller.type —
+  # verified via `helm template` before committing this file.
+
+  mounts:
+    # /var/log/pods on this cluster's containerd nodes — no dockercontainers
+    # mount needed, that's only for the legacy dockershim log layout.
+    varlog: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+controller:
+  type: daemonset
+  tolerations:
+    - key: role
+      operator: Equal
+      value: database
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: platform
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule

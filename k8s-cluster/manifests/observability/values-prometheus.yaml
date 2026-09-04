@@ -1,0 +1,59 @@
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm install prometheus prometheus-community/prometheus -n observability -f values-prometheus.yaml --version 29.27.0
+
+# Bare server matching compose.yml, plus kube-state-metrics/node-exporter for
+# cluster/pod visibility (compose.yml has no equivalent — k8s-only addition).
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: true
+prometheus-node-exporter:
+  enabled: true
+  # DaemonSet: needs to run on every node, including the tainted ones, to see
+  # node-level metrics from db-1/db-2/observability-1/master (same pattern as
+  # the MetalLB speaker fix — see handoff "pułapka" notes).
+  tolerations:
+    - key: role
+      operator: Equal
+      value: database
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: platform
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  # Equivalent of compose.yml's `--web.enable-remote-write-receiver` flag —
+  # otel-collector's prometheusremotewrite exporter needs this.
+  extraArgs:
+    web.enable-remote-write-receiver: null
+
+  persistentVolume:
+    enabled: true
+    storageClass: local-path
+    size: 8Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  nodeSelector:
+    kubernetes.io/hostname: k8s-rpi-observability-1
+  tolerations:
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule

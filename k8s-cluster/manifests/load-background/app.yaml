@@ -1,0 +1,39 @@
+# kubectl apply -f namespace.yaml -f app.yaml
+# load-background. Pure client (no exposed port) — sends sinusoidal ambient
+# load at app-candidates via its in-cluster ClusterIP-equivalent DNS name.
+# Pinned to k8s-rpi-observability-2 (moved from observability-1 on 2026-08-28
+# to relieve CPU-limit overcommit there): keeps the ambient-load generator off
+# the generic workers, colocated with the observability stack it feeds telemetry into.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-background
+  namespace: load-background
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-background
+  template:
+    metadata:
+      labels:
+        app: load-background
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-observability-2
+      tolerations:
+        - key: role
+          operator: Equal
+          value: observability
+          effect: NoSchedule
+      containers:
+        - name: load-background
+          image: ghcr.io/aarczynski/load-background:v2
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi

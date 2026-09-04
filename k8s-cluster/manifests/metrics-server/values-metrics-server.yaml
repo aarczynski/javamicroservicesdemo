@@ -1,0 +1,24 @@
+# helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+# helm install metrics-server metrics-server/metrics-server -n kube-system -f values-metrics-server.yaml --version 3.14.0
+#
+# Without this, metrics.k8s.io is unavailable (`kubectl top` errors with
+# "Metrics API not available") and any UI that queries it for CPU/RAM
+# (Headlamp's cluster overview, kubectl top) renders those panels as failed —
+# discovered 2026-08-27 chasing an "everything unhealthy" report from Headlamp
+# even though every node/pod was actually Ready/Running.
+
+args:
+  # kubeadm kubelets on this cluster don't have serving certs signed by a CA
+  # metrics-server trusts by default (no serverTLSBootstrap set up) — without
+  # this, scraping every kubelet fails TLS verification. Standard workaround
+  # for hand-rolled kubeadm clusters; acceptable here (LAN-only, same relaxed
+  # posture already accepted for Grafana/Headlamp on this cluster).
+  - --kubelet-insecure-tls
+
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-observability-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: observability
+    effect: NoSchedule

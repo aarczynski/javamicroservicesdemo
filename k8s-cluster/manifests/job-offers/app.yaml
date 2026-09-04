@@ -1,0 +1,98 @@
+# kubectl apply -f namespace.yaml -f postgres.yaml -f app.yaml
+# app-job-offers. Internal only (called via Feign by app-candidates) — no
+# LoadBalancer, ClusterIP is enough. Datasource in the image's baked-in
+# docker/application.yml already matches the in-namespace Postgres Service
+# name, so no config override needed here (unlike app-candidates).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-job-offers
+  namespace: job-offers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-job-offers
+  template:
+    metadata:
+      labels:
+        app: app-job-offers
+    spec:
+      # See k8s-cluster/manifests/candidates/app.yaml for the full rationale
+      # (root-caused 2026-08-28: ndots:5 search-domain expansion + JVM's
+      # per-host InetAddress lock serializing all Tomcat threads behind one
+      # slow lookup). Applied here too for the otel-collector FQDN call.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      containers:
+        - name: app-job-offers
+          image: ghcr.io/aarczynski/app-job-offers:v2
+          # See k8s-cluster/manifests/candidates/app.yaml for the rationale
+          # (JDK's 10s negative DNS cache turns one transient lookup failure
+          # into a ~10s cascade of hard errors for every request).
+          command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: app-job-offers
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "1000"
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "1000"
+            - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
+              value: "true"
+            # Logs now go through Alloy (reads stdout directly, see
+            # k8s-cluster/manifests/alloy/values-alloy.yaml) instead of the
+            # agent's own OTLP log export — traces/metrics OTLP unaffected.
+            # Compose keeps the agent's OTLP log export (no Alloy there).
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-job-offers
+  namespace: job-offers
+spec:
+  type: ClusterIP
+  selector:
+    app: app-job-offers
+  ports:
+    - port: 8080
+      targetPort: 8080

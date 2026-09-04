@@ -1,0 +1,6 @@
+---
+- name: Prepare Raspberry Pi nodes for Kubernetes (kubeadm)
+  hosts: k8s_all
+  become: true
+  roles:
+    - node_prep

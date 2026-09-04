@@ -8,6 +8,15 @@ spring:
       ddl-auto: validate
   flyway:
     locations: db/migration/postgres
+logging:
+  pattern:
+    # trace_id/span_id come from MDC, populated automatically by the OTel
+    # javaagent's logback-mdc instrumentation for any active span. Printed
+    # here (rather than relying only on direct OTLP log export) because k8s
+    # logs go through Alloy reading raw stdout, not the agent's OTLP path
+    # (see k8s-cluster/manifests/alloy/values-alloy.yaml) — Alloy regexes
+    # these back out of the text to keep the Loki -> Tempo trace link alive.
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] trace_id=%X{trace_id} span_id=%X{span_id} %logger{36} - %msg%n"
 management:
   observations:
     annotations:

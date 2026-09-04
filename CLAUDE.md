@@ -313,7 +313,7 @@ This module runs burst load tests against `app-candidates` using Gatling.
 |-----------------------|---------|-------------|
 | `candidatesDataFile`  | —       | Path to SQL file with candidate UUIDs (required) |
 | `targetHost`          | `http://localhost:8080` | Base URL of `app-candidates` |
-| `maxRps`              | `500`   | Peak requests per second (global maximum, reached at the top of the last ramp) |
+| `maxRps`              | `100`   | Peak requests per second (global maximum, reached at the top of the last ramp) |
 | `stepDuration`        | `60s`   | Base time unit for each phase (`30s`, `5m`, `1h`) |
 | `ramps`               | `5`     | Number of ramp-up steps |
 
@@ -323,8 +323,8 @@ Each step takes exactly `stepDuration`: half ramping to the next RPS level, half
 it. The last step's holding half doubles as the peak hold — no separate peak-steady
 phase. Cooldown ramps from `maxRps` to 0 over `stepDuration`. Total: `(ramps + 1) × stepDuration`.
 
-With defaults (`maxRps=500`, `stepDuration=60s`, `ramps=5`):
-- Ramp-up: 5 steps × 1 min each = 5 min (0→100, 100→200, … up to 500 RPS, 30s ramp + 30s hold per step)
+With defaults (`maxRps=100`, `stepDuration=60s`, `ramps=5`):
+- Ramp-up: 5 steps × 1 min each = 5 min (0→20, 20→40, … up to 100 RPS, 30s ramp + 30s hold per step)
 - Cooldown: 1 min ramp down to 0
 - **Total: 6 min**
 
@@ -488,3 +488,34 @@ After every dependency upgrade, verify the observability stack is intact by runn
      - HTTP Monitoring: `http_server_request_duration_seconds_count{job="app-candidates", http_route=~"/api.*"}` returns data
      - JVM Monitoring: `jvm_memory_used_bytes{job="app-candidates"}`, `jvm_thread_count{job="app-candidates"}`, `jvm_cpu_recent_utilization_ratio{job="app-candidates"}` return data
 6. `docker compose down`
+
+## Home Kubernetes Cluster (Raspberry Pi 5)
+
+Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster (12× Raspberry Pi 5, `kubeadm`-based — not k3s, a deliberate choice to learn the full stack manually rather than rely on batteries-included defaults).
+
+Detailed, current state (node topology, architectural decisions, in-progress work, gotchas already hit) is tracked in `.claude/handoff-k8s-rpi-cluster.md` — read it at the start of any session touching the cluster, and keep it updated as work progresses.
+
+**IP addressing on the `192.168.10.0/24` VLAN ("Cloud"):**
+| Range | Purpose |
+|---|---|
+| `.1`–`.99` | Static reservations for node IPs (master/db/observability/worker) |
+| `.100`–`.199` | MetalLB IP pool (LoadBalancer IPs for k8s Services — e.g. `.100` Gateway, `.198` Headlamp, `.199` Grafana) |
+| `.200`–`.252` | Omada dynamic DHCP range |
+| `.253` | Static — managed switch (ES224G) |
+| `.254` | Router (ER7406), LAN3/VLAN 2 interface for this network |
+
+**Node taints — what can be scheduled where:**
+| Node(s) | Taint | What runs there |
+|---|---|---|
+| `master` | `node-role.kubernetes.io/control-plane:NoSchedule` | Control plane only (apiserver, etcd, scheduler, controller-manager) |
+| `db-1`, `db-2`, `db-3` | `role=database:NoSchedule` | Postgres instances |
+| `observability-1`, `observability-2` | `role=observability:NoSchedule` | Prometheus, Grafana, Loki, otel-collector, Tempo components, Kafka, MinIO |
+| `worker-1`, `worker-2` | `role=platform:NoSchedule` | Gateway ingress (`.100` L2 announcement, restricted here since 2026-09-04 — see handoff), Hubble Relay/UI, MetalLB controller, `local-path-provisioner`; future home for Keycloak |
+| `worker-3`–`worker-6` | none (generic) | `app-candidates`, `app-job-offers`, and future HPA replicas — kept clear of platform/observability noise on purpose |
+
+DaemonSets (Cilium, `cilium-envoy`, Alloy, `prometheus-node-exporter`, `metallb-speaker`) run on **every** node regardless of taint — each has explicit tolerations for `role=database`/`role=observability`/`role=platform`/control-plane. When adding a new taint value, remember to add a matching toleration to these five, or the DaemonSet silently stops covering that node.
+
+Conventions for this work stream:
+- Cluster resources as code live under `k8s-cluster/`: `ansible/` for node provisioning, `manifests/` for Helm chart values and plain Kubernetes manifests.
+- The version-pinning discipline above (standard `X.Y.Z` tags, no `-rc`/`-beta`, check release notes) applies to Helm charts too — additionally, **check `helm show chart <repo>/<chart> --version X` for a `deprecated: true` flag before adopting a chart**. Learned the hard way: `grafana.github.io/helm-charts` (repo `grafana`) is frozen — migrated wholesale to `grafana-community/helm-charts` (repo `grafana-community`) — use the latter for Loki, Tempo, and Grafana charts, or you silently get stale, unmaintained versions.
+- The user runs SSH/`ansible`/`kubeadm`/`kubectl` commands on cluster nodes themselves — Claude gives the exact command and waits for the result rather than executing it directly, unless the user explicitly hands off a specific batch of work ("ty zrób"/"you do it"). This does not apply to the rest of the repo (Gradle, tests, etc.), only to hands-on cluster operations.

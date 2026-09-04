@@ -1,0 +1,134 @@
+# kubectl apply -f namespace.yaml -f postgres.yaml -f app.yaml
+# app-candidates. Talks to Postgres in this namespace (already matches the
+# image's baked-in docker/application.yml) and to app-job-offers cross-namespace.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-candidates-config
+  namespace: candidates
+data:
+  application.yml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres-candidates:5432/app-candidates-db
+        username: postgres
+        password: password
+      cloud:
+        openfeign:
+          client:
+            config:
+              job-offers:
+                url: http://app-job-offers.job-offers.svc.cluster.local:8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-candidates
+  namespace: candidates
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-candidates
+  template:
+    metadata:
+      labels:
+        app: app-candidates
+    spec:
+      # ndots:5 (k8s default) makes glibc/JVM getaddrinfo() try up to 4 extra
+      # search-domain-expanded queries (candidates.svc.cluster.local, ...,
+      # lan) before the real, already-fully-qualified name — a single lost
+      # UDP packet on any of those costs a full 5s resolver timeout. Our
+      # cross-namespace FQDNs (app-job-offers.job-offers.svc.cluster.local,
+      # otel-collector...observability.svc.cluster.local) have 4 dots, so
+      # ndots:1 tries them as absolute first, skipping the search list.
+      # Root-caused 2026-08-28 via JVM thread dump: Tomcat worker threads
+      # serialized on InetAddress$NameServiceAddresses's per-host lock while
+      # one thread sat in native lookupAllHostAddr for seconds.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      containers:
+        - name: app-candidates
+          image: ghcr.io/aarczynski/app-candidates:v2
+          # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
+          # lookup for 10s. A single transient packet loss (ndots:1 still hits
+          # this occasionally, root-caused 2026-08-28) then poisons every
+          # request for the next 10s with an immediate UnknownHostException
+          # instead of each retrying independently — observed as a cascade of
+          # ~26 sub-10ms error traces following one genuine resolution
+          # failure. Set to 1s so a transient loss doesn't compound.
+          command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: app-candidates
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "1000"
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "1000"
+            - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
+              value: "true"
+            # Logs now go through Alloy (reads stdout directly, see
+            # k8s-cluster/manifests/alloy/values-alloy.yaml) instead of the
+            # agent's own OTLP log export — traces/metrics OTLP unaffected.
+            # Compose keeps the agent's OTLP log export (no Alloy there).
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+          volumeMounts:
+            - name: config
+              mountPath: /app/application.yml
+              subPath: application.yml
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+      volumes:
+        - name: config
+          configMap:
+            name: app-candidates-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-candidates
+  namespace: candidates
+spec:
+  type: ClusterIP
+  selector:
+    app: app-candidates
+  ports:
+    - port: 8080
+      targetPort: 8080
