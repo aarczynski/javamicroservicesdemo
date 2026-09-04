@@ -5,4 +5,23 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 192.168.10.100-192.168.10.199
+    - 192.168.10.101-192.168.10.199
+
+---
+# Carved out of default-pool 2026-09-04: .100 (the Gateway) was landing on
+# whichever node happened to win the L2 election first — that turned out to
+# be k8s-rpi-observability-1, the busiest node in the cluster, and under
+# sustained 150-200rps it caused TCP SYN retransmits/timeouts isolated to
+# that one node (root-caused via node_netstat_TcpExt_TCPSynRetrans + a
+# controlled repro, see .claude/handoff-k8s-rpi-cluster.md). Giving the
+# Gateway's IP its own pool lets its L2Advertisement (l2-advertisement.yaml)
+# restrict announcement to specific nodes without touching default-pool's
+# policy for Headlamp/Grafana.
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: gateway-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.10.100/32

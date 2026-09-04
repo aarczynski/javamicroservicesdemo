@@ -1,0 +1,24 @@
+# helm repo add metallb https://metallb.github.io/metallb
+# helm upgrade metallb metallb/metallb -n metallb-system -f values-metallb.yaml
+#
+# Previously applied via ad-hoc `--set` flags on the CLI (see git history /
+# handoff for the original 2026-08-26 command) — tracked here now so the
+# speaker's tolerations aren't only reconstructable from shell history.
+
+frrk8s:
+  enabled: false # Omada doesn't speak BGP, L2 mode only.
+
+speaker:
+  tolerations:
+    - key: role
+      operator: Equal
+      value: database
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: platform
+      effect: NoSchedule
