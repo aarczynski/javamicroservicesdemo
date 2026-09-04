@@ -117,6 +117,31 @@ Import them into the respective application databases (check [compose.yml](compo
 
 These files may be extremely large (several GB), thus they are not tracked in Git.
 
+### Row counts on the home k8s cluster
+
+Actual row counts in each database, as loaded on the physical Raspberry Pi cluster (see
+[Home Kubernetes cluster](#home-kubernetes-cluster)). Slightly above the generator's `100 000`/`50 000` defaults
+because each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of fixed demo rows on top of the
+bulk-generated data.
+
+**`app-candidates-db`:**
+
+| Table | Rows |
+|---|---|
+| `candidate` | 100,003 |
+| `candidate_skill` | 300,134 |
+| `candidate_preferred_employment_type` | 199,853 |
+
+**`app-job-offers-db`:**
+
+| Table | Rows |
+|---|---|
+| `job_offer` | 100,003 |
+| `job_offer_skill` | 299,943 |
+| `job_offer_employment_type` | 199,899 |
+| `company` | 50,003 |
+| `skill` | 58 |
+
 ## Starting microservices locally
 
 Run following command:
@@ -381,6 +406,29 @@ values and Kubernetes manifests.
 
 Photo of the physical cluster coming soon.
 
+### Measured capacity
+
+Sustained-load ceiling of the physical cluster, measured with `load-test` (`stepDuration=2m ramps=2`, i.e. a ramp to
+the target RPS followed by a 1-minute hold) against the Gateway (`http://192.168.10.100`), client run from a Mac wired
+directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client introduces its own packet loss unrelated to the
+cluster — see [Known issues](#known-issues)):
+
+| Peak RPS | KO rate | p99 latency | Verdict |
+|---|---|---|---|
+| 500 | 0% | 93ms | clean |
+| 600 | 0% | 254ms | clean, latency visibly rising |
+| 700 | 1.76% | 3.9s | fails |
+| 800 | 7.43% | 4.0s | fails |
+
+**Ceiling: ~600 RPS sustained.** Above that, both `app-candidates` and `app-job-offers` keep running without
+restarting or saturating CPU — the failure isn't the apps or the databases. It's the Cilium Gateway's Envoy proxy
+tripping its default circuit breaker (`envoy_cluster_circuit_breakers_default_cx_open`, `envoy_cluster_upstream_rq_pending_overflow`)
+once the request queue to `app-candidates` grows faster than the app can drain it, returning `503` instead of
+queueing further — confirmed by the overflow counter's increase (+12,496) matching the Gatling KO count (12,490)
+almost exactly during the 800 RPS run. `hikaricp_connections_pending` on `app-candidates` also climbed to 14 in the
+same window, suggesting the Postgres connection pool is a contributing factor feeding that queue, not just the
+circuit breaker's default thresholds. Not yet root-caused to a single tunable — a candidate for a future session.
+
 ## Differences from Docker Compose
 
 The cluster diverges from Compose on purpose in two places — deployed to the physical cluster and verified
@@ -474,6 +522,10 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 # Known issues
 
 * Spring percentile metrics do not work with OTEL Agent.
+* Running `load-test` against the Gateway from a client on Wi-Fi, or on a different VLAN than the cluster, produces
+  `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
+  route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
+  the cluster's VLAN for load tests that need clean results.
 
 # Future plans
 
