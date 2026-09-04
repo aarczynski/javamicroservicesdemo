@@ -79,13 +79,21 @@ backendScheduler:
       effect: NoSchedule
 
 backendWorker:
+  # memory 512Mi->1.5Gi, cpu 500m->1000m on 2026-09-04: OOMKilled every ~5-6min in
+  # steady state, independent of load (observed both before and during a 200rps
+  # Gatling burst) — each cycle compacts several ~60-70MB parquet blocks at once
+  # (confirmed in logs: 3 concurrent compactions = ~195MB raw input before
+  # decode/encode overhead), which the 512Mi limit never accounted for. Node had
+  # 5.8GiB free at 18% memory allocated, so this was an undersized default limit,
+  # not a physical capacity problem — same class of issue as blockBuilder/liveStore
+  # above.
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 1000m
+      memory: 1536Mi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:
