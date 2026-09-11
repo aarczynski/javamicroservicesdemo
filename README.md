@@ -478,6 +478,33 @@ unfixed — this session's attempt at it made things worse, not better, for reas
 concurrency profile. Worth revisiting with a different approach (e.g. batch-fetching instead of a second full query),
 but not the two-query split tried here.
 
+#### Update 2026-09-11 (continued) — horizontal scaling + Postgres CPU bump, 750 RPS clean
+
+With logging/probe fixes and parallel-workers-off in place (see above), pushing further exposed CPU as the limiter
+again: at 750 RPS on a single replica each, `app-candidates` hit 100% JVM CPU and `app-job-offers` ~90%, both pinned
+against their 2-core limit.
+
+**Fix 1 — horizontal: `replicas: 1 → 2` for both `app-candidates` and `app-job-offers`.** Both are stateless
+(`ClusterIP`-backed, no local state), so this is a trivial change — no code, no data-consistency concerns. The
+scheduler spread the four pods across four different generic workers (`worker-3`/`worker-6` for candidates,
+`worker-4`/`worker-5` for job-offers) without any anti-affinity rule needed. App CPU saturation dropped as expected —
+but the bottleneck moved, not disappeared: `postgres-job-offers` climbed to a flat 2.0 cores (its full limit,
+confirmed via Prometheus `container_cpu_usage_seconds_total`), while `postgres-candidates` still had headroom
+(~0.32/2 cores).
+
+**Fix 2 — vertical: `postgres-job-offers` CPU limit `2 → 3`.** Unlike the stateless apps, Postgres can't just get more
+replicas — the Deployment's single `PersistentVolumeClaim` is `ReadWriteOnce` (one pod can mount it at a time), and
+even with separate volumes, independent Postgres replicas behind one `Service` would diverge into inconsistent
+copies rather than share state. Real horizontal Postgres scaling needs actual streaming replication (a primary + read
+replicas, e.g. via an operator like CloudNativePG) — a bigger architectural change, not attempted here. Checked
+`db-2`'s node-level allocation first (`kubectl describe node`): only `postgres-job-offers` plus the standard per-node
+DaemonSets were scheduled there, with the node at ~2% actual CPU usage outside test windows, so there was real
+physical headroom to raise the limit into — even though it pushes the node's `limits` overcommit to 105% (`requests`
+stay at 10%, so this doesn't block scheduling; it's a soft ceiling, not a reservation).
+
+**Result — 750 RPS after both changes: 202,500 requests, 0% KO, p99=43ms, mean=11ms, max=318ms.** Clean at a load
+level no earlier session in this project reached.
+
 ### Row counts on the home k8s cluster
 
 Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's

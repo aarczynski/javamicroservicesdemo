@@ -511,7 +511,7 @@ Detailed, current state (node topology, architectural decisions, in-progress wor
 | `db-1`, `db-2`, `db-3` | `role=database:NoSchedule` | Postgres instances |
 | `observability-1`, `observability-2` | `role=observability:NoSchedule` | Prometheus, Grafana, Loki, otel-collector, Tempo components, Kafka, MinIO |
 | `worker-1`, `worker-2` | `role=platform:NoSchedule` | Gateway ingress (`.100` L2 announcement, restricted here since 2026-09-04 — see handoff), Hubble Relay/UI, MetalLB controller, `local-path-provisioner`; future home for Keycloak |
-| `worker-3`–`worker-6` | none (generic) | `app-candidates`, `app-job-offers`, and future HPA replicas — kept clear of platform/observability noise on purpose |
+| `worker-3`–`worker-6` | none (generic) | `app-candidates`, `app-job-offers` (2 replicas each as of 2026-09-11, manually scaled — no HPA yet), and future HPA replicas — kept clear of platform/observability noise on purpose |
 
 DaemonSets (Cilium, `cilium-envoy`, Alloy, `prometheus-node-exporter`, `metallb-speaker`) run on **every** node regardless of taint — each has explicit tolerations for `role=database`/`role=observability`/`role=platform`/control-plane. When adding a new taint value, remember to add a matching toleration to these five, or the DaemonSet silently stops covering that node.
 
