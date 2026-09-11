@@ -505,6 +505,27 @@ stay at 10%, so this doesn't block scheduling; it's a soft ceiling, not a reserv
 **Result — 750 RPS after both changes: 202,500 requests, 0% KO, p99=43ms, mean=11ms, max=318ms.** Clean at a load
 level no earlier session in this project reached.
 
+#### Update 2026-09-11 (continued) — 1000 RPS: still 0% KO, but tail latency shows the next ceiling
+
+Pushed straight to 1000 RPS on the same setup: **525,000 requests, 0% KO, p99=876ms, mean=69ms, max=2278ms.** No
+errors, but a sharp jump from 750 RPS's p99=43ms — the system is absorbing load by queueing, not by keeping up.
+
+Root cause, confirmed via Prometheus mid-window: `postgres-job-offers` was back at its (raised) ceiling — **2.98 of
+its 3-core limit**, essentially saturated again — while `hikaricp_connections_pending` climbed to **191 on both**
+`app-job-offers` replicas simultaneously (its Hikari pool is still the Spring Boot default, 10 connections, never
+tuned — unlike `app-candidates`'s 30/30). App and `postgres-candidates` CPU stayed comfortable (~1.2-1.3/2 cores and
+0.84/2 cores respectively) — the queueing is entirely on the job-offers side, consistent with every prior session's
+finding that its Postgres, not the JVMs, is the recurring limiter. Requests aren't failing (Hikari's
+`connection-timeout: 3000` hasn't been breached — max response time 2278ms is under that), they're just waiting in
+line for a DB connection that Postgres CPU can't service fast enough.
+
+Next candidates for pushing the ceiling further: raise `postgres-job-offers`'s CPU limit again (headroom is thinner
+now — `db-2` already sits at 105% `limits` overcommit after the last bump, so this needs checking node capacity
+first, same as before); revisit the `JobOfferRepository.findCandidateMatches` cartesian `JOIN FETCH` cost itself
+(the two-query split already tried made things worse — a batch-fetch approach is still unexplored, see
+[Known issues](#known-issues)); or move `app-job-offers` to real primary/read-replica Postgres so read traffic isn't
+serialized on one instance's CPU. Not attempted in this session.
+
 ### Row counts on the home k8s cluster
 
 Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's
