@@ -404,6 +404,40 @@ almost exactly during the 800 RPS run. `hikaricp_connections_pending` on `app-ca
 same window, suggesting the Postgres connection pool is a contributing factor feeding that queue, not just the
 circuit breaker's default thresholds. Not yet root-caused to a single tunable — a candidate for a future session.
 
+#### Update 2026-09-11 — root cause found: synchronous console logging, not Hikari or Envoy
+
+Bumping `app-candidates`'s Hikari pool (10 → 30, `maximum-pool-size`/`minimum-idle`) to chase the theory above made
+things *worse*, not better: 600 RPS still ran 0% KO but p99 jumped to 2.25s (vs. 254ms before). A live thread dump
+(`jcmd <pid> Thread.print`) taken mid-peak of a 700 RPS run found the real cause: **171 of 200 Tomcat worker threads
+(85.5% of the pool) were parked on a single `ReentrantLock` inside `ch.qos.logback.core.OutputStreamAppender.writeBytes`**.
+Spring Boot's default `ConsoleAppender` writes synchronously, and the request handler logs one line per request
+(`CandidateController.matchingOffers`, same pattern in `JobOfferController` on `app-job-offers`) — every concurrent
+request serializes on that one lock just to write its log line. Postgres CPU, Hikari `pending`, and Envoy's circuit
+breaker were all idle at that moment; the apps and databases had headroom, but requests queued behind a logging lock.
+
+**Fix 1 — async logging:** both services now ship a `logback-spring.xml` that wraps the console appender in a
+`ch.qos.logback.classic.AsyncAppender` (`queueSize=1024`, `discardingThreshold=0` so business-relevant logs are never
+dropped under load). Re-running 700 RPS immediately after deploying this made things *catastrophically* worse (85.74%
+KO, including new `500`s) — `app-candidates` started crash-looping. Freed from the logging lock, worker threads did
+real work (blocking on the Feign call to `app-job-offers`) for much longer, saturating the full 200-thread Tomcat
+pool for real. The liveness probe shares that same pool and port, so it timed out too, and kubelet killed the pod —
+turning a slowdown into a multi-minute outage.
+
+**Fix 2 — separate port for actuator:** `management.server.port: 8081` on both services gives the actuator endpoints
+their own embedded Tomcat connector (own acceptor/poller/executor, confirmed live via thread names —
+`http-nio-8081-exec-*` vs. `http-nio-8080-exec-*`, 10 threads vs. 200), completely independent of the request-handling
+pool. `compose.yml` healthchecks and the k8s `livenessProbe`/`readinessProbe` were repointed at 8081. With both fixes
+deployed, 700 RPS no longer crash-loops the pod (0 restarts) — the system now degrades safely through Envoy's `503`s
+instead of dying, though it's still overloaded at that level (72% KO). **600 RPS is now clean and net better than the
+original baseline: 0% KO, p99=112ms** (vs. 254ms before any of this session's changes).
+
+The next candidate bottleneck, not yet fixed: at 600 RPS peak, `app-job-offers` and its Postgres both run at
+~75-80% of their 2-core CPU limit, while `app-candidates`/its Postgres have plenty of headroom — consistent with the
+already-known cartesian-product `JOIN FETCH` in `JobOfferRepository.findCandidateMatches` (see
+[Known issues](#known-issues)). `server.tomcat.threads.max` (default 200) was deliberately left untouched — Little's
+Law suggests it isn't the real constraint, and raising it without fixing `app-job-offers`'s CPU cost would likely just
+move the queueing rather than raise real throughput.
+
 ### Row counts on the home k8s cluster
 
 Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's
@@ -525,6 +559,12 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
   route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
   the cluster's VLAN for load tests that need clean results.
+* `JobOfferRepository.findCandidateMatches` fetches two collections at once via `@NamedEntityGraph`
+  (`offeredEmploymentTypes`, an element collection, and `skills`, a one-to-many with a `skill` subgraph). Hibernate
+  does this as a double `JOIN FETCH` in one statement, which produces a cartesian product (an offer with M employment
+  types × N skills returns M×N rows), deduplicated back down in Java via `SELECT DISTINCT`. Not wrong, just needlessly
+  expensive per request — a real contributor to `app-job-offers`'s CPU cost at high load (see
+  [Measured capacity](#measured-capacity)). Splitting into two queries (or two separate fetches) would cut that cost.
 
 # Future plans
 
