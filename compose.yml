@@ -29,7 +29,7 @@ services:
       otel-collector:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -c UP" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8081/actuator/health | grep -c UP" ]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -66,7 +66,7 @@ services:
       otel-collector:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -c UP" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8081/actuator/health | grep -c UP" ]
       interval: 10s
       timeout: 5s
       retries: 20

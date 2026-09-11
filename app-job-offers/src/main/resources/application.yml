@@ -18,6 +18,12 @@ logging:
     # these back out of the text to keep the Loki -> Tempo trace link alive.
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] trace_id=%X{trace_id} span_id=%X{span_id} %logger{36} - %msg%n"
 management:
+  server:
+    # Separate connector/thread pool from the business port (8080). Without
+    # this, liveness/readiness probes compete with request-handling threads
+    # for the same Tomcat pool — under load, a saturated pool makes the probe
+    # time out too, and kubelet kills a pod that's merely slow, not dead.
+    port: 8081
   observations:
     annotations:
       enabled: true

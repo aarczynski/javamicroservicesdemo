@@ -29,13 +29,14 @@ spec:
             value: "1"
       containers:
         - name: app-job-offers
-          image: ghcr.io/aarczynski/app-job-offers:v2
+          image: ghcr.io/aarczynski/app-job-offers:v4
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request).
           command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
           ports:
             - containerPort: 8080
+            - containerPort: 8081
           env:
             - name: OTEL_SERVICE_NAME
               value: app-job-offers
@@ -62,7 +63,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 5
@@ -70,7 +71,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 40
             periodSeconds: 15
             timeoutSeconds: 5

@@ -53,7 +53,7 @@ spec:
             value: "1"
       containers:
         - name: app-candidates
-          image: ghcr.io/aarczynski/app-candidates:v2
+          image: ghcr.io/aarczynski/app-candidates:v5
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every
@@ -64,6 +64,7 @@ spec:
           command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080
+            - containerPort: 8081
           env:
             - name: OTEL_SERVICE_NAME
               value: app-candidates
@@ -94,7 +95,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 5
@@ -102,7 +103,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 40
             periodSeconds: 15
             timeoutSeconds: 5
