@@ -53,6 +53,13 @@ spec:
       containers:
         - name: postgres
           image: postgres:18.3
+          # Postgres sizes parallel query off nproc (4, the physical RPi5's
+          # core count — cgroup CPU quotas don't change what the container
+          # sees), not the k8s "cpu: 2" limit below. Tested 2026-09-11:
+          # disabling this alone (single-query findCandidateMatches, no other
+          # change) at 600rps — see README for the result before deciding
+          # whether this stays.
+          args: ["-c", "max_parallel_workers_per_gather=0"]
           ports:
             - containerPort: 5432
           env:

@@ -438,6 +438,46 @@ already-known cartesian-product `JOIN FETCH` in `JobOfferRepository.findCandidat
 Law suggests it isn't the real constraint, and raising it without fixing `app-job-offers`'s CPU cost would likely just
 move the queueing rather than raise real throughput.
 
+#### Update 2026-09-11 (continued) — disk I/O ruled out, Postgres parallel query found to be the real amplifier
+
+Checked disk I/O on both database nodes (`node_disk_io_time_seconds_total`, `node_disk_read/written_bytes_total` via
+node-exporter) during a 600 RPS run: both sit at 0.1-0.7% busy, tens of KB/s, sub-5ms latency. The 100k-row dataset
+fits comfortably in Postgres's cache on an 8GB RPi5 — disk was never a candidate.
+
+**Attempted fix — splitting the cartesian `JOIN FETCH` into two queries (`findCandidateMatches` + a new
+`fetchSkills`): made things much worse, reverted.** Implemented, tested with Spock (green), deployed, and measured
+live: 600 RPS went from clean to 43.87% KO. `hikaricp_connections_pending` on `app-job-offers` hit 188 — every search
+now needed two sequential DB round trips instead of one, and the default Hikari pool (still 10, never touched) choked
+immediately. Raising it to 30 made it *worse* (53.35% KO) — the bottleneck wasn't pool size, it was that two queries
+per request is more expensive than one at this concurrency, cartesian product or not. **Fully reverted** — `findCandidateMatches`
+is back to the original single-query `@NamedEntityGraph("JobOffer.withAllRelations")`.
+
+**Real fix — disabling Postgres parallel query workers, tested in isolation: 700 RPS KO dropped from 72% to 1.77%.**
+`nproc` inside the `postgres-job-offers` container reports **4** (the physical RPi5's core count — a k8s `cpu: "2"`
+limit is a CFS quota, not a cpuset, so the container still sees all host cores) while `max_parallel_workers_per_gather`
+defaults to 2. Every query that qualifies for a parallel plan (this one does) forks a leader + 2 workers, each
+competing for the same 2-core quota — up to 3x the CPU footprint per query. `EXPLAIN (ANALYZE, BUFFERS)` on an
+isolated, otherwise-idle connection confirmed parallel *is* faster for a single query in isolation (35.6ms vs 52.9ms
+serial) — the cost only shows up as aggregate CPU-time under concurrency, which single-query EXPLAIN ANALYZE cannot
+see. Tested with `args: ["-c", "max_parallel_workers_per_gather=0"]` on the `postgres-job-offers` container, isolated
+from every other change (original single-query fetch, no Hikari changes):
+
+| Peak RPS | Parallel workers ON (this session's baseline) | Parallel workers OFF |
+|---|---|---|
+| 600 | 0% KO, p99=387ms | 0% KO, p99=1051ms (worse latency, still clean) |
+| 700 | 72% KO | **1.77% KO**, p99=3.9s |
+| 800 | — | 6.34% KO |
+
+Net win at the load levels that actually matter (700-800 RPS, where the system was failing) despite a real latency
+cost at 600 RPS from losing the single-query parallel speedup. Zero app code changes — a one-line Postgres container
+arg. `app-candidates`'s Postgres wasn't touched (it has CPU headroom to spare, per the numbers above, and its own
+queries are simple enough that parallel plans are unlikely to even trigger).
+
+The `JobOfferRepository.findCandidateMatches` cartesian `JOIN FETCH` (see [Known issues](#known-issues)) remains
+unfixed — this session's attempt at it made things worse, not better, for reasons specific to this workload's
+concurrency profile. Worth revisiting with a different approach (e.g. batch-fetching instead of a second full query),
+but not the two-query split tried here.
+
 ### Row counts on the home k8s cluster
 
 Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's
@@ -562,9 +602,12 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 * `JobOfferRepository.findCandidateMatches` fetches two collections at once via `@NamedEntityGraph`
   (`offeredEmploymentTypes`, an element collection, and `skills`, a one-to-many with a `skill` subgraph). Hibernate
   does this as a double `JOIN FETCH` in one statement, which produces a cartesian product (an offer with M employment
-  types × N skills returns M×N rows), deduplicated back down in Java via `SELECT DISTINCT`. Not wrong, just needlessly
-  expensive per request — a real contributor to `app-job-offers`'s CPU cost at high load (see
-  [Measured capacity](#measured-capacity)). Splitting into two queries (or two separate fetches) would cut that cost.
+  types × N skills returns M×N rows), deduplicated back down in Java via `SELECT DISTINCT`. **Tried splitting this into
+  two queries (2026-09-11, see [Measured capacity](#measured-capacity)) — made things much worse under load** (600
+  RPS went from clean to 43.87% KO), because two sequential DB round trips per request cost more at this concurrency
+  than the cartesian product ever did. Reverted. The actual dominant cost at high load turned out to be Postgres
+  parallel query workers, not this — see the same section. Left as-is; a fix here would need a different approach
+  (e.g. batch-fetching the second collection for many offers in one extra query, not a second per-offer round trip).
 
 # Future plans
 
