@@ -18,14 +18,33 @@ cluster:
   name: kubernetes
 
 hubble:
+  # Pinned to an observability node (2026-09-14) — Hubble UI/Relay are
+  # dashboards, they belong with the rest of observability, not on the
+  # platform/ingress nodes (worker-1/worker-2) where they landed by accident
+  # via Cilium's own default scheduling (no nodeSelector/tolerations were set
+  # here before, so this was never actually pinned as code).
   relay:
     enabled: true
+    nodeSelector:
+      kubernetes.io/hostname: k8s-rpi-observability-2
+    tolerations:
+      - key: role
+        operator: Equal
+        value: observability
+        effect: NoSchedule
   ui:
     enabled: true
     service:
       type: LoadBalancer
       annotations:
         metallb.io/loadBalancerIPs: "192.168.10.197"
+    nodeSelector:
+      kubernetes.io/hostname: k8s-rpi-observability-2
+    tolerations:
+      - key: role
+        operator: Equal
+        value: observability
+        effect: NoSchedule
 
 ipam:
   operator:

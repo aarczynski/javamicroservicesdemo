@@ -118,10 +118,10 @@ Wdrożone bezpośrednio przez Claude (jawne "ty robisz" od użytkownika — wyj�
 | `k8s-rpi-db-1` | `192.168.10.50` | taint `role=database:NoSchedule` | `Ready` |
 | `k8s-rpi-db-2` | `192.168.10.51` | taint `role=database:NoSchedule` | `Ready` |
 | `k8s-rpi-observability-1` | `192.168.10.90` | taint `role=observability:NoSchedule` — Prometheus/Grafana/Loki/otel-collector, Headlamp, metrics-server | `Ready` |
-| `k8s-rpi-observability-2` | `192.168.10.91` | taint `role=observability:NoSchedule` — Tempo + `load-background`, dodany 2026-08-28 | `Ready` |
+| `k8s-rpi-observability-2` | `192.168.10.91` | taint `role=observability:NoSchedule` — Tempo + `load-background`, dodany 2026-08-28; Hubble Relay/UI dołożone 2026-09-14 | `Ready` |
 | `k8s-rpi-db-3` | `192.168.10.52` | taint `role=database:NoSchedule`, dodany 2026-08-28 (jeszcze bez Postgresa/CloudNativePG — patrz plan pkt 11) | `Ready` |
-| `k8s-rpi-worker-1` | `192.168.10.10` | brak tainta, generic worker (hostuje Hubble Relay/UI) | `Ready` |
-| `k8s-rpi-worker-2` | `192.168.10.11` | brak tainta, generic worker | `Ready` |
+| `k8s-rpi-worker-1` | `192.168.10.10` | taint `role=platform:NoSchedule` (od decyzji 2026-08-2x, patrz pkt "Nowy podział ról workerów" niżej — ta tabela była nieaktualna, poprawione 2026-09-14) — Gateway ingress, MetalLB controller, `local-path-provisioner` | `Ready` |
+| `k8s-rpi-worker-2` | `192.168.10.11` | taint `role=platform:NoSchedule` — jw. Hubble Relay/UI stąd przeniesione na `observability-2` 2026-09-14 (stało tu przypadkiem, bez własnego `nodeSelector`/`tolerations` w `values-cilium.yaml` — tylko dzięki domyślnym tolerancjom chartu Cilium) | `Ready` |
 | `k8s-rpi-worker-3` | `192.168.10.12` | brak tainta, generic worker, dodany 2026-08-28 | `Ready` |
 | `k8s-rpi-worker-4` | `192.168.10.13` | brak tainta, generic worker, dodany 2026-09-03 | `Ready` |
 | `k8s-rpi-worker-5` | `192.168.10.14` | brak tainta, generic worker, dodany 2026-09-03 | `Ready` |
@@ -200,7 +200,9 @@ Prometheus + Loki + Tempo + otel-collector + Grafana wdrożone na `k8s-rpi-obser
 
 ## Hubble Relay/UI
 
-Działa na generic workerach (`k8s-rpi-worker-1`/`-2`), scheduler sam omija tainted node'y. Decyzja użytkownika: zostaje w klastrze mimo niepewności co do realnego użycia — było częścią uzasadnienia wyboru Cilium zamiast Calico. **Realnie użyte 2026-08-28** do diagnozy HTTP latency spike'ów (patrz sekcja niżej) — potwierdziło swoją wartość jako jedyne narzędzie pokazujące faktyczny ruch L3/L4 (SYN/ACK/DROP), czego nie dają ani Headlamp (stan zasobów k8s), ani Grafana/Tempo (warstwa aplikacyjna).
+Decyzja użytkownika: zostaje w klastrze mimo niepewności co do realnego użycia — było częścią uzasadnienia wyboru Cilium zamiast Calico. **Realnie użyte 2026-08-28** do diagnozy HTTP latency spike'ów (patrz sekcja niżej) — potwierdziło swoją wartość jako jedyne narzędzie pokazujące faktyczny ruch L3/L4 (SYN/ACK/DROP), czego nie dają ani Headlamp (stan zasobów k8s), ani Grafana/Tempo (warstwa aplikacyjna).
+
+**Aktualizacja 2026-09-14 — przeniesione na `observability-2`, jawnie przypięte jako kod.** Do tej pory żyło na `k8s-rpi-worker-1` (co ustalono, sprawdzając live `kubectl get pods -o wide` — nie z dokumentacji, która akurat się myliła/była nieaktualna) mimo że `values-cilium.yaml` **nigdy nie miał** `nodeSelector`/`tolerations` dla `hubble.relay`/`hubble.ui` — lądowało tam wyłącznie dzięki domyślnym tolerancjom samego chartu Cilium, czysto przypadkiem, nie przez świadomy kontrakt. Użytkownik słusznie zauważył: to dashboard, powinien stać z resztą observability, nie z ingressem/platformą. Sprawdzone w oficjalnym chart Cilium 1.19.5 (`helm show values`, nie zgadywane): `hubble.relay.nodeSelector`/`tolerations` i `hubble.ui.nodeSelector`/`tolerations` istnieją jako osobne klucze — dopisane w `values-cilium.yaml`, `nodeSelector: kubernetes.io/hostname: k8s-rpi-observability-2` + toleracja `role=observability:NoSchedule` (ten sam wzorzec co Headlamp na `observability-1` — rozłożone dwa lekkie UI po dwóch node'ach observability). Wymaga `helm upgrade cilium cilium/cilium -n kube-system -f k8s-cluster/manifests/cilium/values-cilium.yaml --version 1.19.5` żeby zadziałać live — jeszcze nie wykonane przez użytkownika w momencie tego zapisu.
 
 **UI wystawione na `192.168.10.197`** (`hubble.ui.service.type: LoadBalancer` + `metallb.io/loadBalancerIPs` w `k8s-cluster/manifests/cilium/values-cilium.yaml`, dodane 2026-08-28) — dedykowany, wolny adres, bez potrzeby `port-forward`. Port standardowy `80` (chart hardcoduje port Service'u, brak override przez `values` — stąd zwykły `LoadBalancer` na własnym IP zamiast prób współdzielenia adresu z Headlampem, co okazało się niewykonalne bez osobnego, poza-Helmowego Service'u).
 
