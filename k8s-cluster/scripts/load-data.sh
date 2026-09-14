@@ -43,7 +43,7 @@ load_database() {
         psql -U postgres -d "$db" -c "TRUNCATE TABLE $check_table CASCADE"
     else
       echo "==> $db already has $row_count rows in $check_table — skipping (use --force to reload)"
-      return 0
+      return 1
     fi
   fi
 
@@ -54,21 +54,37 @@ load_database() {
   done
 }
 
+sync_load_background() {
+  local file="$1"
+  echo "==> Syncing $file into load-background (so ambient load hits real candidate IDs)"
+  local pod
+  pod=$(kubectl get pod -n load-background -l app=load-background -o jsonpath='{.items[0].metadata.name}')
+  kubectl cp "$file" "load-background/$pod:/data/01-candidates.sql"
+  kubectl rollout restart deployment/load-background -n load-background
+  kubectl rollout status deployment/load-background -n load-background --timeout=60s
+}
+
 echo "==> Generating fresh SQL files (make generate-data)"
 (cd "$ROOT_DIR" && make generate-data)
 
 OUT="$ROOT_DIR/data-generator/output"
 
-load_database candidates postgres-candidates app-candidates-db candidate \
+if load_database candidates postgres-candidates app-candidates-db candidate \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
-  "$OUT/candidates/03-candidate-skills.sql"
+  "$OUT/candidates/03-candidate-skills.sql"; then
+  # Only sync when candidates was actually (re)imported - the file we'd sync
+  # otherwise is freshly generated with different random UUIDs than whatever
+  # is still sitting in Postgres from the skipped import, which would just
+  # reintroduce the exact "load-background hits IDs that don't exist" bug.
+  sync_load_background "$OUT/candidates/01-candidates.sql"
+fi
 
 load_database job-offers postgres-job-offers app-job-offers-db job_offer \
   "$OUT/job-offers/01-companies.sql" \
   "$OUT/job-offers/02-skills.sql" \
   "$OUT/job-offers/03-job-offers.sql" \
   "$OUT/job-offers/04-job-offer-employment-types.sql" \
-  "$OUT/job-offers/05-job-offer-skills.sql"
+  "$OUT/job-offers/05-job-offer-skills.sql" || true
 
 echo "==> Load complete"

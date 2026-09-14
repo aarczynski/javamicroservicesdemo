@@ -4,7 +4,28 @@
 # Pinned to k8s-rpi-observability-2 (moved from observability-1 on 2026-08-28
 # to relieve CPU-limit overcommit there): keeps the ambient-load generator off
 # the generic workers, colocated with the observability stack it feeds telemetry into.
+#
+# /data is a PVC, not baked into the image (found 2026-09-14: the image had a
+# candidate SQL file baked in from its build date, completely disconnected
+# from whatever's actually in Postgres today — ~96% 404s as a result).
+# k8s-cluster/scripts/load-data.sh kubectl cp's a fresh file in after every
+# data reload and restarts this Deployment; the PVC is what makes that
+# survive the restart instead of reverting to nothing.
 
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: load-background-data
+  namespace: load-background
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +51,12 @@ spec:
       containers:
         - name: load-background
           image: ghcr.io/aarczynski/load-background:v2
+          env:
+            - name: DATA_FILE
+              value: /data/01-candidates.sql
+          volumeMounts:
+            - name: data
+              mountPath: /data
           resources:
             requests:
               cpu: 250m
@@ -37,3 +64,7 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: load-background-data
