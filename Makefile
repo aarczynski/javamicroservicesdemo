@@ -42,13 +42,13 @@ k8s-init:
 k8s-bootstrap:
 	./k8s-cluster/scripts/bootstrap.sh
 
-k8s-seed-data:
-	./k8s-cluster/scripts/seed-data.sh
+k8s-load-data:
+	./k8s-cluster/scripts/load-data.sh
 
-k8s-reseed-data:
-	./k8s-cluster/scripts/seed-data.sh --force
+k8s-reload-data:
+	./k8s-cluster/scripts/load-data.sh --force
 
-k8s-rebuild-all: k8s-prep k8s-init k8s-bootstrap k8s-seed-data
+k8s-rebuild-all: k8s-prep k8s-init k8s-bootstrap k8s-load-data
 
 k8s-deploy:
 	./k8s-cluster/scripts/deploy.sh

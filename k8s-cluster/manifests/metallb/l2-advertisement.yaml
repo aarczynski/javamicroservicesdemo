@@ -9,9 +9,10 @@ spec:
 
 ---
 # Restricts the Gateway's L2 announcement to the two nodes tainted
-# role=platform:NoSchedule (worker-1/worker-2) — see ip-address-pool.yaml for
-# why this IP got its own pool, and CLAUDE.md's node/taint table for the
-# worker-1/2 vs worker-3-6 split.
+# role=platform:NoSchedule (platform-1/platform-2, renamed from
+# worker-1/worker-2 2026-09-14) — see ip-address-pool.yaml for why this IP
+# got its own pool, and CLAUDE.md's node/taint table for the platform vs
+# generic-worker split.
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
@@ -25,5 +26,5 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-            - k8s-rpi-worker-1
-            - k8s-rpi-worker-2
+            - k8s-rpi-platform-1
+            - k8s-rpi-platform-2

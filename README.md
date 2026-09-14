@@ -370,8 +370,8 @@ Current state:
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`/`db-2`/`db-3` | `role=database` | Postgres instances |
 | `observability-1`/`observability-2` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI |
-| `worker-1`/`worker-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner` |
-| `worker-3`–`worker-6` | none | `app-candidates`, `app-job-offers`, future autoscaled replicas, and the future Keycloak deployment |
+| `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, future Keycloak/SSO |
+| `worker-1`–`worker-4` | none | `app-candidates`, `app-job-offers`, future autoscaled replicas |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
