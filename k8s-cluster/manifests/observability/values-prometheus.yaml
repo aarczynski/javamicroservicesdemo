@@ -51,7 +51,7 @@ server:
       memory: 1Gi
 
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-1
+    kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:
     - key: role
       operator: Equal

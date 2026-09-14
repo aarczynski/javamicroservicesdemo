@@ -65,8 +65,12 @@ spec:
       labels:
         app: minio
     spec:
-      # Colocated with the tempo-distributed components that actually talk to it
-      # (block-builder, backend-worker, querier) — see values-tempo-distributed.yaml.
+      # NOTE: kept on observability-2 during the 2026-09-14 experimental node swap
+      # (see values-tempo-distributed.yaml et al.) — the pinned image tag
+      # (RELEASE.2025-09-07T16-13-09Z) was removed from Docker Hub sometime after
+      # 2026-09-03 (confirmed via the Hub API: "object not found"). observability-2
+      # still has it cached locally from before the removal; observability-1 can no
+      # longer pull it at all. Revisit once a current, available tag is chosen.
       nodeSelector:
         kubernetes.io/hostname: k8s-rpi-observability-2
       tolerations:

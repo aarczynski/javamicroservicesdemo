@@ -4,6 +4,11 @@
 # Pinned to k8s-rpi-observability-2 (moved from observability-1 on 2026-08-28
 # to relieve CPU-limit overcommit there): keeps the ambient-load generator off
 # the generic workers, colocated with the observability stack it feeds telemetry into.
+# (Briefly moved to observability-1 on 2026-09-14 to test whether it was
+# causing an unusually fast-blinking disk LED on observability-2 — LED
+# behavior was unchanged after the move, so ruled out; moved back same day.
+# /data is on a local-path PVC, which is node-pinned — the PVC must be
+# deleted and recreated alongside any node move, see scripts/load-data.sh.)
 #
 # /data is a PVC, not baked into the image (found 2026-09-14: the image had a
 # candidate SQL file baked in from its build date, completely disconnected

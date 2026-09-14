@@ -62,7 +62,7 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: In
                     values:
-                      - k8s-rpi-observability-2
+                      - k8s-rpi-observability-1
       tolerations:
         - key: role
           operator: Equal

@@ -71,7 +71,7 @@ backendScheduler:
       cpu: 200m
       memory: 128Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-2
+    kubernetes.io/hostname: k8s-rpi-observability-1
   tolerations:
     - key: role
       operator: Equal
@@ -95,7 +95,7 @@ backendWorker:
       cpu: 1000m
       memory: 1536Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-2
+    kubernetes.io/hostname: k8s-rpi-observability-1
   tolerations:
     - key: role
       operator: Equal
@@ -130,7 +130,7 @@ blockBuilder:
       cpu: 1000m
       memory: 4608Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-2
+    kubernetes.io/hostname: k8s-rpi-observability-1
   tolerations:
     - key: role
       operator: Equal
@@ -149,24 +149,37 @@ liveStore:
   # ingests far more data per second than steady-state traffic ever does, OOMKilled
   # (exit 137) within seconds of restart even though observed steady-state peak was only
   # 523Mi. The steady-state number understated the real requirement.
+  # memory 1.5Gi->2.5Gi on 2026-09-14: a 584rps/15min Gatling burst (candidatesimulation)
+  # pushed enough trace volume through Kafka that a post-test restart's catch-up replay
+  # OOMKilled this 10 times in a row before finally catching up (consumer lag confirmed
+  # back down to single digits afterwards, so not a runaway backlog spiral — just an
+  # undersized limit for this catch-up pattern, same root cause as the original 2026-09-03
+  # fix, just a bigger backlog this time). Both nodes stayed well under memory pressure
+  # throughout (>60% available), so headroom was never the constraint.
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
     limits:
       cpu: 1500m
-      memory: 1536Mi
+      memory: 2560Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-2
+    kubernetes.io/hostname: k8s-rpi-observability-1
   tolerations:
     - key: role
       operator: Equal
       value: observability
       effect: NoSchedule
 
-# distributor/querier/query-frontend grouped on observability-1 (the busier node —
-# these three are comparatively light, mostly proxy/coordinate rather than hold data)
-# — see values-strimzi-operator.yaml for the placement rationale.
+# distributor stays on observability-2 (with Loki/Prometheus/Grafana/MinIO); querier
+# and queryFrontend moved to observability-1 on 2026-09-14 as part of a data-driven
+# CPU rebalance (see k8s-cluster/manifests/kafka/kafka-cluster.yaml and
+# k8s-cluster/manifests/minio/minio.yaml for the same day's node-swap experiment this
+# continues) — ambient-load CPU measured per-pod via Prometheus put observability-1 at
+# 45.2m and observability-2 at 105.6m; moving otel-collector + querier + query-frontend
+# (all lightweight, off the Kafka ingest hot path) to observability-1 balances it to
+# ~74.8m/76.0m. A follow-up 584rps/15min burst test confirmed observability-1 still had
+# ample headroom (25% CPU busy, 62% memory free peak) to absorb these three.
 distributor:
   # cpu 200m->1000m on 2026-09-03: throttled under the same 200rps burst that OOMKilled
   # blockBuilder and throttled liveStore (see comments there) — same fix, same reasoning.
@@ -178,7 +191,7 @@ distributor:
       cpu: 1000m
       memory: 128Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-1
+    kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:
     - key: role
       operator: Equal
