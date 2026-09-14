@@ -526,6 +526,32 @@ first, same as before); revisit the `JobOfferRepository.findCandidateMatches` ca
 [Known issues](#known-issues)); or move `app-job-offers` to real primary/read-replica Postgres so read traffic isn't
 serialized on one instance's CPU. Not attempted in this session.
 
+#### Update 2026-09-14 — 1000 RPS re-tested after a full cluster rebuild: same ceiling, no longer hit
+
+The whole physical cluster was torn down and rebuilt this session (`kubeadm reset -f` on all 12 nodes, fresh
+`kubeadm init`/`join`, fresh Postgres instances, full data reload). No code or config changed on `app-job-offers` /
+`postgres-job-offers` since the result above — Hikari pool still the untouched default 10, `findCandidateMatches`'s
+cartesian `JOIN FETCH` still unfixed, CPU limit still 3 cores, parallel workers still off. Re-running the identical
+profile (`maxRps=1000 ramps=2 stepDuration=5m`, 525,000 requests, a sustained 1000 RPS hold) twice against the rebuilt
+cluster:
+
+| Run | Requests | KO | p99 | Max | Mean |
+|---|---|---|---|---|---|
+| 17:12 UTC | 525,000 | 0% | 30ms | 142ms | 10ms |
+| 18:03 UTC | 525,000 | 0% | 29ms | 112ms | 10ms |
+
+Both clean, both essentially identical — no sign of the p99=876ms ceiling from the previous result. Confirmed via
+Prometheus across both windows: `postgres-job-offers` peaked at **1.43 of its 3-core limit** (was 2.98/3 before),
+Hikari `pending` stayed at 0 throughout, `active` connections peaked at 3 of 10 per replica (was 191 *pending* before).
+The bottleneck genuinely isn't showing up at the same load level anymore, but **the cause isn't identified.** It isn't
+a code fix — git history confirms zero commits to `JobOfferRepository` or the Hikari config since the original 1000
+RPS test. The "this run's data happened to be lighter" theory doesn't hold either: measured `avg_skills_per_offer` on
+the rebuilt database is 3.00, exactly `JobOfferSkillAssigner`'s statistical expectation (uniform 1-5), not a lucky
+draw. A database-bloat theory doesn't fit either — the table is read-only after its one bulk load, and there's no
+evidence the original instance had accumulated dead tuples that this fresh one lacks. Left open for a future session;
+the known code-level risk (`findCandidateMatches`'s cartesian `JOIN FETCH`, `app-job-offers`'s untuned Hikari pool) is
+unchanged and could resurface at this load level or higher without warning.
+
 ### Row counts on the home k8s cluster
 
 Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's
