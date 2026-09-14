@@ -37,7 +37,22 @@ done
 echo "==> MetalLB"
 helm upgrade --install metallb metallb/metallb -n metallb-system --create-namespace \
   -f "$MANIFESTS/metallb/values-metallb.yaml"
-kubectl apply -f "$MANIFESTS/metallb/ip-address-pool.yaml" -f "$MANIFESTS/metallb/l2-advertisement.yaml"
+echo "==> Waiting for MetalLB's validating webhook to be ready (IPAddressPool/L2Advertisement need it)"
+kubectl wait --for=condition=Available deployment/metallb-controller -n metallb-system --timeout=120s
+# The Deployment going Available doesn't guarantee the webhook Service is
+# actually reachable yet (CNI service routing needs a few more seconds to
+# converge) - retry the apply instead of a single fixed wait.
+for i in $(seq 1 12); do
+  if kubectl apply -f "$MANIFESTS/metallb/ip-address-pool.yaml" -f "$MANIFESTS/metallb/l2-advertisement.yaml" 2>/tmp/metallb-apply-err; then
+    break
+  fi
+  echo "    webhook not reachable yet, retrying in 5s ($i/12)..."
+  sleep 5
+  if [[ "$i" == "12" ]]; then
+    cat /tmp/metallb-apply-err >&2
+    exit 1
+  fi
+done
 
 echo "==> local-path-provisioner v0.0.37 (default StorageClass)"
 kubectl apply -f "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.37/deploy/local-path-storage.yaml"

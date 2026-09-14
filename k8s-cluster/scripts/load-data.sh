@@ -32,7 +32,11 @@ load_database() {
   row_count=$(kubectl exec -n "$namespace" "$pod" -- \
     psql -U postgres -d "$db" -tAc "SELECT COUNT(*) FROM $check_table")
 
-  if [[ "$row_count" != "0" ]]; then
+  # Flyway's baseline migration seeds a handful of fixed demo rows on every
+  # fresh deploy (see README) - a plain "> 0" check would treat that as
+  # "already bulk-loaded" and skip forever. Bulk data is thousands of rows,
+  # so use a threshold well above the demo seed count instead.
+  if [[ "$row_count" -gt 100 ]]; then
     if [[ "$FORCE" == "true" ]]; then
       echo "==> $db already has $row_count rows in $check_table — truncating (--force)"
       kubectl exec -n "$namespace" "$pod" -- \
