@@ -282,6 +282,15 @@ Quick smoke test (peak 20 RPS, 1.5 min total):
 make candidateSimulation maxRps=20 stepDuration=30s ramps=2
 ```
 
+## Quiet terminal during a run
+
+`load-test/src/gatling/resources/gatling.conf` sets `data.writers = [file]` — no periodic stats block is printed to
+the console while the test runs; results still land in `simulation.log` and the HTML report as usual, you just don't
+see them scroll by live. `load-test/src/gatling/resources/logback.xml` sets the root logger to `WARN` (`io.gatling`
+itself at `INFO`) — without it, Logback falls back to its default `BasicConfigurator` (root level `DEBUG`), which logs
+every Netty/AsyncHttpClient internal at debug level and floods the terminal on its own, independently of the Gatling
+stats writer above. Both are needed together for a quiet run; either alone still spams.
+
 # Observability
 
 Apps use OTEL agent to export metrics, traces and logs to OTEL collector. It pushes all data to designated backends.
@@ -551,6 +560,17 @@ draw. A database-bloat theory doesn't fit either — the table is read-only afte
 evidence the original instance had accumulated dead tuples that this fresh one lacks. Left open for a future session;
 the known code-level risk (`findCandidateMatches`'s cartesian `JOIN FETCH`, `app-job-offers`'s untuned Hikari pool) is
 unchanged and could resurface at this load level or higher without warning.
+
+#### Update 2026-09-14 (continued) — 1200 RPS also clean, ceiling still not reproduced
+
+Pushed past the historical 1000 RPS ceiling to see where (if anywhere) it reappears: **486,000 requests, 0% KO,
+p99=49ms, max=239ms, mean=11ms** (`maxRps=1200 ramps=3 stepDuration=3m`, a sustained 1200 RPS hold for the last 90s of
+the profile). Same rebuilt cluster, same unmodified `app-job-offers` / `postgres-job-offers` config as the 1000 RPS
+re-test above. Latency is visibly higher than the 1000 RPS numbers (p99 49ms vs 29-30ms, as expected at greater load)
+but nowhere near the historical 1000 RPS result's p99=876ms — the system is still comfortably under whatever limit
+produced that earlier number. Not yet re-verified against Prometheus at this specific level; the open question from
+the 1000 RPS re-test above (why the previously-measured ceiling isn't reappearing) still stands, now at an even higher
+load with no answer either.
 
 ### Row counts on the home k8s cluster
 
