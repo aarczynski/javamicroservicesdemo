@@ -22,8 +22,8 @@ import_file() {
 }
 
 load_database() {
-  local namespace="$1" pod_label="$2" db="$3" check_table="$4"
-  shift 4
+  local namespace="$1" pod_label="$2" db="$3" check_table="$4" truncate_tables="$5"
+  shift 5
   local files=("$@")
 
   local pod
@@ -39,8 +39,20 @@ load_database() {
   if [[ "$row_count" -gt 100 ]]; then
     if [[ "$FORCE" == "true" ]]; then
       echo "==> $db already has $row_count rows in $check_table — truncating (--force)"
-      kubectl exec -n "$namespace" "$pod" -- \
-        psql -U postgres -d "$db" -c "TRUNCATE TABLE $check_table CASCADE"
+      # truncate_tables, not just check_table: TRUNCATE ... CASCADE only
+      # cascades to tables that reference the truncated one, not the other
+      # way round. job_offer is a fine table to COUNT (it's the thing we
+      # actually care whether is bulk-loaded), but TRUNCATEing only
+      # job_offer CASCADE leaves company/skill (its parents, not children)
+      # untouched - the next import then hits duplicate key errors on
+      # company.name/skill.name. Truncating every root table explicitly
+      # (with CASCADE) clears the whole graph regardless of direction.
+      # Found live 2026-09-19 testing scripts/load-data.sh (Compose's
+      # equivalent, identical logic) — same bug, never exercised here.
+      for t in $truncate_tables; do
+        kubectl exec -n "$namespace" "$pod" -- \
+          psql -U postgres -d "$db" -c "TRUNCATE TABLE $t CASCADE"
+      done
     else
       echo "==> $db already has $row_count rows in $check_table — skipping (use --force to reload)"
       return 1
@@ -69,7 +81,7 @@ echo "==> Generating fresh SQL files (make generate-data)"
 
 OUT="$ROOT_DIR/data-generator/output"
 
-if load_database candidates postgres-candidates app-candidates-db candidate \
+if load_database candidates postgres-candidates app-candidates-db candidate candidate \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
   "$OUT/candidates/03-candidate-skills.sql"; then
@@ -80,7 +92,9 @@ if load_database candidates postgres-candidates app-candidates-db candidate \
   sync_load_background "$OUT/candidates/01-candidates.sql"
 fi
 
-load_database job-offers postgres-job-offers app-job-offers-db job_offer \
+# truncate_tables is "company skill", not "job_offer" - both are roots
+# job_offer/job_offer_skill hang off of, see the comment in load_database.
+load_database job-offers postgres-job-offers app-job-offers-db job_offer "company skill" \
   "$OUT/job-offers/01-companies.sql" \
   "$OUT/job-offers/02-skills.sql" \
   "$OUT/job-offers/03-job-offers.sql" \
