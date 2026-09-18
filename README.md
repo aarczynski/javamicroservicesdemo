@@ -381,24 +381,6 @@ values and Kubernetes manifests.
 
 Photo of the physical cluster coming soon.
 
-### Local testing without the physical cluster
-
-`make minikube-up` stands up the same manifests (Cilium + Gateway API + MetalLB, the full observability stack, both
-apps + their Postgres, Flyway's own demo data — no data-generator load) on a disposable local `minikube` cluster, to
-test k8s-specific changes before pushing to the RPi cluster. One command — it ends by blocking in the foreground with
-everything reachable from the Mac, same shape as `make start`'s `docker compose up`: **Ctrl+C stops it**, not a
-second command.
-
-* `http://localhost:8080` — `app-candidates`
-* `http://localhost:3000` — Grafana (anonymous admin)
-* `http://localhost:4466` — Headlamp (no login)
-* `http://localhost:4040` — Hubble UI (live network traffic/flows)
-
-The cluster itself keeps running after Ctrl+C (only the host access stops) — `make minikube-forward` brings it back,
-`make minikube-stop`/`minikube-delete` tear the cluster down. See
-[`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md) for what's
-overridden (node pinning, IP ranges, a couple of real minikube-only behavioral differences) and why.
-
 ### Measured capacity
 
 Sustained-load ceiling of the physical cluster, measured with `load-test` against the Gateway
@@ -407,10 +389,6 @@ introduces its own packet loss unrelated to the cluster — see [Known issues](#
 
 **Current state (2026-09-14, after a full cluster rebuild): 1200 RPS sustained, 0% KO, p99=49ms**
 (`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests, `http://192.168.10.100`).
-
-Full diagnostic history — root causes found and fixed along the way (synchronous console logging, the Envoy circuit
-breaker, Postgres parallel query workers, horizontal + vertical scaling) — is tracked in
-[`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md).
 
 ### Row counts on the home k8s cluster
 
@@ -435,6 +413,24 @@ fixed demo rows on top of the bulk-generated data. Rounded to the nearest 50,000
 | `job_offer_employment_type` | ~200,000 |
 | `company` | ~50,000 |
 | `skill` | 58 |
+
+### Local testing without the physical cluster
+
+`make minikube-up` stands up the same manifests (Cilium + Gateway API + MetalLB, the full observability stack, both
+apps + their Postgres, Flyway's own demo data — no data-generator load) on a disposable local `minikube` cluster, to
+test k8s-specific changes before pushing to the RPi cluster. One command — it ends by blocking in the foreground with
+everything reachable from the Mac, same shape as `make start`'s `docker compose up`: **Ctrl+C stops it**, not a
+second command.
+
+* `http://localhost:8080` — `app-candidates`
+* `http://localhost:3000` — Grafana (anonymous admin)
+* `http://localhost:4466` — Headlamp (no login)
+* `http://localhost:4040` — Hubble UI (live network traffic/flows)
+
+The cluster itself keeps running after Ctrl+C (only the host access stops) — `make minikube-forward` brings it back,
+`make minikube-stop`/`minikube-delete` tear the cluster down. See
+[`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md) for what's
+overridden (node pinning, IP ranges, a couple of real minikube-only behavioral differences) and why.
 
 ## Differences from Docker Compose
 
@@ -533,15 +529,6 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
   route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
   the cluster's VLAN for load tests that need clean results.
-* `JobOfferRepository.findCandidateMatches` fetches two collections at once via `@NamedEntityGraph`
-  (`offeredEmploymentTypes`, an element collection, and `skills`, a one-to-many with a `skill` subgraph). Hibernate
-  does this as a double `JOIN FETCH` in one statement, which produces a cartesian product (an offer with M employment
-  types × N skills returns M×N rows), deduplicated back down in Java via `SELECT DISTINCT`. **Tried splitting this into
-  two queries (2026-09-11, see [Measured capacity](#measured-capacity)) — made things much worse under load** (600
-  RPS went from clean to 43.87% KO), because two sequential DB round trips per request cost more at this concurrency
-  than the cartesian product ever did. Reverted. The actual dominant cost at high load turned out to be Postgres
-  parallel query workers, not this — see the same section. Left as-is; a fix here would need a different approach
-  (e.g. batch-fetching the second collection for many offers in one extra query, not a second per-offer round trip).
 
 # Future plans
 
