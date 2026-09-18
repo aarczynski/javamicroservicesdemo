@@ -48,16 +48,21 @@ k8s-deploy:
 	./k8s-cluster/scripts/deploy.sh
 
 # --- minikube (local dev cluster, no RPi hardware needed) ---
-# Project-local, not ~/.kube or ~/.minikube — see minikube-start.sh. ONE
-# command to remember: minikube-up (bare -> fully running AND reachable:
-# Cilium/Gateway/MetalLB, full observability stack, apps+Postgres — no
-# data-generator load, just Flyway's own baked-in demo data — then port-
-# forwards to the host so it ends with working localhost URLs). Blocks in
-# the foreground once everything's up, same shape as `make start`'s `docker
-# compose up` — Ctrl+C stops it, not a second command. The rest are the
-# pieces it chains together, exposed separately so a failed step can be
-# resumed without redoing everything. See k8s-cluster/manifests/overlays/minikube/README.md
-# for what's deployed and why each override exists.
+# Project-local, not ~/.kube or ~/.minikube — see minikube-start.sh. Same
+# shape as the RPi cluster above: two commands to remember day-to-day —
+# minikube-deploy (code/manifest changes to the apps) and minikube-rebuild-all
+# (bare -> fully running: Cilium/Gateway/MetalLB, full observability stack,
+# apps+Postgres+load-background — no data-generator load, just Flyway's own
+# baked-in demo data). BOTH end by port-forwarding to the host IN THE
+# BACKGROUND (via minikube-forward, which each chains as its last step) and
+# return immediately — the terminal stays free. `make minikube-stop`/
+# `minikube-delete` clean the forwards up (minikube-unforward, chained as
+# their first step); re-running minikube-forward restarts them.
+# minikube-deploy-only / minikube-bootstrap / minikube-start are the pieces
+# minikube-deploy/minikube-rebuild-all chain together, exposed separately so
+# a failed step can be resumed without redoing everything. See
+# k8s-cluster/manifests/overlays/minikube/README.md for what's deployed and
+# why each override exists.
 
 minikube-start:
 	./k8s-cluster/scripts/minikube-start.sh
@@ -65,11 +70,16 @@ minikube-start:
 minikube-bootstrap:
 	./k8s-cluster/scripts/minikube-bootstrap.sh
 
-minikube-bootstrap-observability:
-	./k8s-cluster/scripts/minikube-bootstrap-observability.sh
+minikube-deploy: minikube-deploy-only minikube-forward
 
-minikube-deploy:
+minikube-deploy-only:
 	./k8s-cluster/scripts/minikube-deploy.sh
+
+minikube-load-data:
+	./k8s-cluster/scripts/minikube-load-data.sh
+
+minikube-reload-data:
+	./k8s-cluster/scripts/minikube-load-data.sh --force
 
 minikube-forward:
 	./k8s-cluster/scripts/minikube-forward.sh
@@ -77,10 +87,7 @@ minikube-forward:
 minikube-unforward:
 	./k8s-cluster/scripts/minikube-unforward.sh
 
-minikube-up: minikube-start minikube-bootstrap minikube-bootstrap-observability minikube-deploy minikube-forward
-
-minikube-status:
-	KUBECONFIG=$(shell pwd)/k8s-cluster/kubeconfig-minikube kubectl get pods -A
+minikube-rebuild-all: minikube-start minikube-bootstrap minikube-forward
 
 minikube-tunnel:
 	KUBECONFIG=$(shell pwd)/k8s-cluster/kubeconfig-minikube MINIKUBE_HOME=$(shell pwd)/k8s-cluster/.minikube minikube tunnel

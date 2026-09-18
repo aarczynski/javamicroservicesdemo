@@ -23,8 +23,6 @@ kubectl rollout status deployment/postgres-candidates -n candidates --timeout=18
 kubectl rollout status deployment/postgres-job-offers -n job-offers --timeout=180s
 kubectl rollout status deployment/app-candidates -n candidates --timeout=180s
 kubectl rollout status deployment/app-job-offers -n job-offers --timeout=180s
+kubectl rollout status deployment/load-background -n load-background --timeout=180s
 
-GATEWAY_IP="$(kubectl get gateway api-gateway -n candidates -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)"
 echo "==> Deploy complete"
-echo "    Gateway address: ${GATEWAY_IP:-<pending>} (only reachable from inside the minikube docker network on macOS)"
-echo "    Run 'make minikube-forward' for host access at http://localhost:8080"

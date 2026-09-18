@@ -379,6 +379,12 @@ run on every node regardless of taint.
 Cluster provisioning lives under [k8s-cluster/](k8s-cluster) — `ansible/` for node setup, `manifests/` for Helm
 values and Kubernetes manifests.
 
+| Command | What it does |
+|---|---|
+| `make k8s-rebuild-all` | Bare metal → running cluster |
+| `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
+| `make k8s-load-data` | Load real generated data (`make k8s-reload-data` to force a reload) |
+
 Photo of the physical cluster coming soon.
 
 ### Measured capacity
@@ -416,19 +422,28 @@ fixed demo rows on top of the bulk-generated data. Rounded to the nearest 50,000
 
 ### Local testing without the physical cluster
 
-`make minikube-up` stands up the same manifests (Cilium + Gateway API + MetalLB, the full observability stack, both
-apps + their Postgres, Flyway's own demo data — no data-generator load) on a disposable local `minikube` cluster, to
-test k8s-specific changes before pushing to the RPi cluster. One command — it ends by blocking in the foreground with
-everything reachable from the Mac, same shape as `make start`'s `docker compose up`: **Ctrl+C stops it**, not a
-second command.
+Same shape as the RPi cluster above, on a disposable local `minikube` cluster — to test k8s-specific changes before
+pushing to the RPi cluster:
+
+| Command | What it does |
+|---|---|
+| `make minikube-rebuild-all` | Bare → running cluster: Cilium/Gateway/MetalLB, full observability stack, apps+Postgres+load-background, Flyway's own demo data (no data-generator load) |
+| `make minikube-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
+| `make minikube-load-data` | Load real generated data (`make minikube-reload-data` to force a reload) — skipped by the two above since it's slow |
+| `make minikube-forward` | (Re)start host access in the background — already run automatically at the end of the two above |
+| `make minikube-tunnel` | Real Gateway/MetalLB IP on the host instead of forwarded ports (needs sudo) |
+| `make minikube-stop` | Stop the cluster — data stays |
+| `make minikube-delete` | Delete the cluster — data goes too |
+
+`minikube-rebuild-all` and `minikube-deploy` both end by port-forwarding everything to the Mac **in the background**
+and returning immediately — the terminal stays free, no second command needed to get access:
 
 * `http://localhost:8080` — `app-candidates`
 * `http://localhost:3000` — Grafana (anonymous admin)
 * `http://localhost:4466` — Headlamp (no login)
 * `http://localhost:4040` — Hubble UI (live network traffic/flows)
 
-The cluster itself keeps running after Ctrl+C (only the host access stops) — `make minikube-forward` brings it back,
-`make minikube-stop`/`minikube-delete` tear the cluster down. See
+`minikube-stop`/`minikube-delete` stop the forwards too, along with the cluster. See
 [`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md) for what's
 overridden (node pinning, IP ranges, a couple of real minikube-only behavioral differences) and why.
 

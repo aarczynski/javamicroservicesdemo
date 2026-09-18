@@ -24,19 +24,21 @@ touching the production files.
 | `metallb-ip-pools.yaml` | Replaces `manifests/metallb/ip-address-pool.yaml`'s `192.168.10.x` ranges with `192.168.49.100-150` (`default-pool`) and `192.168.49.90/32` (`gateway-pool`), both inside minikube's docker network (`192.168.49.0/24`, gateway `.1`, node `.2`). |
 | `metallb-l2-advertisement.yaml` | Same as `manifests/metallb/l2-advertisement.yaml` but drops the `nodeSelectors` restricting the Gateway's announcement to `k8s-rpi-platform-1/2` — there's only one node here. |
 | `gateway.yaml` | Same as `manifests/candidates/gateway.yaml` but `metallb.io/loadBalancerIPs: "192.168.49.90"` instead of `192.168.10.100`. |
-| `kustomization.yaml` | Assembles `candidates` + `job-offers` namespace/postgres/app manifests (referenced directly from `../../candidates/` and `../../job-offers/`, unmodified) with this overlay's `gateway.yaml`, and JSON6902-patches `nodeSelector`/`tolerations` off both Postgres Deployments — minikube's single node carries none of the RPi cluster's `role=database` taint. |
+| `kustomization.yaml` | Assembles `candidates` + `job-offers` + `load-background` namespace/postgres/app manifests (referenced directly from `../../candidates/`, `../../job-offers/`, `../../load-background/`, unmodified) with this overlay's `gateway.yaml`, and JSON6902-patches `nodeSelector`/`tolerations` off both Postgres Deployments and `load-background` — minikube's single node carries none of the RPi cluster's taints. `load-background`'s `/data` PVC starts empty by default (`minikube-deploy`/`minikube-rebuild-all` don't run data-generator, deliberately — it's slow) — it runs fine and generates real ambient RPS, just against candidate UUIDs that mostly 404, same graceful-degradation behavior documented in `load-background/app.yaml` for when the RPi cluster hasn't run `load-data.sh` yet. Run `make minikube-load-data` (or `minikube-reload-data` to force) when you actually want real data — `k8s-cluster/scripts/minikube-load-data.sh` mirrors `load-data.sh` exactly, just pointed at minikube. |
 
 `manifests/metallb/values-metallb.yaml` (the MetalLB Helm chart values) is
 used as-is: `speaker.tolerations` for `role=database/observability/platform`
 are harmless no-ops on a node with no matching taints.
 
-## Phase 2: observability stack
+## Observability stack, Headlamp, metrics-server
 
-`minikube-bootstrap-observability.sh` (`make minikube-bootstrap-observability`,
-or just `make minikube-up` for everything in one shot) adds Kafka (Strimzi),
-MinIO, Tempo-distributed, Loki, Prometheus, Grafana, otel-collector, Alloy,
-Headlamp, metrics-server — the same `nodeSelector`/`tolerations`-stripping
-pattern as Phase 1, one `values-*.yaml` override per Helm release, plus:
+The same `minikube-bootstrap.sh` script (`make minikube-bootstrap`, chained
+into `make minikube-rebuild-all`) also installs Kafka (Strimzi), MinIO,
+Tempo-distributed, Loki, Prometheus, Grafana, otel-collector, Alloy,
+Headlamp, metrics-server, right after Cilium/MetalLB/storage — same shape as
+`bootstrap.sh` for the RPi cluster, one script start to finish. Same
+`nodeSelector`/`tolerations`-stripping pattern throughout, one `values-*.yaml`
+override per Helm release, plus:
 
 | File | Overrides |
 |---|---|
@@ -63,18 +65,17 @@ Alloy → Loki and otel-collector → Kafka → Tempo pipelines work, not just
 
 ### Reaching things from the Mac
 
-`make minikube-up` ends by running `minikube-forward.sh`, which starts
-`kubectl port-forward`s to every Service with a normal selector and then
-**blocks in the foreground** — same shape as `make start`'s `docker compose
-up`, Ctrl+C stops all of them together, not a second command:
+`make minikube-rebuild-all` and `make minikube-deploy` both end by running
+`minikube-forward.sh`, which starts `kubectl port-forward`s to every Service
+with a normal selector **in the background** and returns immediately — the
+terminal stays free, no second command needed:
 
 * `http://localhost:8080` — `app-candidates` (`service/app-candidates`)
 * `http://localhost:3000` — Grafana, anonymous admin (`service/grafana`)
 * `http://localhost:4466` — Headlamp, no login (`service/headlamp`)
 * `http://localhost:4040` — Hubble UI, live network flows (`service/hubble-ui` in `kube-system`)
 
-Ctrl+C only stops the forwards — the cluster itself keeps running. Re-run
-`make minikube-forward` any time to bring host access back (also cleans up a
+Re-run `make minikube-forward` any time to restart them (also cleans up a
 stale forward left holding a port via `lsof`, not just ones it remembers
 starting itself — e.g. one orphaned by a force-closed terminal). `make
 minikube-stop`/`minikube-delete` also run `minikube-unforward.sh` first, for

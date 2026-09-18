@@ -7,11 +7,17 @@
 # `kubectl port-forward` tunnels through the apiserver instead, which IS
 # reachable from the host — no sudo needed.
 #
-# FOREGROUND, blocking, Ctrl+C to stop — deliberately, same shape as `make
-# start`'s `docker compose up --build`. This is the last step `make
-# minikube-up` chains itself, so the one command that stands the cluster up
-# also leaves it reachable, and stopping it is the same muscle memory as
-# stopping Compose: Ctrl+C, not a second command to remember.
+# Runs every forward IN THE BACKGROUND and returns immediately — this is the
+# last step `make minikube-rebuild-all`/`minikube-deploy` chain themselves,
+# and neither should hold the terminal hostage for as long as you want
+# access. PIDs/logs live under k8s-cluster/.minikube/forwards/ (already
+# gitignored, see minikube-start.sh for why cluster state stays project-
+# local). `make minikube-stop`/`minikube-delete` clean these up
+# (minikube-unforward.sh, chained as their first step) — a forward pointed
+# at a cluster that's about to stop or disappear would otherwise just spin
+# retrying in the background. Re-running this script kills and restarts
+# every forward first — safe after a redeploy, and avoids "address already
+# in use" from a stale forward left over from a previous run.
 #
 # Forwards straight to each Service, not the Gateway: the Gateway's Service
 # (cilium-gateway-api-gateway) has no selector — Cilium steers traffic to it
@@ -38,25 +44,7 @@ FORWARDS=(
   "hubble-ui:kube-system:hubble-ui:4040:80"
 )
 
-# Belt-and-suspenders: a forward left over from a crashed prior run (or one
-# that outlived a force-closed terminal — see the EXIT trap below) holds the
-# port with no child of THIS process to catch on Ctrl+C. `lsof` finds it by
-# the port itself.
-for entry in "${FORWARDS[@]}"; do
-  IFS=: read -r _ _ _ localPort _ <<<"$entry"
-  stale_pid="$(lsof -ti tcp:"$localPort" -sTCP:LISTEN 2>/dev/null || true)"
-  [[ -n "$stale_pid" ]] && kill $stale_pid 2>/dev/null || true
-done
-
-CHILD_PIDS=()
-cleanup() {
-  echo "==> Stopping forwards"
-  for pid in "${CHILD_PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
-  done
-  rm -f "$FORWARD_DIR"/*.pid
-}
-trap cleanup EXIT INT TERM
+"$ROOT_DIR/k8s-cluster/scripts/minikube-unforward.sh"
 
 echo "==> Starting forwards"
 for entry in "${FORWARDS[@]}"; do
@@ -67,23 +55,31 @@ for entry in "${FORWARDS[@]}"; do
     continue
   fi
 
-  kubectl port-forward -n "$namespace" "service/$service" "$localPort:$remotePort" \
+  # Belt-and-suspenders beyond minikube-unforward.sh above: a forward left
+  # running from before this script existed (or from a crashed prior run
+  # whose pidfile got lost) holds the port with no pidfile of ours to find
+  # it — `lsof` catches that by the port itself, not by remembering the pid.
+  stale_pid="$(lsof -ti tcp:"$localPort" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$stale_pid" ]]; then
+    kill $stale_pid 2>/dev/null || true
+    sleep 1
+  fi
+
+  nohup kubectl port-forward -n "$namespace" "service/$service" "$localPort:$remotePort" \
     >"$FORWARD_DIR/$name.log" 2>&1 &
-  pid=$!
-  CHILD_PIDS+=("$pid")
-  echo "$pid" >"$FORWARD_DIR/$name.pid"
+  disown
+  echo $! >"$FORWARD_DIR/$name.pid"
 done
 
+echo "==> Verifying"
 sleep 2
-echo "==> Ready (Ctrl+C to stop all forwards)"
 for entry in "${FORWARDS[@]}"; do
   IFS=: read -r name _ _ localPort _ <<<"$entry"
   pidfile="$FORWARD_DIR/$name.pid"
   if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-    echo "    http://localhost:$localPort  ($name)"
+    echo "    http://localhost:$localPort  ($name, pid $(cat "$pidfile"))"
   else
     echo "    $name FAILED to start — see $FORWARD_DIR/$name.log"
   fi
 done
-
-wait
+echo "==> Running in the background. 'make minikube-forward' to restart, 'make minikube-stop'/'minikube-delete' to stop."
