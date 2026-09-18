@@ -1,0 +1,58 @@
+# Kafka (KafkaNodePool) and MinIO (Deployment + Job) are plain manifests, not
+# Helm values — same node-pinning problem as candidates/job-offers' Postgres
+# (see ../kustomization.yaml), same fix: strip nodeSelector/affinity/
+# tolerations so they can schedule on minikube's single, untainted node.
+# Must be applied AFTER the strimzi-kafka-operator Helm release (Kafka/
+# KafkaNodePool CRDs) — see minikube-bootstrap.sh for order.
+resources:
+  - ../../../observability
+  - ../../../kafka
+  - ../../../minio
+
+# minio.yaml's pinned tags (minio/minio:RELEASE.2025-09-07T16-13-09Z, minio/mc:
+# RELEASE.2025-08-13T08-35-41Z) are unpullable here: as of this overlay being
+# written (2026-09-15) the `minio/minio` and `minio/mc` Docker Hub repos both
+# return "object not found" — not just the tag, the whole repository is gone
+# (confirmed via the Hub API). minio.yaml's own comment already flagged this
+# drifting in that direction back on 2026-09-03 ("MinIO Inc. deprecated the
+# chart/Operator/Console"); it's now gone all the way. quay.io/minio/minio and
+# quay.io/minio/mc still serve the exact same release tags (verified via the
+# quay.io API) — this remaps to those, image content unchanged, just a
+# different registry. This is a minikube-only workaround: the RPi cluster
+# still pulls from Docker Hub and presumably has these cached locally (per
+# minio.yaml's own comment about observability-2 vs observability-1), but
+# will hit this exact wall on the next pull to a node without that cache —
+# worth fixing in minio.yaml itself, separately from this minikube overlay.
+images:
+  - name: minio/minio
+    newName: quay.io/minio/minio
+    newTag: RELEASE.2025-09-07T16-13-09Z
+  - name: minio/mc
+    newName: quay.io/minio/mc
+    newTag: RELEASE.2025-08-13T08-35-41Z
+
+patches:
+  - target:
+      kind: KafkaNodePool
+      name: dual-role
+    patch: |-
+      - op: remove
+        path: /spec/template/pod/affinity
+      - op: remove
+        path: /spec/template/pod/tolerations
+  - target:
+      kind: Deployment
+      name: minio
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations
+  - target:
+      kind: Job
+      name: minio-create-bucket
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations

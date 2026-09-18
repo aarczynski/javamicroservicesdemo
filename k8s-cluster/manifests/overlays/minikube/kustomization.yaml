@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../candidates
+  - gateway.yaml
+  - ../../job-offers
+
+# Both Postgres Deployments are pinned (nodeSelector + toleration) to a
+# specific RPi hostname carrying the role=database taint. minikube's single
+# node has neither the hostname nor the taint — strip both so the pods can
+# schedule at all.
+patches:
+  - target:
+      kind: Deployment
+      name: postgres-candidates
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations
+  - target:
+      kind: Deployment
+      name: postgres-job-offers
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations

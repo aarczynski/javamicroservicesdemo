@@ -1,0 +1,8 @@
+# Base for k8s-cluster/manifests/overlays/minikube (and any future overlay).
+# Lists the same files deploy.sh applies directly with `kubectl apply -f` —
+# this doesn't change that workflow, it just makes the directory usable as a
+# kustomize base too.
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - app.yaml

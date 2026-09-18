@@ -1,0 +1,25 @@
+# Layered on ../../observability/values-tempo-distributed.yaml — drops the
+# RPi hostname pinning from every component (each one pins a different
+# k8s-rpi-observability-1/2 node in production to balance load across two
+# physical nodes; minikube has one node, nothing to balance).
+backendScheduler:
+  nodeSelector: null
+  tolerations: []
+backendWorker:
+  nodeSelector: null
+  tolerations: []
+blockBuilder:
+  nodeSelector: null
+  tolerations: []
+liveStore:
+  nodeSelector: null
+  tolerations: []
+distributor:
+  nodeSelector: null
+  tolerations: []
+querier:
+  nodeSelector: null
+  tolerations: []
+queryFrontend:
+  nodeSelector: null
+  tolerations: []

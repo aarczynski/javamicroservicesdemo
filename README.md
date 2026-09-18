@@ -113,7 +113,7 @@ data-generator/output/
 
 Import them into the respective application databases (check [compose.yml](compose.yml) for credentials).
 
-`01-candidates.sql` is used by **load-test** and **load-ambient** modules to generate requests with random candidates UUID.
+`01-candidates.sql` is used by **load-test** and **load-background** modules to generate requests with random candidates UUID.
 
 These files may be extremely large (several GB), thus they are not tracked in Git.
 
@@ -124,6 +124,9 @@ Run following command:
 ```shell
 make start
 ```
+
+This also starts **load-background** (continuous ambient traffic, see [Background load](#background-load-grafana-k6))
+alongside the apps — there's no separate "with/without ambient load" mode.
 
 Please note that the new v2 of Docker Compose is used. If you are using older Docker version, use `docker-compose`
 instead of `docker compose`.
@@ -200,26 +203,14 @@ RPS
      0    1    2    3    4    5    6
 ```
 
-## Starting together with services
+## Starting
+
+Starts automatically as part of `make start` (see [Starting microservices locally](#starting-microservices-locally)) —
+no separate command. By default, k6 targets `http://app-candidates:8080` via Docker network; override `targetHost`
+and/or `candidatesDataFile` (see [Parameters](#parameters)) the same way as `make start`:
 
 ```shell
-make start-ambient
-```
-
-By default, k6 targets `http://app-candidates:8080` via Docker network.
-
-## Starting separately (services already running)
-
-`ambient-load` always recreates the k6 container so env vars take effect immediately.
-
-```shell
-make ambient-load
-```
-
-Override `targetHost` and/or `candidatesDataFile` (see [Parameters](#parameters)) the same way:
-
-```shell
-make ambient-load targetHost=http://192.168.0.140:8080 candidatesDataFile=/path/to/01-candidates.sql
+make start targetHost=http://192.168.0.140:8080 candidatesDataFile=/path/to/01-candidates.sql
 ```
 
 ## Candidates data file
@@ -390,6 +381,24 @@ values and Kubernetes manifests.
 
 Photo of the physical cluster coming soon.
 
+### Local testing without the physical cluster
+
+`make minikube-up` stands up the same manifests (Cilium + Gateway API + MetalLB, the full observability stack, both
+apps + their Postgres, Flyway's own demo data — no data-generator load) on a disposable local `minikube` cluster, to
+test k8s-specific changes before pushing to the RPi cluster. One command — it ends by blocking in the foreground with
+everything reachable from the Mac, same shape as `make start`'s `docker compose up`: **Ctrl+C stops it**, not a
+second command.
+
+* `http://localhost:8080` — `app-candidates`
+* `http://localhost:3000` — Grafana (anonymous admin)
+* `http://localhost:4466` — Headlamp (no login)
+* `http://localhost:4040` — Hubble UI (live network traffic/flows)
+
+The cluster itself keeps running after Ctrl+C (only the host access stops) — `make minikube-forward` brings it back,
+`make minikube-stop`/`minikube-delete` tear the cluster down. See
+[`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md) for what's
+overridden (node pinning, IP ranges, a couple of real minikube-only behavioral differences) and why.
+
 ### Measured capacity
 
 Sustained-load ceiling of the physical cluster, measured with `load-test` against the Gateway
@@ -536,8 +545,5 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 # Future plans
 
-* Local Kubernetes (Minikube or kind) running the same manifests as the physical cluster, purely to test k8s-specific
-  changes (Alloy, `tempo-distributed`, Kafka, MinIO) before pushing to the RPi cluster — not a replacement for Compose,
-  which stays the fast day-to-day dev loop for application code.
 * Prepare CI/CD for the home Kubernetes cluster.
 * Implement backpressure or circuit breaker.

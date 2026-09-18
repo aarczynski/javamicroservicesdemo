@@ -1,0 +1,22 @@
+# Same structure as ../../metallb/ip-address-pool.yaml, ranges swapped for
+# minikube's docker-driver network (192.168.49.0/24, gateway .1, node .2 —
+# see `docker network inspect minikube`) instead of the RPi LAN's
+# 192.168.10.0/24. .150 is reserved for Hubble UI (see cilium-values.yaml).
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.49.100-192.168.49.150
+
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: gateway-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.49.90/32

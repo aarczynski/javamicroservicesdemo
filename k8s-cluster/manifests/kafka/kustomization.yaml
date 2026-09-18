@@ -1,0 +1,5 @@
+# Base for k8s-cluster/manifests/overlays/minikube/observability — see
+# ../candidates/kustomization.yaml for why this exists. values-strimzi-
+# operator.yaml is Helm values, not a plain resource, so it's not listed here.
+resources:
+  - kafka-cluster.yaml

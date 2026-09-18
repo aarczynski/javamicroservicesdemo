@@ -45,5 +45,9 @@ out/
 compose-override.yml
 compose-override.yaml
 
+### minikube local dev
+/k8s-cluster/kubeconfig-minikube
+/k8s-cluster/.minikube
+
 ### Claude Code local settings ###
 .claude/settings.local.json

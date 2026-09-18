@@ -1,0 +1,4 @@
+# Base for k8s-cluster/manifests/overlays/minikube/observability — see
+# ../candidates/kustomization.yaml for why this exists.
+resources:
+  - minio.yaml

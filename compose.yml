@@ -194,8 +194,6 @@ services:
 
   load-background:
     container_name: load-background
-    profiles:
-      - ambient
     build:
       context: ./load-background
       dockerfile: Dockerfile

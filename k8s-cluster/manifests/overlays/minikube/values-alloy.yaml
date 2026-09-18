@@ -1,0 +1,17 @@
+# Layered on ../../alloy/values-alloy.yaml. That file's own comment says the
+# `dockercontainers` hostPath mount is "only for the legacy dockershim log
+# layout" and skips it — true on the RPi cluster (real containerd, kubeadm).
+# minikube here runs `--container-runtime=docker` (required so `--cni=false`
+# can work at all — containerd refuses to start without a CNI already
+# present, docker doesn't have that restriction, see minikube-start.sh), so
+# every /var/log/pods/.../*.log entry is a SYMLINK into
+# /var/lib/docker/containers/<id>/<id>-json.log, not a real file. Without
+# this mount Alloy's `local.file_match` can `ls` the symlink (it's right
+# there in /var/log/pods) but every `stat`/read of it fails with "no such
+# file or directory" — the target is outside its mount namespace — and
+# nothing ever reaches Loki. Confirmed via `kubectl exec ... ls` (symlink
+# visible) vs Alloy's own logs (stat failing on that exact path) before
+# writing this override.
+alloy:
+  mounts:
+    dockercontainers: true
