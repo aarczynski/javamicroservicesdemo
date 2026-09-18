@@ -13,6 +13,12 @@ generate-data:
 start: clean_build
 	-TARGET_HOST=$(targetHost) CANDIDATES_DATA_FILE=$(candidatesDataFile) docker compose up --build
 
+load-data:
+	./scripts/load-data.sh
+
+reload-data:
+	./scripts/load-data.sh --force
+
 clean_build:
 	./gradlew clean :app-job-offers:build :app-candidates:build
 

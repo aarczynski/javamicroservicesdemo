@@ -65,6 +65,12 @@ Requires JDK25+, Docker (with Compose), and `make` installed on your machine.
 
 `make` is required to run the predefined commands below — targets are defined in [Makefile](Makefile).
 
+| Command | What it does |
+|---|---|
+| `make start` | Start everything: apps, observability stack, ambient traffic |
+| `make generate-data` | Generate SQL files with test data (see [Parameters](#parameters)) |
+| `make load-data` | Generate + import real data into Postgres (`make reload-data` to force a reload) |
+
 ## Generating test data
 
 Run following command:
@@ -111,7 +117,10 @@ data-generator/output/
     03-candidate-skills.sql
 ```
 
-Import them into the respective application databases (check [compose.yml](compose.yml) for credentials).
+`make load-data` generates these and imports them into the respective application databases in one step (skips a
+database that already has more than a handful of rows — pass `make reload-data` to truncate and reload
+unconditionally). To do it by hand instead, run `make generate-data` and import the files yourself (check
+[compose.yml](compose.yml) for credentials).
 
 `01-candidates.sql` is used by **load-test** and **load-background** modules to generate requests with random candidates UUID.
 
@@ -430,7 +439,6 @@ pushing to the RPi cluster:
 | `make minikube-rebuild-all` | Bare → running cluster: Cilium/Gateway/MetalLB, full observability stack, apps+Postgres+load-background, Flyway's own demo data (no data-generator load) |
 | `make minikube-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
 | `make minikube-load-data` | Load real generated data (`make minikube-reload-data` to force a reload) — skipped by the two above since it's slow |
-| `make minikube-forward` | (Re)start host access in the background — already run automatically at the end of the two above |
 | `make minikube-tunnel` | Real Gateway/MetalLB IP on the host instead of forwarded ports (needs sudo) |
 | `make minikube-stop` | Stop the cluster — data stays |
 | `make minikube-delete` | Delete the cluster — data goes too |
