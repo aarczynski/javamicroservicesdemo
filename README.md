@@ -394,7 +394,7 @@ values and Kubernetes manifests.
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
 | `make k8s-load-data` | Load real generated data (`make k8s-reload-data` to force a reload) |
 
-Photo of the physical cluster coming soon.
+![Physical cluster](readme-assets/img/k8s-cluster.gif)
 
 ### Measured capacity
 
