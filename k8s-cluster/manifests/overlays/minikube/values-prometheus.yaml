@@ -1,0 +1,7 @@
+# Layered on ../../observability/values-prometheus.yaml — drops the RPi
+# hostname pinning. prometheus-node-exporter's tolerations are left as-is
+# (harmless: they only widen where it CAN schedule, and the single minikube
+# node carries none of the matching taints anyway).
+server:
+  nodeSelector: null
+  tolerations: []

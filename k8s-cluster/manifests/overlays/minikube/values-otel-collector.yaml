@@ -1,0 +1,4 @@
+# Layered on ../../observability/values-otel-collector.yaml — drops the RPi
+# hostname pinning.
+nodeSelector: null
+tolerations: []

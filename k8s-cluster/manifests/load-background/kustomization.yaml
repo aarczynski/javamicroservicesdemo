@@ -1,0 +1,5 @@
+# Base for k8s-cluster/manifests/overlays/minikube — see
+# ../candidates/kustomization.yaml for why this exists.
+resources:
+  - namespace.yaml
+  - app.yaml

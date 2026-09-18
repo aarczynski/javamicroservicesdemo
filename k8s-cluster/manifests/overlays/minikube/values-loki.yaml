@@ -1,0 +1,5 @@
+# Layered on ../../observability/values-loki.yaml — drops the RPi hostname
+# pinning, single minikube node has none of that taint.
+singleBinary:
+  nodeSelector: null
+  tolerations: []

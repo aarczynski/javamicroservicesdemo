@@ -1,0 +1,4 @@
+# Layered on ../../kafka/values-strimzi-operator.yaml — drops the RPi
+# hostname pinning.
+nodeSelector: null
+tolerations: []

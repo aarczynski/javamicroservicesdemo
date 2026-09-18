@@ -1,0 +1,11 @@
+# Layered on ../../observability/values-grafana.yaml — drops the RPi
+# hostname pinning and swaps the pinned LAN IP for one in this overlay's
+# MetalLB default-pool (see metallb-ip-pools.yaml). Helm maps are deep-merged
+# (see cilium-values.yaml's comment on the same gotcha), so the annotation
+# key is overwritten explicitly rather than emptying the whole map.
+nodeSelector: null
+tolerations: []
+service:
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: "192.168.49.148"

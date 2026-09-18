@@ -1,0 +1,4 @@
+# Layered on ../../metrics-server/values-metrics-server.yaml — drops the RPi
+# hostname pinning.
+nodeSelector: null
+tolerations: []

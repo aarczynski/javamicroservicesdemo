@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../candidates
+  - gateway.yaml
+  - ../../job-offers
+  - ../../load-background
+
+# Postgres (both) and load-background are pinned (nodeSelector + toleration)
+# to a specific RPi hostname carrying a taint. minikube's single node has
+# neither the hostname nor any taint — strip both so the pods can schedule
+# at all. load-background's /data PVC starts empty here (no data-generator
+# load on minikube, see Makefile) — it still runs fine, just 404s until/
+# unless something copies a candidates SQL file into the PVC, same graceful
+# degradation as the RPi cluster when load-data.sh hasn't run yet.
+patches:
+  - target:
+      kind: Deployment
+      name: postgres-candidates
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations
+  - target:
+      kind: Deployment
+      name: postgres-job-offers
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations
+  - target:
+      kind: Deployment
+      name: load-background
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations

@@ -149,6 +149,12 @@ metadata:
   name: minio-create-bucket
   namespace: observability
 spec:
+  # Without this, the completed pod sits around forever (Kubernetes doesn't
+  # GC a Job's pods on its own) — harmless, but shows up as a false positive
+  # on any dashboard/panel that counts `kube_pod_status_phase{phase!="Running"}`
+  # without excluding Succeeded. 5 min is plenty to `kubectl logs` it if the
+  # job ever fails to diagnose, short enough to not linger.
+  ttlSecondsAfterFinished: 300
   backoffLimit: 6
   template:
     spec:

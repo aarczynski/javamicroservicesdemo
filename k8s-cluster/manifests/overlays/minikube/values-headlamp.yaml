@@ -1,0 +1,9 @@
+# Layered on ../../headlamp/values-headlamp.yaml — drops the RPi hostname
+# pinning and swaps the pinned LAN IP for one in this overlay's MetalLB
+# default-pool (see metallb-ip-pools.yaml).
+nodeSelector: null
+tolerations: []
+service:
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: "192.168.49.149"

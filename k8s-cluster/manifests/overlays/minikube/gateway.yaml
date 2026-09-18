@@ -1,0 +1,39 @@
+# Same as ../../candidates/gateway.yaml, minikube's own MetalLB gateway-pool
+# IP (192.168.49.90, see metallb-ip-pools.yaml) instead of the RPi LAN's
+# 192.168.10.100. No nodeSelectors restriction needed on gateway-l2 here —
+# see metallb-l2-advertisement.yaml.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: api-gateway
+  namespace: candidates
+spec:
+  gatewayClassName: cilium
+  infrastructure:
+    annotations:
+      metallb.io/loadBalancerIPs: "192.168.49.90"
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: app-candidates
+  namespace: candidates
+spec:
+  parentRefs:
+    - name: api-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: app-candidates
+          port: 8080

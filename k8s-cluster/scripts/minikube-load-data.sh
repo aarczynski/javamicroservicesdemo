@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# Imports data-generator's SQL output into the cluster's Postgres instances.
+# Same as load-data.sh (the RPi cluster's data loader) — imports data-
+# generator's SQL output into Postgres and syncs load-background's candidate
+# IDs — just pointed at the minikube cluster instead. Not part of
+# minikube-deploy/minikube-rebuild-all: those stay fast and don't touch
+# data-generator at all; this is the separate, explicit "I actually want
+# realistic data on minikube too" step, same relationship load-data.sh has
+# to bootstrap.sh/k8s-rebuild-all on the RPi cluster.
 #
 # Safe by default: skips a database that already has rows, so re-running
-# after a rebuild (or by accident) never tries to double-insert and fail on
-# a duplicate key. Pass --force to truncate first and reload unconditionally
-# (e.g. after regenerating a bigger dataset with `make generate-data`).
+# never tries to double-insert and fail on a duplicate key. Pass --force to
+# truncate first and reload unconditionally (e.g. after regenerating a
+# bigger dataset with `make generate-data`).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export KUBECONFIG="${KUBECONFIG:-$ROOT_DIR/k8s-cluster/kubeconfig}"
+# Forced, not `${VAR:-default}` — see minikube-start.sh for why an inherited
+# ambient KUBECONFIG must never leak in here.
+export KUBECONFIG="$ROOT_DIR/k8s-cluster/kubeconfig-minikube"
+export MINIKUBE_HOME="$ROOT_DIR/k8s-cluster/.minikube"
 FORCE=false
 [[ "${1:-}" == "--force" ]] && FORCE=true
 

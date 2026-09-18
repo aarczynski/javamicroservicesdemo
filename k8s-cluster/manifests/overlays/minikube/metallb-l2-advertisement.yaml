@@ -1,0 +1,21 @@
+# Same as ../../metallb/l2-advertisement.yaml, minus the nodeSelectors
+# restricting gateway-l2 to specific RPi hostnames — minikube is one node,
+# there's nothing to restrict announcement away from.
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - default-pool
+
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: gateway-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - gateway-pool

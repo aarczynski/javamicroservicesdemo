@@ -1,0 +1,29 @@
+# Layered on top of ../../cilium/values-cilium.yaml:
+#   helm upgrade --install cilium cilium/cilium -n kube-system --version 1.19.5 \
+#     -f manifests/cilium/values-cilium.yaml -f manifests/overlays/minikube/cilium-values.yaml
+#
+# k8sServiceHost/k8sServicePort: kubeProxyReplacement needs the API server's
+# in-cluster address. `kubectl cluster-info` shows the host-side tunnel
+# (127.0.0.1:<random port>, minikube's docker driver forwards this way on
+# macOS) — not reachable from inside the pod network. The real address is
+# the node's docker-network IP (`minikube ip`, 192.168.49.2 by default) on
+# 8443 (confirmed via `docker exec minikube <cmdline> kube-apiserver
+# --secure-port=8443`).
+k8sServiceHost: "192.168.49.2"
+k8sServicePort: "8443"
+
+hubble:
+  relay:
+    nodeSelector: null
+    tolerations: []
+  ui:
+    nodeSelector: null
+    tolerations: []
+    service:
+      type: LoadBalancer
+      annotations:
+        # Helm maps are deep-merged, not replaced — an empty {} here would
+        # leave the base file's 192.168.10.197 annotation untouched instead
+        # of clearing it. Pin explicitly to an IP inside this overlay's
+        # MetalLB default-pool (see metallb-ip-pools.yaml) instead.
+        metallb.io/loadBalancerIPs: "192.168.49.150"

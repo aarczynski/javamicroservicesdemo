@@ -426,6 +426,10 @@ Logging is mandatory for every new service and major operation.
 - Local variables inside feature methods use `def`.
 - Always keep static imports. Do not replace `import static` with fully-qualified calls.
 
+## Git Workflow
+
+- Merging into `main`/`master` is always a merge commit — `--no-ff`, never squash.
+
 ## Checking latest dependency versions
 
 When upgrading versions, use `WebFetch` directly on the release pages — do not delegate to an agent and do not rely on search results.
