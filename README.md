@@ -358,6 +358,7 @@ Current state:
 | `prometheus-node-exporter` | Observability | Exposes per-node OS/hardware metrics (CPU, RAM, disk, network) |
 | `metrics-server` | Observability | Lightweight CPU/RAM metrics powering `kubectl top` and Headlamp's resource view |
 | Headlamp | Cluster UI | Web UI to browse and manage the cluster (pods, deployments, logs...) |
+| Image registry | Platform | Self-hosted Docker Distribution — holds `app-candidates`/`app-job-offers`/`load-background` images, replaces `ghcr.io` (k8s-only, see below) |
 | `app-candidates` / `app-job-offers` | App | The two Java microservices this whole project is about |
 | `postgres-candidates` / `postgres-job-offers` | App | One Postgres instance per service |
 | `load-background` | App | k6 ambient traffic generator (k8s-only version of the module described above) |
@@ -367,7 +368,7 @@ Current state:
 | Range | Purpose |
 |---|---|
 | `.1`–`.99` | Static reservations for node IPs |
-| `.100`–`.199` | MetalLB pool — `LoadBalancer` IPs for k8s Services (`.100` Gateway, `.198` Headlamp, `.199` Grafana) |
+| `.100`–`.199` | MetalLB pool — `LoadBalancer` IPs for k8s Services (`.100` Gateway, `.101` postgres-candidates, `.102` postgres-job-offers, `.190` image registry, `.197` Hubble UI, `.198` Headlamp, `.199` Grafana) |
 | `.200`–`.252` | Dynamic DHCP (Omada) |
 | `.253` | Managed switch (ES224G), static |
 | `.254` | Router (ER7406) interface for this network |
@@ -379,7 +380,7 @@ Current state:
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`/`db-2`/`db-3` | `role=database` | Postgres instances |
 | `observability-1`/`observability-2` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI |
-| `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, future Keycloak/SSO |
+| `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, future Keycloak/SSO |
 | `worker-1`–`worker-4` | none | `app-candidates`, `app-job-offers`, future autoscaled replicas |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
@@ -393,6 +394,7 @@ values and Kubernetes manifests.
 | `make k8s-rebuild-all` | Bare metal → running cluster |
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
 | `make k8s-load-data` | Load real generated data (`make k8s-reload-data` to force a reload) |
+| `make k8s-deploy-load-background` | Rare: rebuild+redeploy `load-background` after changing its own source (JS script, entrypoint, Dockerfile) |
 
 ![Physical cluster](readme-assets/img/k8s-cluster.gif)
 
@@ -437,7 +439,8 @@ pushing to the RPi cluster:
 | Command | What it does |
 |---|---|
 | `make minikube-rebuild-all` | Bare → running cluster: Cilium/Gateway/MetalLB, full observability stack, apps+Postgres+load-background, Flyway's own demo data (no data-generator load) |
-| `make minikube-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
+| `make minikube-image` | Rebuild app-candidates/app-job-offers/load-background and load them straight into minikube's image cache (no registry, not even ghcr.io — see [`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md)). Chained into `minikube-rebuild-all`; run standalone after changing app source, then `minikube-deploy` |
+| `make minikube-deploy` | Day-to-day: redeploy the apps after a manifest change |
 | `make minikube-load-data` | Load real generated data (`make minikube-reload-data` to force a reload) — skipped by the two above since it's slow |
 | `make minikube-tunnel` | Real Gateway/MetalLB IP on the host instead of forwarded ports (needs sudo) |
 | `make minikube-stop` | Stop the cluster — data stays |
@@ -481,6 +484,13 @@ end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/
   storage), the one piece every component can reach over the network regardless of which pod it's on. **Docker
   Compose keeps single-binary Tempo permanently** — one process never needs Kafka or shared object storage to talk to
   itself.
+* **Image registry: self-hosted, in k8s only.** Compose builds images straight into the local Docker daemon that runs
+  the containers — no registry involved. k8s nodes pull images independently over the network, so something has to
+  serve them; `app-candidates`/`app-job-offers`/`load-background` were pushed to `ghcr.io` for a few weeks (each
+  freshly-pushed package defaulting to *private*, even from a public repo, needing a manual visibility change per
+  package — see the handoff's 2026-08-27 entry) before landing on a plain `registry:3.1.1` pod
+  ([`k8s-cluster/manifests/registry/`](k8s-cluster/manifests/registry)) on the platform nodes instead. **Docker
+  Compose needs no registry at all** — there's nothing to push to or pull from on a single Docker daemon.
 
 ```mermaid
 flowchart LR

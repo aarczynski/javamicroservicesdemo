@@ -10,8 +10,11 @@ companies ?=
 generate-data:
 	./gradlew clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar $(candidates) $(jobOffers) $(companies)
 
-start: clean_build
+start: ensure-insecure-registry clean_build
 	-TARGET_HOST=$(targetHost) CANDIDATES_DATA_FILE=$(candidatesDataFile) docker compose up --build
+
+ensure-insecure-registry:
+	./scripts/ensure-insecure-registry.sh
 
 load-data:
 	./scripts/load-data.sh
@@ -50,8 +53,13 @@ k8s-reload-data:
 
 k8s-rebuild-all: k8s-prep k8s-init k8s-bootstrap k8s-load-data
 
-k8s-deploy:
+k8s-deploy: ensure-insecure-registry
 	./k8s-cluster/scripts/deploy.sh
+
+# Rare: only needed when load-background's own source (src/candidate-search.js,
+# entrypoint.sh, Dockerfile.k8s) changes, not on every app deploy.
+k8s-deploy-load-background: ensure-insecure-registry
+	./k8s-cluster/scripts/deploy-load-background.sh
 
 # --- minikube (local dev cluster, no RPi hardware needed) ---
 # Project-local, not ~/.kube or ~/.minikube — see minikube-start.sh. Same
@@ -64,14 +72,22 @@ k8s-deploy:
 # return immediately — the terminal stays free. `make minikube-stop`/
 # `minikube-delete` clean the forwards up (minikube-unforward, chained as
 # their first step); re-running minikube-forward restarts them.
-# minikube-deploy-only / minikube-bootstrap / minikube-start are the pieces
-# minikube-deploy/minikube-rebuild-all chain together, exposed separately so
-# a failed step can be resumed without redoing everything. See
+# minikube-deploy-only / minikube-bootstrap / minikube-image / minikube-start
+# are the pieces minikube-deploy/minikube-rebuild-all chain together, exposed
+# separately so a failed step can be resumed without redoing everything. See
 # k8s-cluster/manifests/overlays/minikube/README.md for what's deployed and
 # why each override exists.
 
 minikube-start:
 	./k8s-cluster/scripts/minikube-start.sh
+
+# Builds app-candidates/app-job-offers/load-background and loads them
+# straight into minikube's image cache (no registry — see the script).
+# Chained into minikube-rebuild-all (a fresh cluster has nothing loaded yet).
+# Otherwise rare to run standalone: only needed after changing app/
+# load-background source, followed by `make minikube-deploy` to pick it up.
+minikube-image:
+	./k8s-cluster/scripts/minikube-image.sh
 
 minikube-bootstrap:
 	./k8s-cluster/scripts/minikube-bootstrap.sh
@@ -93,7 +109,7 @@ minikube-forward:
 minikube-unforward:
 	./k8s-cluster/scripts/minikube-unforward.sh
 
-minikube-rebuild-all: minikube-start minikube-bootstrap minikube-forward
+minikube-rebuild-all: minikube-start minikube-image minikube-bootstrap minikube-forward
 
 minikube-tunnel:
 	KUBECONFIG=$(shell pwd)/k8s-cluster/kubeconfig-minikube MINIKUBE_HOME=$(shell pwd)/k8s-cluster/.minikube minikube tunnel

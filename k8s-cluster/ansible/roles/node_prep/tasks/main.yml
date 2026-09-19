@@ -107,6 +107,51 @@
     backrefs: true
   notify: restart containerd
 
+- name: Point every containerd config_path at a single certs.d directory
+  # `containerd config default` on containerd 2.2.1 (this cluster's version)
+  # ships config_path as a COLON-JOINED list — '/etc/containerd/certs.d:/etc/docker/certs.d'
+  # under [plugins.'io.containerd.cri.v1.images'.registry], and '' (empty)
+  # under [plugins.'io.containerd.transfer.v1.local'] — both single-quoted,
+  # never the '""' this task originally looked for (a leftover assumption
+  # from older containerd's config format, which never matched here).
+  # Found live 2026-09-19: kubelet's actual CRI PullImage calls silently
+  # ignore hosts.toml under a colon-joined config_path — `containerd config
+  # dump` reports it as set correctly, debug logs show no attempt to read
+  # certs.d at all, and every pull falls through to a bare HTTPS request
+  # ("http: server gave HTTP response to HTTPS client") even though `ctr
+  # images pull --hosts-dir /etc/containerd/certs.d` (explicit override)
+  # works fine with the exact same hosts.toml. A single bare path fixes it —
+  # confirmed against a real CRI-driven pull (not just `ctr`, which doesn't
+  # consult config.toml the same way and gave a false negative during
+  # diagnosis). Do NOT add `[registry.mirrors]`/`[registry.configs]` inline
+  # sections alongside config_path either — containerd 2.x refuses to load
+  # the whole CRI images plugin when both are set ("`mirrors` cannot be set
+  # when `config_path` is provided"), which took the entire CRI service down
+  # cluster-wide during this same diagnosis.
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: "^(\\s*)config_path = '.*'$"
+    replace: "\\1config_path = '/etc/containerd/certs.d'"
+  notify: restart containerd
+
+- name: Ensure containerd's registry config directory exists for the local image registry
+  ansible.builtin.file:
+    path: "/etc/containerd/certs.d/{{ local_registry_host }}"
+    state: directory
+    mode: '0755'
+
+- name: Trust the local image registry over plain HTTP (self-hosted, LAN-only, no TLS)
+  ansible.builtin.copy:
+    dest: "/etc/containerd/certs.d/{{ local_registry_host }}/hosts.toml"
+    content: |
+      server = "http://{{ local_registry_host }}"
+
+      [host."http://{{ local_registry_host }}"]
+        capabilities = ["pull", "resolve", "push"]
+        skip_verify = true
+    mode: '0644'
+  notify: restart containerd
+
 - name: Enable and start containerd
   ansible.builtin.systemd:
     name: containerd

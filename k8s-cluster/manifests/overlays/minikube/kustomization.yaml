@@ -7,6 +7,26 @@ resources:
   - ../../job-offers
   - ../../load-background
 
+# The base app.yaml files point at 192.168.10.190:5000 — the RPi cluster's
+# self-hosted image registry (k8s-cluster/manifests/registry/registry.yaml),
+# on the home LAN and unreachable from minikube's own Docker network, with no
+# containerd trust configured for it here anyway. Remap to plain local tags
+# instead, loaded directly into minikube's image cache by `make
+# minikube-image` (k8s-cluster/scripts/minikube-image.sh) — no registry at
+# all, not the RPi cluster's and not ghcr.io either. minikube is meant to
+# work regardless of network (not just from the home LAN, not even needing
+# internet), so it shouldn't depend on either.
+images:
+  - name: 192.168.10.190:5000/app-candidates
+    newName: app-candidates
+    newTag: local
+  - name: 192.168.10.190:5000/app-job-offers
+    newName: app-job-offers
+    newTag: local
+  - name: 192.168.10.190:5000/load-background
+    newName: load-background
+    newTag: local
+
 # Postgres (both) and load-background are pinned (nodeSelector + toleration)
 # to a specific RPi hostname carrying a taint. minikube's single node has
 # neither the hostname nor any taint — strip both so the pods can schedule

@@ -57,6 +57,10 @@ done
 echo "==> local-path-provisioner v0.0.37 (default StorageClass)"
 kubectl apply -f "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.37/deploy/local-path-storage.yaml"
 
+echo "==> Image registry (self-hosted, replaces ghcr.io — see registry.yaml)"
+kubectl apply -f "$MANIFESTS/registry/namespace.yaml"
+kubectl apply -f "$MANIFESTS/registry/"
+
 echo "==> Observability stack"
 kubectl apply -f "$MANIFESTS/observability/namespace.yaml"
 helm upgrade --install prometheus prometheus-community/prometheus -n observability \
@@ -86,11 +90,16 @@ helm upgrade --install metrics-server metrics-server/metrics-server -n kube-syst
   -f "$MANIFESTS/metrics-server/values-metrics-server.yaml" --version 3.14.0
 
 echo "==> Apps"
+# Explicit filenames, not `-f "$dir/"` — that directory-wide form tries to
+# apply every *.yaml in the dir including kustomization.yaml (added so the
+# minikube overlay can use these dirs as kustomize bases), which isn't a
+# valid raw manifest and makes kubectl fail with "apiVersion not set, kind
+# not set". Same pattern deploy.sh already uses for candidates/job-offers.
 kubectl apply -f "$MANIFESTS/candidates/namespace.yaml"
-kubectl apply -f "$MANIFESTS/candidates/"
+kubectl apply -f "$MANIFESTS/candidates/postgres.yaml" -f "$MANIFESTS/candidates/app.yaml" -f "$MANIFESTS/candidates/gateway.yaml"
 kubectl apply -f "$MANIFESTS/job-offers/namespace.yaml"
-kubectl apply -f "$MANIFESTS/job-offers/"
+kubectl apply -f "$MANIFESTS/job-offers/postgres.yaml" -f "$MANIFESTS/job-offers/app.yaml"
 kubectl apply -f "$MANIFESTS/load-background/namespace.yaml"
-kubectl apply -f "$MANIFESTS/load-background/"
+kubectl apply -f "$MANIFESTS/load-background/app.yaml"
 
 echo "==> Bootstrap complete"

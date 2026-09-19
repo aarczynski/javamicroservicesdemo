@@ -1,0 +1,122 @@
+# kubectl apply -f registry.yaml
+#
+# Self-hosted image registry for app-candidates/app-job-offers/load-background —
+# replaces ghcr.io. Decided against ghcr.io originally (see
+# .claude/handoff-k8s-rpi-cluster.md, 2026-08-27 entry) but landed there anyway
+# rather than run the plain `registry:2` pod this file now adds; ghcr.io's
+# fresh-package-defaults-private gotcha (each new tag needs a manual "make
+# public" click in GitHub, per package) made a local registry worth finishing.
+#
+# Image: `registry` is the official Docker Distribution image. Pinned to 3.1.1
+# (distribution/distribution v3, the actively maintained successor to the old
+# v2 "registry" project, still published under the same `registry` Docker Hub
+# name) — verified multi-arch including arm64. No custom config.yml mounted:
+# the image's built-in default already listens on :5000 and stores blobs under
+# /var/lib/registry with the filesystem driver, which is exactly what a single
+# self-hosted instance needs.
+#
+# No auth, no TLS — same posture as minio.yaml's plaintext credentials in this
+# repo: LAN-only homelab cluster, not internet-exposed. Every node's containerd
+# and the Mac's Docker daemon both need to be told to trust this host over
+# plain HTTP explicitly (containerd: k8s-cluster/ansible/roles/node_prep,
+# `local_registry_host` in group_vars/all.yml; Mac: Docker Desktop's
+# "insecure-registries" setting, one-time, see README/handoff).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-data
+  namespace: registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: registry
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      tolerations:
+        - key: role
+          operator: Equal
+          value: platform
+          effect: NoSchedule
+      containers:
+        - name: registry
+          image: registry:3.1.1
+          env:
+            # No pruning policy on this registry yet, and tags accumulate one
+            # per deploy (git-sha tagged, see deploy.sh) — allow blob deletion
+            # so a future manual `registry garbage-collect` can actually free
+            # space instead of only being able to grow.
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 5000
+              name: http
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: registry-data
+
+---
+# LoadBalancer, not ClusterIP: the Mac needs to reach this from outside the
+# cluster to `docker push` (see deploy.sh). Static IP carved from MetalLB's
+# default-pool, same pattern as Grafana (.199) and Headlamp (.198).
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: registry
+  annotations:
+    metallb.io/loadBalancerIPs: "192.168.10.190"
+spec:
+  type: LoadBalancer
+  selector:
+    app: registry
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000

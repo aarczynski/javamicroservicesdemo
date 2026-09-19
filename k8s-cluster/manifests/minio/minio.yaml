@@ -14,11 +14,18 @@
 # version (5.4.0) is still pinned to appVersion RELEASE.2024-12-18, ~21 months old as of
 # this file being written (2026-09-03), while everything else in this repo's charts gets
 # bumped every few weeks. MinIO Inc. deprecated the chart/Operator/Console in favor of
-# their commercial product; the community `minio/minio` and `minio/mc` server/client
-# images are still published (verified via the Docker Hub registry API — latest tags
-# 2025-09/2025-08 respectively, both multi-arch including arm64), so plain YAML against
-# those images — same pattern already used for Postgres in this repo — is the honest
-# choice instead of pinning to an abandoned chart.
+# their commercial product; plain YAML against the server/client images — same pattern
+# already used for Postgres in this repo — is the honest choice instead of pinning to an
+# abandoned chart.
+#
+# Registry: quay.io, not Docker Hub. As of 2026-09-15 the `minio/minio` and `minio/mc`
+# Docker Hub repositories are gone entirely (not just the pinned tag — the whole repo
+# returns "object not found" via the Hub API). quay.io/minio/minio and quay.io/minio/mc
+# still serve the exact same release tags (verified via the quay.io API) — same image
+# content, different registry. This was first patched as a minikube-only kustomize
+# `images:` remap (see ../overlays/minikube/observability/kustomization.yaml's history)
+# because the RPi cluster still had these tags cached locally; fixed here directly now
+# that the underlying image references need to change anyway.
 #
 # Credentials in plaintext below, same posture as postgres.yaml's Secret in this repo —
 # LAN-only homelab cluster, not internet-exposed.
@@ -66,11 +73,11 @@ spec:
         app: minio
     spec:
       # NOTE: kept on observability-2 during the 2026-09-14 experimental node swap
-      # (see values-tempo-distributed.yaml et al.) — the pinned image tag
-      # (RELEASE.2025-09-07T16-13-09Z) was removed from Docker Hub sometime after
-      # 2026-09-03 (confirmed via the Hub API: "object not found"). observability-2
-      # still has it cached locally from before the removal; observability-1 can no
-      # longer pull it at all. Revisit once a current, available tag is chosen.
+      # (see values-tempo-distributed.yaml et al.) — now pulling from quay.io (see
+      # the header comment), so the Docker Hub cache gap that originally forced this
+      # pin no longer applies; left pinned anyway since local-path-provisioner ties
+      # the PVC's PV to whichever node it was first bound on, so moving the pod
+      # without also migrating the PV would just orphan the existing data.
       nodeSelector:
         kubernetes.io/hostname: k8s-rpi-observability-2
       tolerations:
@@ -80,7 +87,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: minio
-          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+          image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
           args: ["server", "/data", "--console-address", ":9001"]
           ports:
             - containerPort: 9000
@@ -168,7 +175,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: mc
-          image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+          image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
           envFrom:
             - secretRef:
                 name: minio-credentials
