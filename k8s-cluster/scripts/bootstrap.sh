@@ -57,6 +57,10 @@ done
 echo "==> local-path-provisioner v0.0.37 (default StorageClass)"
 kubectl apply -f "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.37/deploy/local-path-storage.yaml"
 
+echo "==> Image registry (self-hosted, replaces ghcr.io — see registry.yaml)"
+kubectl apply -f "$MANIFESTS/registry/namespace.yaml"
+kubectl apply -f "$MANIFESTS/registry/"
+
 echo "==> Observability stack"
 kubectl apply -f "$MANIFESTS/observability/namespace.yaml"
 helm upgrade --install prometheus prometheus-community/prometheus -n observability \

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Applies k8s-cluster/manifests/overlays/minikube (apps, Postgres, Gateway —
 # see that directory's README.md). Unlike deploy.sh (the RPi cluster's day-
-# to-day deploy), this doesn't build/push images: app.yaml already points at
-# published, public ghcr.io/aarczynski/app-candidates and app-job-offers
-# tags, which minikube pulls directly. Idempotent: kubectl apply -k is safe
-# to re-run, and re-running it after a fresh `make minikube-image` (see
-# there) re-deploys the same tag so pods pick up a rebuilt local image.
+# to-day deploy), this doesn't build/push images: the overlay's kustomization
+# remaps the apps' base image (the RPi cluster's self-hosted registry) to
+# plain `:local` tags with no registry at all — `make minikube-image` loads
+# those straight into minikube's own image cache beforehand (and restarts
+# any already-running Deployments itself, since IfNotPresent means a running
+# pod won't otherwise notice the `:local` tag's content changed). Idempotent:
+# kubectl apply -k is safe to re-run.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

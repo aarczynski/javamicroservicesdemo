@@ -107,6 +107,32 @@
     backrefs: true
   notify: restart containerd
 
+- name: Point containerd's CRI plugin at a registry config directory
+  ansible.builtin.lineinfile:
+    path: /etc/containerd/config.toml
+    regexp: '^(\s*)config_path = ""'
+    line: '\1config_path = "/etc/containerd/certs.d"'
+    backrefs: true
+  notify: restart containerd
+
+- name: Ensure containerd's registry config directory exists for the local image registry
+  ansible.builtin.file:
+    path: "/etc/containerd/certs.d/{{ local_registry_host }}"
+    state: directory
+    mode: '0755'
+
+- name: Trust the local image registry over plain HTTP (self-hosted, LAN-only, no TLS)
+  ansible.builtin.copy:
+    dest: "/etc/containerd/certs.d/{{ local_registry_host }}/hosts.toml"
+    content: |
+      server = "http://{{ local_registry_host }}"
+
+      [host."http://{{ local_registry_host }}"]
+        capabilities = ["pull", "resolve", "push"]
+        skip_verify = true
+    mode: '0644'
+  notify: restart containerd
+
 - name: Enable and start containerd
   ansible.builtin.systemd:
     name: containerd

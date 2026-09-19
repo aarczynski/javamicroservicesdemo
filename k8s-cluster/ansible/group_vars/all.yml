@@ -1,1 +1,7 @@
 kubernetes_version: "1.36"
+
+# Self-hosted image registry (k8s-cluster/manifests/registry/registry.yaml),
+# exposed via MetalLB at this LAN IP. Every node's containerd needs to trust
+# it over plain HTTP explicitly (see node_prep's containerd registry tasks) —
+# it has no TLS cert, same LAN-only posture as minio.yaml's plaintext creds.
+local_registry_host: "192.168.10.101:5000"
