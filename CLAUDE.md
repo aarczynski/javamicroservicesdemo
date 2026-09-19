@@ -429,6 +429,7 @@ Logging is mandatory for every new service and major operation.
 ## Git Workflow
 
 - Merging into `main`/`master` is always a merge commit — `--no-ff`, never squash.
+- After a branch is merged into `main`/`master`, delete it — both local and remote (`git branch -d`, `git push origin --delete`).
 
 ## Checking latest dependency versions
 
