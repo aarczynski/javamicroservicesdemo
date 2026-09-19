@@ -29,7 +29,7 @@ spec:
             value: "1"
       containers:
         - name: app-job-offers
-          image: 192.168.10.101:5000/app-job-offers:v4
+          image: 192.168.10.104:5000/app-job-offers:5c455a4
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request).

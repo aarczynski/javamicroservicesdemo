@@ -707,6 +707,14 @@ data:
       "version": 5,
       "weekStart": ""
     }
+  default.yaml: |
+    apiVersion: 1
+
+    providers:
+      - name: Default
+        type: file
+        options:
+          path: /etc/grafana/provisioning/dashboards
   jvm-monitoring.json: |
     {
       "annotations": {
@@ -3965,7 +3973,6 @@ data:
     }
 kind: ConfigMap
 metadata:
-  creationTimestamp: null
   labels:
     grafana_dashboard: "1"
   name: grafana-dashboards

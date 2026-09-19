@@ -55,7 +55,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: load-background
-          image: 192.168.10.101:5000/load-background:v2
+          image: 192.168.10.104:5000/load-background:5c455a4
           env:
             - name: DATA_FILE
               value: /data/01-candidates.sql
