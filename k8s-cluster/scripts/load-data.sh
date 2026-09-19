@@ -22,8 +22,8 @@ import_file() {
 }
 
 load_database() {
-  local namespace="$1" pod_label="$2" db="$3" check_table="$4" truncate_tables="$5"
-  shift 5
+  local namespace="$1" pod_label="$2" db="$3" check_table="$4" truncate_tables="$5" demo_data_file="$6"
+  shift 6
   local files=("$@")
 
   local pod
@@ -53,6 +53,12 @@ load_database() {
         kubectl exec -n "$namespace" "$pod" -- \
           psql -U postgres -d "$db" -c "TRUNCATE TABLE $t CASCADE"
       done
+      # TRUNCATE wipes Flyway's own demo-data seed too, but Flyway itself
+      # won't re-run that migration (already marked applied in
+      # flyway_schema_history) - restore it by re-executing the actual
+      # migration file directly, not a copy-pasted duplicate of its SQL.
+      echo "==> Restoring Flyway demo-data seed ($demo_data_file)"
+      import_file "$namespace" "$pod_label" "$db" "$demo_data_file"
     else
       echo "==> $db already has $row_count rows in $check_table — skipping (use --force to reload)"
       return 1
@@ -82,6 +88,7 @@ echo "==> Generating fresh SQL files (make generate-data)"
 OUT="$ROOT_DIR/data-generator/output"
 
 if load_database candidates postgres-candidates app-candidates-db candidate candidate \
+  "$ROOT_DIR/app-candidates/src/main/resources/db/migration/postgres/V1_1__demo-data.sql" \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
   "$OUT/candidates/03-candidate-skills.sql"; then
@@ -95,6 +102,7 @@ fi
 # truncate_tables is "company skill", not "job_offer" - both are roots
 # job_offer/job_offer_skill hang off of, see the comment in load_database.
 load_database job-offers postgres-job-offers app-job-offers-db job_offer "company skill" \
+  "$ROOT_DIR/app-job-offers/src/main/resources/db/migration/postgres/V1_1__demo-data.sql" \
   "$OUT/job-offers/01-companies.sql" \
   "$OUT/job-offers/02-skills.sql" \
   "$OUT/job-offers/03-job-offers.sql" \

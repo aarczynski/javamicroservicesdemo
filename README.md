@@ -404,8 +404,22 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-14, after a full cluster rebuild): 1200 RPS sustained, 0% KO, p99=49ms**
-(`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests, `http://192.168.10.100`).
+**Current state (2026-09-19): 1200 RPS sustained, 0% KO, p99=24ms**
+(`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests, `http://192.168.10.100`) — improved from the previous
+p99=49ms after fixing a cartesian `JOIN FETCH` in `JobOfferRepository.findCandidateMatches` (split into an ID-only
+prefilter query plus a single batch-fetch by ID, `offeredEmploymentTypes` moved to `@BatchSize` instead of a second
+eager collection in the same query). `app-job-offers`'s CPU limit is `3` (was `2`).
+
+**1500 RPS is not yet clean** (measured ~0.5-14% KO depending on run, all `503`s). Postgres and Hikari are not the
+bottleneck at this level (`postgres-job-offers` CPU stays under 1/3 cores, Hikari `pending` stays at 0 with the
+default pool size — a larger pool made things *worse*, see `.claude/handoff-k8s-rpi-cluster.md`). The real ceiling is
+`app-job-offers`'s own CPU (a single replica was measured at 1.99/2 cores before the bump to 3) combined with the
+Cilium Gateway's Envoy cluster for `app-candidates`, which runs on Envoy's unconfigured default circuit breaker
+(~1024 max pending requests) — once app latency degrades under load, the pending-request queue approaches that
+ceiling and Envoy sheds the excess with `503`s. Next steps: either free up `observability-1` (it currently hosts
+Kafka + all of Tempo's write path + OTEL Collector, and a sustained 1500rps trace volume crashed its kubelet twice
+during testing) so trace volume stops being the limiting factor, or reduce trace volume (tail-based sampling: 100%
+of errors, a small percentage of everything else) before pushing past 1200rps again.
 
 ### Row counts on the home k8s cluster
 
@@ -566,4 +580,10 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 # Future plans
 
 * Prepare CI/CD for the home Kubernetes cluster.
-* Implement backpressure or circuit breaker.
+* Raise/tune the Cilium Gateway's Envoy circuit breaker for the `app-candidates` cluster (currently on Envoy's
+  unconfigured defaults, the ceiling hit at 1500rps — see [Measured capacity](#measured-capacity)) — no supported
+  Cilium 1.19 extension point found for this yet, would need a newer Cilium version or an unsupported direct
+  `CiliumEnvoyConfig` edit.
+* Either a third observability node (spreading Kafka/Tempo's write path off `observability-1`, at the cost of one
+  fewer generic worker) or tail-based trace sampling (100% of errors, a small percentage of everything else) to stop
+  sustained high-RPS load tests from crashing `observability-1`.

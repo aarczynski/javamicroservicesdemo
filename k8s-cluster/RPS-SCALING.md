@@ -1,0 +1,180 @@
+# RPS scaling journey — `app-candidates` / `app-job-offers`
+
+History of what actually moved the needle on sustained throughput against the physical RPi5 cluster
+(`http://192.168.10.100`), in the order the fixes landed. Session-by-session narrative and raw incident detail lives
+in `.claude/handoff-k8s-rpi-cluster.md`; this file is the distilled, forward-looking summary — update it whenever a
+change measurably moves the ceiling, don't let it rot into a second handoff.
+
+## Current state
+
+**1200 RPS sustained, 0% KO, p99=24ms** (`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests).
+**1500 RPS is not yet clean** — see [Current bottleneck](#current-bottleneck-1500-rps) below.
+
+## What got us from ~600rps to 1200rps clean
+
+### 1. Async logging (2026-09-11)
+
+Spring Boot's default `ConsoleAppender` is synchronous — every `log.info(...)` call (including the
+"received request" log CLAUDE.md requires for business actions) blocks on a single global lock while writing to
+stdout. Under load, most of Tomcat's thread pool ended up parked on that one lock (confirmed via `jcmd
+Thread.print`: 171/200 threads waiting on the same `ReentrantLock` in `OutputStreamAppender.writeBytes`).
+
+**Fix:** `logback-spring.xml` in both services wraps the console appender in `AsyncAppender`
+(`queueSize=1024`, `discardingThreshold=0` so business logs are never silently dropped under load).
+
+**Caveat:** this fix alone made things *worse* at 700rps (85.74% KO, up from 3.39%) — removing the lock let Tomcat
+threads reach real work (Feign calls, DB queries) fast enough to exhaust the whole 200-thread pool, and the liveness
+probe (sharing that same pool) started timing out, so kubelet killed and restarted the pod under load. Fixed by:
+
+### 2. Separate actuator port (2026-09-11)
+
+`management.server.port: 8081` — health checks get their own Tomcat connector/thread pool, isolated from port 8080
+business traffic. Without this, a saturated business thread pool makes the liveness probe fail too, and kubelet
+kills a pod that's merely slow, not dead — turning "degraded" into "restart loop and total outage for several
+minutes."
+
+Combined result: 700rps stopped restart-looping (0 restarts), 600rps went from p99=254ms (original baseline) to
+p99=112ms.
+
+### 3. Two replicas instead of one (2026-09-11)
+
+`replicas: 1 → 2` for both `app-candidates` and `app-job-offers`. Trivial since both are stateless — the scheduler
+spread them onto different worker nodes with no anti-affinity needed. This alone doesn't add capacity if the
+database behind it is already the bottleneck (see next point), but it's a prerequisite: a single replica is also a
+single point of failure, and CPU-bound apps benefit close to linearly from a second core-set.
+
+### 4. `postgres-job-offers` CPU limit 2 → 3 (2026-09-11)
+
+After replicas doubled app throughput, `postgres-job-offers` became the bottleneck (Prometheus showed it pinned at
+2.0/2 cores). Bumped to 3 (checked first that `db-2`, the node it's pinned to, had physical headroom).
+Result: 750rps clean, 0% KO, p99=43ms — best result up to that point.
+
+### 5. Disable Postgres parallel query workers (2026-09-11)
+
+At 1000rps, `postgres-job-offers` hit its new 3-core ceiling again (2.98/3), with Hikari `pending`=191 on both
+`app-job-offers` replicas (default, never-tuned pool of 10). Root cause turned out to be `max_parallel_workers_per_gather`
+(Postgres default `2`): the RPi5's cgroup CPU limit is a CFS quota, not a `cpuset`, so the container's `nproc` still
+reports all 4 physical cores — Postgres happily plans parallel workers up to that visible core count, so a single
+query could burn up to 3x its fair share of CPU under the 3-core limit. A single `EXPLAIN ANALYZE` in isolation
+actually looked *faster* with parallelism (35.6ms vs 52.9ms) — the cost only shows up as aggregate CPU-time under
+real concurrency, which is why the first pass at diagnosing this looked backwards.
+
+**Fix:** `args: ["-c", "max_parallel_workers_per_gather=0"]` on `postgres-job-offers` (`k8s-cluster/manifests/job-offers/postgres.yaml`).
+Traded a bit of single-query latency (600rps p99 387ms → 1051ms) for a large concurrency win (700rps: 72% KO → 1.77% KO).
+
+**Methodology note:** the parallel-workers fix was first tested *together* with a JOIN-FETCH query split (see below,
+which was independently a disaster) and the combined result looked uniformly bad (53.35% KO), nearly hiding a real
+win. Always isolate one variable at a time under real concurrent load — a clean `EXPLAIN ANALYZE` does not predict
+behavior under concurrency, and a bundled test can hide a working fix behind a broken one.
+
+### 6. Fix the cartesian `JOIN FETCH` in `findCandidateMatches` (2026-09-19)
+
+`JobOfferRepository.findCandidateMatches` fetched two collections (`offeredEmploymentTypes`, `skills`) in one query
+via `@EntityGraph`. Hibernate turns that into a SQL `JOIN FETCH` on both collections in the same statement — Postgres
+returns one row per *(employment type × skill)* combination per offer, not one row per offer, so a query that should
+return N offers can return several times N rows, most of them discarded again by Hibernate's in-memory `DISTINCT`.
+
+**A first attempt to fix this (2026-09-11) made things catastrophically worse** (43.87% KO at 600rps, worse still at
+53.35% with a bigger connection pool) — later git archaeology (`git fsck --unreachable`) found the likely cause: an
+old, never-merged version of this codebase resolved skills via a per-offer query inside the scoring loop (classic
+N+1), and the 2026-09-11 attempt probably reintroduced that same pattern instead of a real batch fetch.
+
+**The fix that actually worked (2026-09-19):** split into two queries, batched correctly this time —
+- `findCandidateMatchIds(...)` — `SELECT DISTINCT o.id`, no fetch join at all, so there is no row multiplication even
+  while filtering on `offeredEmploymentTypes`.
+- `findByIdIn(ids)` with `@EntityGraph` for `skills`+`company` only (one collection, no multiplication) —
+  `offeredEmploymentTypes` moved to `@BatchSize(size = 100)` instead of a second eager collection, so Hibernate loads
+  it with a single extra `WHERE job_offer_id IN (...)` batched query instead of a join.
+
+The key difference from the failed 2026-09-11 attempt: the second query is one `JOIN FETCH` covering *all* matched
+offers at once, not one query per offer. Two or three cheap round-trips per request beat one expensive
+row-multiplying query; N+1 round-trips do not.
+
+**Result:** 1200rps p99 dropped from 49ms to 24ms; 1500rps went from failing outright to only failing on a different,
+downstream bottleneck (see below) instead of Postgres.
+
+**A real regression shipped with this fix, caught in production by a human reading pod logs, not by any existing
+test:** moving `offeredEmploymentTypes` to lazy+`@BatchSize` meant the DTO-building code
+(`JobOfferService.toMatchDto`) held a reference to an *uninitialized* Hibernate collection — nothing touched its
+contents inside the transaction, so Jackson threw `LazyInitializationException` serializing the HTTP response
+*after* the transaction (and Hibernate session) had already closed. Fixed with `Set.copyOf(...)` in `toMatchDto`
+(forces initialization while the session is still open, and detaches a plain collection into the DTO). A new test,
+`JobOfferServiceIntegrationSpec`, uses Spring Test's `TestTransaction.end()` to actually close the session mid-test
+and assert the DTO still serializes — the only way to reproduce this class of bug in a test, since neither a
+`@DataJpaTest` repository spec (never leaves its own transaction) nor a Mockito/Instancio unit test (fake entities
+aren't real Hibernate proxies) can catch it.
+
+### 7. What did *not* help: bigger Hikari pool (2026-09-19)
+
+`app-job-offers` runs on Hikari's untouched default (`maximum-pool-size=10`). Given the query fix above added a
+second (sometimes third) DB round-trip per request, bumping the pool to 30 (mirroring `app-candidates`'s successful
+tuning) looked like the obvious next move. **It made 1500rps measurably worse** (0.53% KO → 14.9% KO, Hikari
+`pending` jumped from 0 to 159) — more concurrent connections just meant more concurrent Postgres backend processes
+competing for the same 3 CPU cores. This is the same lesson as the 2026-09-11 parallel-workers finding, from the
+other direction: more concurrency does not help once the downstream resource (CPU, here) is the real limit — it
+just moves the queueing from the connection pool into Postgres itself, where it's worse. **Reverted.** Rule of thumb
+from HikariCP's own sizing guidance (`pool_size ≈ 2 × core_count + spindle_count`): for a 3-core Postgres, something
+close to the *default* 10 is already roughly right, not 30.
+
+### 8. `app-job-offers` CPU limit 2 → 3 (2026-09-19)
+
+With Postgres no longer the bottleneck, the app itself became one — a single replica was measured at 1.99/2 cores
+(effectively 100%) under 1500rps load, while Postgres CPU stayed under 1/3 cores. Same lever, same precedent as
+fix #4, just on the app instead of the database this time. Not yet cleanly validated at 1500rps (see below).
+
+## Current bottleneck (1500 RPS)
+
+Postgres and Hikari are confirmed *not* the constraint at this level (Postgres CPU <1/3 cores, Hikari `pending`=0
+with the default pool). Two things compound instead:
+
+1. **`app-job-offers` CPU**, addressed by fix #8 above but not yet cleanly re-measured.
+2. **The Cilium Gateway's Envoy circuit breaker** for the `app-candidates` upstream cluster is running on Envoy's
+   *unconfigured default* thresholds (~1024 max pending requests) — nobody ever set this explicitly, and Cilium
+   1.19's Gateway API implementation has no exposed extension point to tune it (checked `CiliumGatewayClassConfig` —
+   only covers the generated `Service`, not Envoy cluster settings). Once app latency degrades under load, the
+   pending-request queue on the Gateway approaches that ceiling (measured peak: 977) and Envoy starts shedding
+   excess load with `503`s. This is not an independent problem — it's downstream of #1: slower app responses →
+   bigger pending queue → circuit breaker trips.
+
+Validating whether fix #8 alone is enough has been blocked twice by an unrelated, if likely load-test-induced,
+infrastructure failure: sustained 1500rps trace volume appears to overwhelm `observability-1` (it hosts Kafka + all
+of Tempo's write path + the OTEL Collector — 8 telemetry-heavy services on one RPi5, sized historically for ambient
+load and short bursts, not a sustained 1500rps soak) badly enough that its kubelet stops responding entirely
+(`NodeNotReady`, SSH/ping dead at the userspace level, twice in one session). See the handoff for full incident
+detail.
+
+## Options for pushing past 1200rps cleanly
+
+Not yet implemented — pick one (or both) in a future session:
+
+1. **A third observability node**, splitting Kafka off from Tempo's other write-path components (or off from
+   `otel-collector`/`querier`/`query-frontend`) so no single RPi5 carries all of it under load. Costs one of the four
+   generic worker nodes (no spare hardware sitting around — this means repurposing, not just adding).
+2. **Tail-based trace sampling** in `otel-collector` (already the `contrib` distribution, has `tail_sampling` built
+   in; `replicaCount: 1` so there's no cross-instance span-routing complexity to solve first): sample 100% of error
+   traces, a small percentage (e.g. 1%) of everything else. Cuts trace volume without losing debuggability for
+   failures — the standard production pattern for this exact problem. Will likely also need `otel-collector`'s own
+   resource limits raised (currently 500m CPU / 1Gi memory, sized for much lower ambient volume); `tail_sampling`
+   buffers each trace in memory for `decision_wait` before deciding, which adds memory pressure under load.
+3. **Raise the Envoy circuit breaker directly** — no supported way to do this on Cilium 1.19 today. Would need a
+   newer Cilium version (check release notes for Gateway API `BackendTrafficPolicy` support before upgrading, per
+   the version-pinning discipline in the root `CLAUDE.md`) or an unsupported direct edit of the auto-generated
+   `CiliumEnvoyConfig`, which Cilium's Gateway controller can silently revert on its own reconciliation.
+
+## Methodology lessons (apply to future rounds)
+
+- **Test one variable at a time under real concurrent load.** A bundled test of two changes can make a working fix
+  look like a failure (see #5). A clean `EXPLAIN ANALYZE` or single-request benchmark does not predict behavior
+  under concurrency.
+- **More concurrency is not always better once a downstream resource is the real limit** (see #5 and #7) — a bigger
+  connection pool, more parallel query workers, or more replicas sharing an already-saturated resource just moves
+  the queueing somewhere worse.
+- **Verify load test data is fresh against the live database before trusting a "0% KO" result.** A stale
+  `candidatesDataFile` full of nonexistent candidate IDs will report clean results while silently never exercising
+  the code path under test (404s count as "OK" in the Gatling check).
+- **When changing a JPA collection from eager to lazy, add a test that actually closes the transaction/session**
+  (Spring Test's `TestTransaction.end()`) before asserting the result is still usable — a `@DataJpaTest` spec or a
+  mock-based unit test cannot reproduce a `LazyInitializationException` that only happens after the HTTP-layer
+  transaction boundary.
+- **Keep load test steps short** (`stepDuration=1m` is enough) — sustaining peak RPS for many minutes is what
+  overwhelms the observability pipeline, not the measurement itself.
