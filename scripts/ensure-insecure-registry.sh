@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Ensures Docker Desktop trusts the self-hosted k8s image registry
-# (k8s-cluster/manifests/registry/registry.yaml, 192.168.10.104:5000) over
+# (k8s-cluster/manifests/registry/registry.yaml, 192.168.10.190:5000) over
 # plain HTTP. Without this, `docker push` from k8s-cluster/scripts/deploy.sh
 # fails with "server gave HTTP response to HTTPS client" — the registry has
 # no TLS cert (LAN-only homelab, same posture as minio.yaml's plaintext
@@ -13,7 +13,7 @@
 # touching Docker at all.
 set -euo pipefail
 
-REGISTRY="192.168.10.104:5000"
+REGISTRY="192.168.10.190:5000"
 DAEMON_JSON="$HOME/.docker/daemon.json"
 
 CHANGED="$(python3 - "$DAEMON_JSON" "$REGISTRY" <<'PYEOF'

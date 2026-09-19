@@ -368,7 +368,7 @@ Current state:
 | Range | Purpose |
 |---|---|
 | `.1`–`.99` | Static reservations for node IPs |
-| `.100`–`.199` | MetalLB pool — `LoadBalancer` IPs for k8s Services (`.100` Gateway, `.101` postgres-candidates, `.102` postgres-job-offers, `.104` image registry, `.197` Hubble UI, `.198` Headlamp, `.199` Grafana) |
+| `.100`–`.199` | MetalLB pool — `LoadBalancer` IPs for k8s Services (`.100` Gateway, `.101` postgres-candidates, `.102` postgres-job-offers, `.190` image registry, `.197` Hubble UI, `.198` Headlamp, `.199` Grafana) |
 | `.200`–`.252` | Dynamic DHCP (Omada) |
 | `.253` | Managed switch (ES224G), static |
 | `.254` | Router (ER7406) interface for this network |

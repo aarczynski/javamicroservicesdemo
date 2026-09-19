@@ -18,7 +18,7 @@ MANIFESTS="$ROOT_DIR/k8s-cluster/manifests"
 export KUBECONFIG="${KUBECONFIG:-$ROOT_DIR/k8s-cluster/kubeconfig}"
 
 # Keep in sync with local_registry_host in k8s-cluster/ansible/group_vars/all.yml.
-REGISTRY="192.168.10.104:5000"
+REGISTRY="192.168.10.190:5000"
 REGISTRY_RE='192\.168\.10\.104:5000'
 
 cd "$ROOT_DIR"

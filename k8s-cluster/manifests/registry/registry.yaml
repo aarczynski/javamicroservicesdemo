@@ -111,7 +111,7 @@ metadata:
   name: registry
   namespace: registry
   annotations:
-    metallb.io/loadBalancerIPs: "192.168.10.104"
+    metallb.io/loadBalancerIPs: "192.168.10.190"
 spec:
   type: LoadBalancer
   selector:
