@@ -1236,6 +1236,7 @@ data:
             }
           },
           "pluginVersion": "12.4.2",
+          "interval": "1s",
           "targets": [
             {
               "datasource": {
@@ -1391,6 +1392,7 @@ data:
             }
           },
           "pluginVersion": "12.4.2",
+          "interval": "1s",
           "targets": [
             {
               "datasource": {
@@ -1503,6 +1505,7 @@ data:
             }
           },
           "pluginVersion": "12.4.2",
+          "interval": "1s",
           "targets": [
             {
               "datasource": {

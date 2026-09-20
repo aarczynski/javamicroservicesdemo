@@ -160,14 +160,24 @@ duplikować tutaj.
   `jvm-monitoring.json`) miało to ustawienie, przez co losowy ruch z Gatlinga wyglądał na dashboardzie jak gładka
   obwiednia zamiast postrzępionej linii. **Fix: `"linear"` na każdym nowym timeseries panelu**, chyba że wygładzanie
   jest świadomym wyborem — dashboard obserwowalności ma pokazywać prawdziwe zachowanie systemu, nie estetykę.
-- **Sztywne `"min": 0` na osi Y ściska realny sygnał, gdy w tym samym panelu jest też duża stała referencja
-  (np. Heap Max/Committed).** Znalezione 2026-09-20: JVM Heap Used realnie oscyluje piłokształtnie (potwierdzone
-  surowymi próbkami co 15s z Prometheusa: ~330-440MB, klasyczny wzorzec GC), ale na panelu "Heap Memory" z osią
-  wymuszoną od 0 do Heap Max (~780MB), to wahanie zajmowało tylko ~15% wysokości wykresu — wyglądało na płaskie,
-  mimo że dane były poprawne. **Fix: usunięte `"min": 0` z paneli bajtowych** (Heap Memory, Non-Heap Memory,
-  Memory Used by Pool w `jvm-monitoring.json`) — oś skaluje się teraz automatycznie do realnego zakresu danych.
-  Zostawić `min: 0` tam, gdzie ma to sens (CPU %, liczba wątków, GC rate) — problem dotyczy tylko paneli, które
-  mieszają wąsko wahającą się wartość z szeroką stałą referencją na tej samej skali.
+- **Grafana datasource `timeInterval` jest podłogą rozdzielczości dla KAŻDEGO zapytania na tym datasource, nie
+  tylko dla `rate()`/`$__rate_interval`.** To była prawdziwa (i jedyna faktycznie ważna) przyczyna "znikniętej piły"
+  na panelu "Heap Memory" — nie miała nic wspólnego z Prometheus `scrape_interval`. JVM metryki (`jvm_memory_used_bytes`
+  i inne) w tym projekcie idą przez agenta OTel jako **push co 1s** (`OTEL_METRIC_EXPORT_INTERVAL=1000` w
+  `k8s-cluster/manifests/{candidates,job-offers}/app.yaml`) prosto do Prometheusa przez `remote_write` —
+  `scrape_interval` Prometheusa (15s) ich w ogóle nie dotyczy, bo to nie jest pull. Zweryfikowane bezpośrednio:
+  zapytanie do Prometheusa z `step=1` zwróciło podręcznikową piłę GC (357→416→**380** spadek→450→**347** spadek→...,
+  MB), więc dane 1-sekundowe realnie tam siedziały. Mimo to panel w Grafanie renderował płaski/poszarpany zygzak,
+  bo `timeInterval: "15s"` na datasource Prometheusa (ustawiony świadomie dla poprawnego `$__rate_interval` na
+  panelach RPS/error — patrz wyżej) działa też jako "Min interval" dla zwykłych zapytań gauge, więc Grafana i tak
+  próbkowała co 15s zamiast co 1s, gubiąc ~14 z 15 punktów na sekundę. **Fix: `"interval": "1s"` na poziomie
+  panelu** (Heap Memory, Non-Heap Memory, Memory Used by Pool w `jvm-monitoring.json`) — nadpisuje floor tylko dla
+  tych trzech paneli, nie rusza globalnego `timeInterval` (które musi zostać 15s dla `$__rate_interval` gdzie
+  indziej). Osobno usunięte też sztywne `"min": 0` na osi Y tych samych paneli (ściskało wahanie Heap Used ~330-440MB
+  do ~15% wysokości wykresu na tle Heap Max ~780MB) — to poprawka komplementarna, nie substytut fixu interwału.
+  **Lekcja ogólna**: zanim zmienisz oś/interpolację żeby "odsłonić" ukryty sygnał, sprawdź surowym zapytaniem z
+  małym `step` czy dane o wyższej rozdzielczości w ogóle są w Prometheusie — jeśli tak, winny jest limit
+  rozdzielczości zapytania (datasource `timeInterval`/panel `interval`), nie wizualizacja.
 - **Panel Loki bez cache'a przelicza całą historię od zera przy każdym odświeżeniu** — `count_over_time` po
   wszystkich serwisach na oknie 30 min potrafi skanować >1.5 mln linii/500MB (potwierdzone przez `stats.summary` w
   odpowiedzi Loki), dając 5-6s czasu ładowania nawet na spokojnym ruchu, więcej po burst teście. Fix (2026-09-20,
