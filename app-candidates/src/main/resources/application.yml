@@ -1,9 +1,19 @@
 spring:
   datasource:
     hikari:
+      # 30 -> 40 on 2026-09-20: sized for a fixed 2 replicas (60 idle conns,
+      # comfortable under Postgres's default max_connections=100). The
+      # app-candidates HPA (hpa.yaml) can now run 3 replicas, and a live
+      # 1500rps test caught it: a freshly-scaled pod immediately got its
+      # full traffic share and produced real "HikariPool-1 - Connection is
+      # not available" 500s (waiting=114 against a 30-connection pool) - not
+      # a Tomcat/network issue, genuine DB-connection-pool exhaustion under
+      # burst concurrency. 40 x 3 = 120, within the matching
+      # max_connections=150 bump in postgres.yaml (30 connections of
+      # headroom for tooling/migrations/a future replica).
       connection-timeout: 3000
-      maximum-pool-size: 30
-      minimum-idle: 30
+      maximum-pool-size: 40
+      minimum-idle: 40
   jpa:
     open-in-view: false
     hibernate:

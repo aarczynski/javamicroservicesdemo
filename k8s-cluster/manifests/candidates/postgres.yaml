@@ -53,6 +53,24 @@ spec:
       containers:
         - name: postgres
           image: postgres:18.3
+          # max_connections 100 (image default) -> 150 on 2026-09-20, paired
+          # with the Hikari pool bump in app-candidates/application.yml: at
+          # 3 HPA-scaled replicas x maximum-pool-size 40 = 120 idle
+          # connections alone, leaving only 30 headroom on the 100-connection
+          # default before any burst even happened - a live 1500rps test hit
+          # exactly this (see that file's comment for the full incident).
+          # 150 restores ~30 connections of headroom above the 120 baseline.
+          # Safe within the 2Gi memory limit below (checked: comfortably
+          # under it even accounting for per-connection overhead).
+          #
+          # `args`, not `command`: the official image's ENTRYPOINT
+          # (docker-entrypoint.sh) is what drops privileges from root to the
+          # unprivileged postgres user before exec'ing the server - replacing
+          # it via `command` skips that and postgres refuses to run as root
+          # (found live 2026-09-20: CrashLoopBackOff, "root execution of the
+          # PostgreSQL server is not permitted"). `args` appends to the
+          # default entrypoint instead of replacing it.
+          args: ["-c", "max_connections=150"]
           ports:
             - containerPort: 5432
           env:
