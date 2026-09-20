@@ -1,12 +1,19 @@
 # kubectl apply -f namespace.yaml -f app.yaml
 # load-background. Pure client (no exposed port) — sends sinusoidal ambient
 # load at app-candidates via its in-cluster ClusterIP-equivalent DNS name.
-# Pinned to k8s-rpi-observability-2 (moved from observability-1 on 2026-08-28
-# to relieve CPU-limit overcommit there): keeps the ambient-load generator off
-# the generic workers, colocated with the observability stack it feeds telemetry into.
-# (Briefly moved to observability-1 on 2026-09-14 to test whether it was
-# causing an unusually fast-blinking disk LED on observability-2 — LED
-# behavior was unchanged after the move, so ruled out; moved back same day.
+# Moved to k8s-rpi-platform-1 2026-09-20: observability-2 was carrying the
+# highest CPU allocation of the three observability nodes (860m/21% request,
+# 6200m/155% limit — see CLAUDE.md/handoff) after observability-3 relieved
+# observability-1 but not -2. This pod is CPU/network-bound (not disk-heavy
+# like Loki/Prometheus/Grafana/MinIO, which stayed put), and platform-1 has
+# spare capacity (down to hosting just Gateway ingress/MetalLB/
+# local-path-provisioner/registry since platform-2 -> worker-5 the same day).
+# No storage-locality reason to keep it near the observability stack — it
+# only reads/re-syncs a copy of the candidates SQL file.
+# (Previously: observability-1 -> observability-2 2026-08-28 for CPU-limit
+# overcommit; briefly back to -1 2026-09-14 to rule out a disk-LED theory,
+# reverted same day; briefly repointed to -1 again in this file without ever
+# being applied live — drifted from the actually-running -2, now moot.
 # /data is on a local-path PVC, which is node-pinned — the PVC must be
 # deleted and recreated alongside any node move, see scripts/load-data.sh.)
 #
@@ -47,21 +54,16 @@ spec:
         app: load-background
     spec:
       nodeSelector:
-        # observability-2 was carrying 8 pinned components (Loki, Prometheus,
-        # Grafana, Tempo distributor, MinIO, hubble-relay/ui, this) and sat at
-        # ~51% RAM vs ~21%/31% on -1/-3 (2026-09-20 rebalance). This one moved
-        # to -1 (lightest) — its PVC only holds a copy of the candidates SQL
-        # file re-synced by `load-data.sh` after every import, so losing it on
-        # move costs nothing (unlike Loki/Prometheus/Grafana/MinIO's PVCs).
-        kubernetes.io/hostname: k8s-rpi-observability-1
+        # See the file-level comment above for why platform-1 (2026-09-20).
+        kubernetes.io/hostname: k8s-rpi-platform-1
       tolerations:
         - key: role
           operator: Equal
-          value: observability
+          value: platform
           effect: NoSchedule
       containers:
         - name: load-background
-          image: 192.168.10.190:5000/load-background:5c455a4
+          image: 192.168.10.190:5000/load-background:81949a9
           env:
             - name: DATA_FILE
               value: /data/01-candidates.sql
