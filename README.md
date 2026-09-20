@@ -373,8 +373,10 @@ Current state:
 | `kube-state-metrics` | Observability | Exposes Kubernetes object state (pods, nodes, deployments...) as metrics |
 | `prometheus-node-exporter` | Observability | Exposes per-node OS/hardware metrics (CPU, RAM, disk, network) |
 | `metrics-server` | Observability | Lightweight CPU/RAM metrics powering `kubectl top` and Headlamp's resource view |
+| `prometheus-adapter` | Observability | Bridges PromQL → the `external.metrics.k8s.io` API, so the `app-candidates` HPA can scale on real RPS (see [Autoscaling](#autoscaling)) |
 | Headlamp | Cluster UI | Web UI to browse and manage the cluster (pods, deployments, logs...) |
 | Image registry | Platform | Self-hosted Docker Distribution — holds `app-candidates`/`app-job-offers`/`load-background` images, replaces `ghcr.io` (k8s-only, see below) |
+| `chrony` (NTP) | Platform | Local time server on `platform-1` the rest of the cluster syncs to, instead of the public NTP pool (see [NTP / clock sync](#ntp--clock-sync)) |
 | `app-candidates` / `app-job-offers` | App | The two Java microservices this whole project is about |
 | `postgres-candidates` / `postgres-job-offers` | App | One Postgres instance per service |
 | `load-background` | App | k6 ambient traffic generator (k8s-only version of the module described above) |
@@ -506,7 +508,7 @@ overridden (node pinning, IP ranges, a couple of real minikube-only behavioral d
 
 ## Differences from Docker Compose
 
-The cluster diverges from Compose on purpose in two places — deployed to the physical cluster and verified
+The cluster diverges from Compose on purpose in several places — deployed to the physical cluster and verified
 end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/handoff-k8s-rpi-cluster.md):
 
 * **Logs: Grafana Alloy (DaemonSet) instead of the OTEL Collector, in k8s only.** In Compose, the OTEL Java agent
@@ -537,6 +539,13 @@ end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/
   package — see the handoff's 2026-08-27 entry) before landing on a plain `registry:3.1.1` pod
   ([`k8s-cluster/manifests/registry/`](k8s-cluster/manifests/registry)) on the platform nodes instead. **Docker
   Compose needs no registry at all** — there's nothing to push to or pull from on a single Docker daemon.
+* **Clock sync: a local NTP server, in k8s only.** Multiple physical nodes need clocks that agree closely with
+  *each other*, not just with UTC — public-pool jitter (13-48ms over WAN, measured) was enough to produce
+  out-of-order-looking span timestamps in Tempo once `podAntiAffinity` forced `app-candidates`/`app-job-offers`
+  onto separate nodes. See [NTP / clock sync](#ntp--clock-sync) above. **Docker Compose has no clock-skew problem
+  to solve** — everything runs on one host, one clock.
+* **Autoscaling: HPA + `prometheus-adapter`, in k8s only.** Compose runs a fixed container count; there's no
+  replica concept to scale. See [Autoscaling](#autoscaling) above. **Docker Compose has nothing to autoscale.**
 
 ```mermaid
 flowchart LR
@@ -635,14 +644,22 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 * Prepare CI/CD for the home Kubernetes cluster.
 * Raise/tune the Cilium Gateway's Envoy circuit breaker for the `app-candidates` cluster (currently on Envoy's
   unconfigured defaults, the ceiling hit at 1500rps — see [Measured capacity](#measured-capacity)) — no supported
-  Cilium 1.19 extension point found for this yet, would need a newer Cilium version or an unsupported direct
-  `CiliumEnvoyConfig` edit.
+  extension point found for this (or for Envoy slow-start on a freshly-scaled pod, see
+  [Autoscaling](#autoscaling) — same underlying gap). Confirmed 2026-09-20: Cilium's Gateway API implementation
+  generates the Envoy Cluster for a Service's backends inside `cilium-operator` with no user-facing hook to
+  override it; the closest thing, an open and still-unmerged CFP for per-service circuit breaking
+  ([cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532)), required its author to fork
+  `cilium-operator` to implement. Would need that CFP to land, a newer Cilium version with equivalent support, or
+  maintaining a fork — none attempted here.
 * ~~Third observability node~~ — done 2026-09-20 (`observability-3`, see [Node taints](#node-taints--what-runs-where)).
-  Tail-based trace sampling (100% of errors, a small percentage of everything else) remains a possible follow-up if
-  sustained high-RPS load tests ever threaten `observability-1`/`-3` again.
+  ~~Tail-based trace sampling~~ — done 2026-09-20 too: 100% of errors, 100% of traces slower than 500ms, and a small
+  percentage of everything else (see `values-otel-collector.yaml`'s `tail_sampling` processor).
 * Keycloak/SSO: real introspection-based auth (not local JWT validation) between `app-candidates` and
-  `app-job-offers`, on a dedicated `sso-1` node (planned repurpose of `platform-2`). Low priority, no timeline yet —
-  see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the architecture notes and the capacity risk
-  (a single Keycloak instance handling introspection at ~1500rps needs to be measured in isolation first).
+  `app-job-offers`. No node earmarked for it anymore — the `sso-1` plan (repurposing `platform-2`) was reconsidered
+  2026-09-20 in favor of keeping that Pi as generic spare capacity (`worker-5`, see
+  [Node taints](#node-taints--what-runs-where)); this needs a fresh capacity decision whenever it's actually picked
+  up. Low priority, no timeline yet — see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the
+  architecture notes and the capacity risk (a single Keycloak instance handling introspection at ~1500rps needs to
+  be measured in isolation first).
 * Bigger Postgres dataset (currently 100k candidates / 50k job offers via `data-generator`) — no target scale decided
   yet.
