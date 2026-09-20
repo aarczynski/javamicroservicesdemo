@@ -387,7 +387,7 @@ Current state:
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
 | `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md) |
-| `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, future Keycloak/SSO |
+| `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry. `platform-2` planned to move to a dedicated `sso-1` node for Keycloak (not yet executed — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
 | `worker-1`–`worker-4` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)) |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
@@ -600,6 +600,12 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   unconfigured defaults, the ceiling hit at 1500rps — see [Measured capacity](#measured-capacity)) — no supported
   Cilium 1.19 extension point found for this yet, would need a newer Cilium version or an unsupported direct
   `CiliumEnvoyConfig` edit.
-* Either a third observability node (spreading Kafka/Tempo's write path off `observability-1`, at the cost of one
-  fewer generic worker) or tail-based trace sampling (100% of errors, a small percentage of everything else) to stop
-  sustained high-RPS load tests from crashing `observability-1`.
+* ~~Third observability node~~ — done 2026-09-20 (`observability-3`, see [Node taints](#node-taints--what-runs-where)).
+  Tail-based trace sampling (100% of errors, a small percentage of everything else) remains a possible follow-up if
+  sustained high-RPS load tests ever threaten `observability-1`/`-3` again.
+* Keycloak/SSO: real introspection-based auth (not local JWT validation) between `app-candidates` and
+  `app-job-offers`, on a dedicated `sso-1` node (planned repurpose of `platform-2`). Low priority, no timeline yet —
+  see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the architecture notes and the capacity risk
+  (a single Keycloak instance handling introspection at ~1500rps needs to be measured in isolation first).
+* Bigger Postgres dataset (currently 100k candidates / 50k job offers via `data-generator`) — no target scale decided
+  yet.
