@@ -7,9 +7,20 @@ change measurably moves the ceiling, don't let it rot into a second handoff.
 
 ## Current state
 
-**1500 RPS sustained, 0% KO** — confirmed 2026-09-20, same session as fix #9 below (`maxRps=1500 stepDuration=3m
+**1900 RPS sustained, 0% KO** — confirmed 2026-09-20, after fix #11's `app-candidates` HPA got pinned to a static 3
+replicas (see `k8s-cluster/manifests/candidates/hpa.yaml` and `.claude/handoff-k8s-rpi-cluster.md` item 1).
+Genuinely sustained, not a short burst: ramped to ~1900-2000rps over ~65s, held there (oscillating 1800-2000) for
+~9 minutes straight, ~1min cooldown — 1,140,000 requests total, 0% KO, p50=14ms/p95=90ms/p99=556ms/mean=23ms/
+max=1033ms. Response time distribution: 99.998% under 800ms, only 25 requests (0.002%) in the 800-1200ms band, zero
+at or above 1200ms. This is the 3rd `app-candidates` replica (worker-5) directly paying for itself — the same
+profile shape at 1500rps was the prior ceiling with only 2 replicas (see below). **2200rps is past this ceiling**:
+`app-job-offers` (still only 2 replicas, no free worker for a 3rd) hits its own 3-core CPU limit and gets measurably
+throttled, degrading `app-candidates`' latency via the synchronous Feign call between them — see fix #11.
+
+1500 RPS sustained, 0% KO — confirmed 2026-09-20, same session as fix #9 below (`maxRps=1500 stepDuration=3m
 ramps=1`, 202,500 requests, p50=9ms/p95=25ms/p99=78ms/mean=12ms/max=608ms, ~2 min held near peak — 1s buckets
-touched 1600 during the hold). This resolves what the
+touched 1600 during the hold) — this was the ceiling **before** the 3rd `app-candidates` replica above. It resolves
+what the
 [former bottleneck](#former-bottleneck-1500-rps-resolved-2026-09-20) section below used to call the 1500rps ceiling
 — the Gateway's unconfigured Envoy circuit breaker tripping once `app-job-offers`
 latency degraded under CPU pressure — **without any change beyond what fix #9 already put in place for 1200rps**:
@@ -272,11 +283,12 @@ A 2200rps load test showed `app-candidates` responding slowly (p50 8ms → 225ms
 
 `app-job-offers` only has 2 replicas (vs. candidates' 3, see fix #1 in
 `.claude/handoff-k8s-rpi-cluster.md`), and there's currently no free worker to add a 3rd — all 5 generic workers
-are occupied (3 pinned `app-candidates` + 2 `app-job-offers`). 2200rps is already well past the documented
-1500rps-safe/1600rps-borderline ceiling above, so this may simply be the real ceiling of the current 5-worker
-layout, not a bug to fix. **No fix applied yet** — next round of capacity work should find the actual current max
-RPS (deliberately not chasing it by adding more hardware) before deciding whether `app-job-offers` needs its own
-capacity increase.
+are occupied (3 pinned `app-candidates` + 2 `app-job-offers`). Confirmed after this: **1900rps sustained cleanly
+for ~9 minutes** (0% KO, see [Current state](#current-state) above) — so 2200rps is past the real, now-measured
+5-worker ceiling (1900), not just past the old 1500/1600 number from before the 3rd `app-candidates` replica. This
+may be the actual ceiling of the current layout, not a bug to fix. **No fix applied yet** — next round of capacity
+work should find the exact current max RPS (deliberately not chasing it by adding more hardware) before deciding
+whether `app-job-offers` needs its own capacity increase.
 
 **Bonus finding, unrelated to the bottleneck itself**: `jvm_cpu_recent_utilization_ratio` (the "near-instantaneous"
 cross-check the methodology lessons below recommend) got stuck reporting a flat 0 for one specific JVM instance

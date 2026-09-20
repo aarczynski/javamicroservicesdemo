@@ -448,18 +448,16 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-20): 1500 RPS sustained, 0% KO** (`maxRps=1500 stepDuration=3m ramps=1`, 202,500 requests,
-p50=9ms/p95=25ms/p99=78ms/mean=12ms/max=608ms, ~2 min held near peak — 1s buckets touched 1600 during the hold).
-This clears the previous 1500rps blocker (the Cilium Gateway's unconfigured Envoy circuit breaker, ~1024 max
-pending requests, tripping once `app-job-offers` latency degraded under CPU pressure) with no new config beyond
-what was already in place for 1200rps: CPU limit `3` on both apps and one dedicated worker node per replica (hard
-`podAntiAffinity`, see [Node taints](#node-taints--what-runs-where)) — see
-[RPS-SCALING.md](k8s-cluster/RPS-SCALING.md#9-hard-pod-anti-affinity-one-app-replica-per-node-guaranteed-2026-09-20)
-for why that fix matters beyond just fixing the 87/13 CPU split it was built for. 1200 RPS remains separately
-confirmed clean over a full 5-minute sustained hold (`maxRps=1200 stepDuration=5m ramps=1`, 360,000 requests, 0% KO,
-p99=41ms/mean=10ms) on top of the earlier `stepDuration=60s` result (90,000 requests, p99=359ms/mean=20ms). Full
-history — including a same-day regression to 5-40% KO from a node-topology change, root-caused and fixed the same
-session — is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
+**Current state (2026-09-20): 1900 RPS sustained, 0% KO**, ~9 minutes held (1,140,000 requests,
+p50=14ms/p95=90ms/p99=556ms/mean=23ms/max=1033ms, 99.998% of requests under 800ms). This is with `app-candidates`
+pinned to a static 3 replicas (see [Autoscaling](#autoscaling)) — the 3rd replica (`worker-5`) is what raised the
+ceiling from the prior 1500rps (2 replicas). **2200rps is past it**: `app-job-offers` (still 2 replicas, no free
+worker for a 3rd) hits its own 3-core CPU limit and gets measurably throttled, which degrades `app-candidates`'
+latency through the synchronous Feign call between them — not a candidates-side problem. Full detail, including the
+1500rps result and everything that got the cluster there (CPU limit `3` on both apps, one dedicated worker node per
+replica via hard `podAntiAffinity`, see [Node taints](#node-taints--what-runs-where)), plus a same-day regression to
+5-40% KO from a node-topology change that was root-caused and fixed the same session, is in
+[`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
 
 ### Row counts on the home k8s cluster
 
@@ -627,7 +625,17 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 # Known issues
 
-* Spring percentile metrics do not work with OTEL Agent.
+* **Spring percentile metrics do not work with OTEL Agent** — Grafana's p99 is a `histogram_quantile()` estimate
+  over the OTel histogram's fixed bucket boundaries (750ms → 1s → 2.5s at the tail), not an exact calculation, and
+  interpolation error grows when the tail is sparse. Measured live 2026-09-20: a 1900rps test's Grafana-estimated
+  p99 read ~900ms while Gatling's own report (computed from the raw per-request log, exact) showed p99=556ms/
+  max=1033ms for that run, and a separate run showed Grafana capping around 900ms while Gatling's exact numbers hit
+  p99=1576ms/max=2065ms — Grafana under- or over-estimates depending on exactly how the few slow requests happen to
+  land in the coarse tail buckets. Trust Gatling's report for exact percentiles; treat Grafana's p99 panel as a
+  rough estimate, especially at the tail. Candidate next-session fix: investigate whether Micrometer's own
+  percentile histograms (`publishPercentileHistogram`/`publishPercentiles`) can be wired through the OTel Java
+  agent, or whether finer/more tail-weighted histogram bucket boundaries in the OTel Collector's config would
+  narrow the estimation error enough to be usable as-is.
 * Running `load-test` against the Gateway from a client on Wi-Fi, or on a different VLAN than the cluster, produces
   `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
   route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
@@ -658,7 +666,7 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 * Prepare CI/CD for the home Kubernetes cluster.
 * Raise/tune the Cilium Gateway's Envoy circuit breaker for the `app-candidates` cluster (currently on Envoy's
-  unconfigured defaults, the ceiling hit at 1500rps — see [Measured capacity](#measured-capacity)) — no supported
+  unconfigured defaults — see [Measured capacity](#measured-capacity) for the current ceiling) — no supported
   extension point found for this (or for Envoy slow-start on a freshly-scaled pod, see
   [Autoscaling](#autoscaling) — same underlying gap). Confirmed 2026-09-20: Cilium's Gateway API implementation
   generates the Envoy Cluster for a Service's backends inside `cilium-operator` with no user-facing hook to
@@ -677,5 +685,8 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   up. Low priority, no timeline yet — see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the
   architecture notes and the capacity risk (a single Keycloak instance handling introspection at ~1500rps needs to
   be measured in isolation first).
-* Bigger Postgres dataset (currently 100k candidates / 50k job offers via `data-generator`) — no target scale decided
-  yet.
+* **Next session candidate #1**: bigger Postgres dataset (currently 100k candidates / 50k job offers via
+  `data-generator`) — no target scale decided yet.
+* **Next session candidate #2 (alternative to #1, not both)**: the percentile-metrics estimation gap — see
+  [Known issues](#known-issues).
+* Keycloak/SSO stays explicitly behind both of the above — no node, no timeline, see the bullet above.

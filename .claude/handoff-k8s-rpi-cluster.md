@@ -12,14 +12,16 @@ załadowane (100k candidates / 50k job offers, `data-generator`). Stack observab
 Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+MinIO). Ambient load (`load-background`, k6)
 działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj).
 
-**Zmierzony sufit RPS: 1500 RPS bezpieczne, 1600 RPS na granicy.** 1500rps potwierdzone czyste (0% KO, p99=78ms)
-2026-09-20 po hard `podAntiAffinity` + CPU limit 3, **ponownie potwierdzone po rebalansie `observability-2`→`-1`**
-(load-background+Hubble przeniesione live, patrz niżej). 1600rps (`candidatesimulation-20260920143054799`) już
-pokazuje wyraźnie dłuższe czasy odpowiedzi na dashboardzie HTTP Monitoring — traktować jako granicę, nie
-bezpieczny poziom operacyjny. 1200rps potwierdzone też na pełnym 5-minutowym sustained hold, zero powtórki
-`observability-1` `NodeNotReady`. Pełna historia fixów RPS (async logging, Postgres parallel workers off, split
-query, anti-affinity, itd.) w `k8s-cluster/RPS-SCALING.md` — czytać przed każdą kolejną pracą nad skalowaniem, nie
-duplikować tutaj.
+**Zmierzony sufit RPS: 1900 RPS bezpieczne, 2200 RPS już zamula.** 1900rps potwierdzone czyste (0% KO, p99=556ms,
+max=1033ms, ~9 min sustained hold, 1.14M requestów) 2026-09-20 po tym jak `app-candidates` dostał 3. replikę
+(`worker-5`, HPA pinned na stałe — patrz punkt 1. niżej). To jest wyższe niż poprzedni udokumentowany sufit
+(1500 bezpieczne/1600 na granicy, z 2 replikami candidates) — 3. replika realnie podniosła pułap. **2200rps już
+zamula, ale to nie candidates** — `app-job-offers` (dalej tylko 2 repliki, brak wolnego workera na 3.) dobija do
+swojego limitu 3 rdzeni i jest realnie throttlowany, co przez synchroniczne wywołanie Feign z candidates objawia
+się jako spowolnienie candidates (patrz `k8s-cluster/RPS-SCALING.md` fix #11). 1200rps potwierdzone też na pełnym
+5-minutowym sustained hold, zero powtórki `observability-1` `NodeNotReady`. Pełna historia fixów RPS (async
+logging, Postgres parallel workers off, split query, anti-affinity, itd.) w `k8s-cluster/RPS-SCALING.md` — czytać
+przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps
 
@@ -86,10 +88,14 @@ duplikować tutaj.
    (`REGISTRY_RE` miał `.104` zamiast `.190`) przez co pinning tagu w manifeście od dawna cicho nic nie robił.
    Affinity entity-operatora Kafki (`kafka-cluster.yaml`) też dociągnięta i zaaplikowana — patrz
    `k8s-cluster/RPS-SCALING.md`/git log dla szczegółów tego osobnego fixu.
-3. **[NOWE] Zwiększenie wolumenu danych w Postgresach (candidates/job-offers) — priorytet: przyszłość, bez
-   konkretów jeszcze.** Obecny wolumen: 100k candidates / 50k job offers, generowany przez `data-generator` i
-   ładowany przez `load-data.sh`/`make k8s-reload-data`. Cel/docelowa skala nieustalone w tej sesji — do
-   doprecyzowania z użytkownikiem, kiedy przyjdzie pora (nie zgadywać liczb).
+3. **[NASTĘPNA SESJA, kandydat #1 — na jawne polecenie 2026-09-20] Zwiększenie wolumenu danych w Postgresach
+   (candidates/job-offers), bez konkretów jeszcze.** Obecny wolumen: 100k candidates / 50k job offers, generowany
+   przez `data-generator` i ładowany przez `load-data.sh`/`make k8s-reload-data`. Cel/docelowa skala nieustalone w
+   tej sesji — do doprecyzowania z użytkownikiem, kiedy przyjdzie pora (nie zgadywać liczb). **Kandydat #2
+   (alternatywa, nie oba naraz)**: problem estymacji percentyli (`README.md`'s Known issues —
+   `histogram_quantile()` na rzadkim ogonie histogramu daje niedokładne p99 względem Gatlinga, np. zmierzone
+   2026-09-20: Grafana ~900ms vs realne p99=556-1576ms w zależności od runu). Keycloak/SSO (patrz punkt 2. wyżej)
+   zostaje świadomie za oboma tymi kandydatami — bez node'a, bez terminu.
 4. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
    `platform-1`.** Znalezione 2026-09-20: `registry.yaml` ma tolerancję `role=platform`, ale brak `nodeSelector`
    (tolerancja tylko pozwala, nie wymusza); `local-path-provisioner`/`metallb-controller` nie mają nawet tolerancji.
