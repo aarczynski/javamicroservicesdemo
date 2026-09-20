@@ -11,3 +11,13 @@
 - name: reboot node
   ansible.builtin.reboot:
     reboot_timeout: 300
+
+- name: restart systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: restarted
+
+- name: restart chrony
+  ansible.builtin.systemd:
+    name: chrony
+    state: restarted

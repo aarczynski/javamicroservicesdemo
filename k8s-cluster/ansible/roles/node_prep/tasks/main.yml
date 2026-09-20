@@ -189,3 +189,87 @@
   ansible.builtin.systemd:
     name: kubelet
     enabled: true
+
+- name: Gather service facts (to detect systemd-timesyncd vs chrony)
+  ansible.builtin.service_facts:
+
+# {{ ntp_server_host }} runs as a local NTP server for the rest of the fleet.
+# Tightening every node's poll interval against the public pool alone (an
+# earlier, insufficient fix) only shrank the window between corrections; it
+# didn't fix each correction being noisy, since a single WAN round trip to
+# ntp.ubuntu.com carries 13-48ms of jitter on its own (measured live
+# 2026-09-20) - a fresh trace still showed an ~18ms gap after that fix alone.
+# Chrony is used here, not timesyncd, which is client-only and cannot serve
+# NTP to other hosts.
+- name: Install chrony on the local NTP server node
+  when: inventory_hostname == ntp_server_host
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+    update_cache: true
+
+- name: Configure the local NTP server to serve the cluster subnet
+  # `port 123` must be explicit - confirmed live 2026-09-20 that this chrony
+  # build never binds the NTP server socket at all without it (chronyd only
+  # listened on the 127.0.0.1:323 command port until this was added), despite
+  # 123 supposedly being chronyd's documented default.
+  when: inventory_hostname == ntp_server_host
+  ansible.builtin.copy:
+    dest: /etc/chrony/conf.d/server.conf
+    content: |
+      allow 192.168.10.0/24
+      local stratum 10
+      port 123
+    mode: '0644'
+  notify: restart chrony
+
+- name: Enable and start chrony on the local NTP server
+  # No explicit "disable systemd-timesyncd" step needed - installing the
+  # chrony package already removes that unit as a side effect of the
+  # package conflict between the two (confirmed live 2026-09-20: the unit
+  # was gone immediately after `apt install chrony`, before this task ran).
+  when: inventory_hostname == ntp_server_host
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+
+# Every other node points at the local NTP server above instead of the
+# public pool. Default systemd-timesyncd config (empty [Time] section) also
+# backs off PollIntervalMaxSec to its 2048s (34 min) ceiling once the clock
+# looks stable - confirmed live 2026-09-20 via `timedatectl show-timesync`
+# (PollIntervalUSec=34min 8s). Between polls each RPi5's onboard oscillator
+# free-runs and drifts independently, and different nodes hit that ceiling at
+# different times - part of the "clock skew breaks the trace waterfall"
+# symptom this fixes alongside the local server above (see RPS-SCALING.md /
+# handoff for the distributed tracing investigation that found this).
+- name: Point systemd-timesyncd at the local NTP server and tighten its poll interval
+  when:
+    - inventory_hostname != ntp_server_host
+    - "'systemd-timesyncd.service' in ansible_facts.services"
+  ansible.builtin.copy:
+    dest: /etc/systemd/timesyncd.conf
+    content: |
+      [Time]
+      NTP={{ ntp_server_ip }}
+      PollIntervalMinSec=16
+      PollIntervalMaxSec=64
+    mode: '0644'
+  notify: restart systemd-timesyncd
+
+# The fleet isn't uniform - found live that worker-2 runs chrony instead of
+# systemd-timesyncd (unclear provisioning history). Its own adaptive polling
+# already disciplines the clock well against the public pool (confirmed via
+# `chronyc tracking`: ~0.017ms offset), so it doesn't need the poll-interval
+# fix above, but it should still prefer the low-jitter local server over the
+# public pool like every other node.
+- name: Prefer the local NTP server on nodes running chrony instead of systemd-timesyncd
+  when:
+    - inventory_hostname != ntp_server_host
+    - "'chrony.service' in ansible_facts.services"
+  ansible.builtin.copy:
+    dest: /etc/chrony/conf.d/prefer-local-server.conf
+    content: |
+      server {{ ntp_server_ip }} iburst prefer
+    mode: '0644'
+  notify: restart chrony

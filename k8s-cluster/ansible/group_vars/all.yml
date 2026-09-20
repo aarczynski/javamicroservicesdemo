@@ -5,3 +5,15 @@ kubernetes_version: "1.36"
 # it over plain HTTP explicitly (see node_prep's containerd registry tasks) —
 # it has no TLS cert, same LAN-only posture as minio.yaml's plaintext creds.
 local_registry_host: "192.168.10.190:5000"
+
+# Local NTP source (chrony, running on the platform node below) instead of
+# every node independently polling the public ntp.ubuntu.com pool over the
+# internet. Measured live 2026-09-20: 13-48ms jitter per poll over WAN vs.
+# sub-ms on LAN - matters for distributed tracing, where spans recorded on
+# different nodes need clocks that agree closely with EACH OTHER, not just
+# with UTC. See node_prep's NTP tasks and RPS-SCALING.md / the handoff doc
+# for the investigation that found this (broken trace waterfalls once
+# app-candidates/app-job-offers were forced onto separate nodes by the
+# podAntiAffinity fix).
+ntp_server_host: "k8s-rpi-platform-1"
+ntp_server_ip: "192.168.10.2"
