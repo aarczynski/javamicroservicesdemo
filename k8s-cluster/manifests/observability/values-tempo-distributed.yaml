@@ -70,8 +70,14 @@ backendScheduler:
     limits:
       cpu: 200m
       memory: 128Mi
+  # Moved to observability-3 on 2026-09-20: observability-1 was carrying Kafka + all 6
+  # Tempo write-path components + otel-collector (8 services on one RPi5) and its
+  # kubelet stopped responding under sustained 1200-1500rps load tests (repeatedly,
+  # see .claude/handoff-k8s-rpi-cluster.md). Compaction doesn't need to be co-located
+  # with Kafka/live-store/block-builder the way real-time ingestion does, so it moves
+  # off first.
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-1
+    kubernetes.io/hostname: k8s-rpi-observability-3
   tolerations:
     - key: role
       operator: Equal
@@ -94,8 +100,9 @@ backendWorker:
     limits:
       cpu: 1000m
       memory: 1536Mi
+  # Moved to observability-3 on 2026-09-20, same reason as backendScheduler above.
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-1
+    kubernetes.io/hostname: k8s-rpi-observability-3
   tolerations:
     - key: role
       operator: Equal
@@ -180,6 +187,12 @@ liveStore:
 # (all lightweight, off the Kafka ingest hot path) to observability-1 balances it to
 # ~74.8m/76.0m. A follow-up 584rps/15min burst test confirmed observability-1 still had
 # ample headroom (25% CPU busy, 62% memory free peak) to absorb these three.
+#
+# querier and queryFrontend moved again, to the new observability-3, on 2026-09-20 —
+# that 2026-09-14 balance held at ambient/584rps but not at sustained 1200-1500rps
+# (observability-1's kubelet repeatedly stopped responding, see
+# .claude/handoff-k8s-rpi-cluster.md). Read-path components, no reason to be on the
+# same node as Kafka/live-store/block-builder.
 distributor:
   # cpu 200m->1000m on 2026-09-03: throttled under the same 200rps burst that OOMKilled
   # blockBuilder and throttled liveStore (see comments there) — same fix, same reasoning.
@@ -207,7 +220,7 @@ querier:
       cpu: 500m
       memory: 512Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-1
+    kubernetes.io/hostname: k8s-rpi-observability-3
   tolerations:
     - key: role
       operator: Equal
@@ -223,7 +236,7 @@ queryFrontend:
       cpu: 200m
       memory: 128Mi
   nodeSelector:
-    kubernetes.io/hostname: k8s-rpi-observability-1
+    kubernetes.io/hostname: k8s-rpi-observability-3
   tolerations:
     - key: role
       operator: Equal

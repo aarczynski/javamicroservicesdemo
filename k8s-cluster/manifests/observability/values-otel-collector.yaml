@@ -105,8 +105,14 @@ resources:
     cpu: 500m
     memory: 1Gi
 
+# Moved to observability-3 on 2026-09-20: observability-1 was carrying Kafka + all of
+# Tempo's write path + this collector (8 services on one RPi5), and its kubelet
+# stopped responding under sustained 1200-1500rps load tests, repeatedly — see
+# .claude/handoff-k8s-rpi-cluster.md. This collector just forwards to
+# tempo-distributor (already on observability-2) over the network either way, so
+# there's no locality reason to keep it next to Kafka.
 nodeSelector:
-  kubernetes.io/hostname: k8s-rpi-observability-1
+  kubernetes.io/hostname: k8s-rpi-observability-3
 tolerations:
   - key: role
     operator: Equal

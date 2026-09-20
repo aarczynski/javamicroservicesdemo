@@ -500,6 +500,8 @@ Alongside Docker Compose, this project is being deployed to a home Kubernetes cl
 
 Detailed, current state (node topology, architectural decisions, in-progress work, gotchas already hit) is tracked in `.claude/handoff-k8s-rpi-cluster.md` — read it at the start of any session touching the cluster, and keep it updated as work progresses.
 
+The distilled, forward-looking history of what has actually moved the throughput ceiling for `app-candidates`/`app-job-offers` (replicas, CPU limits, query fixes, what didn't work and why) lives in `k8s-cluster/RPS-SCALING.md` — read it before any further RPS/scaling work on this cluster, and update it whenever a change measurably moves the ceiling.
+
 **IP addressing on the `192.168.10.0/24` VLAN ("Cloud"):**
 | Range | Purpose |
 |---|---|

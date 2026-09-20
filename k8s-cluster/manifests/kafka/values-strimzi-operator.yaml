@@ -35,11 +35,13 @@ resources:
     cpu: 500m
     memory: 384Mi
 
-# Grouped with the lighter Tempo components (distributor/querier/query-frontend,
-# see values-tempo-distributed.yaml) rather than the Kafka broker itself — the
-# operator just reconciles CRs, it doesn't need to sit next to the data it manages.
+# Grouped with the lighter Tempo components (querier/query-frontend/backendScheduler/
+# backendWorker, see values-tempo-distributed.yaml) rather than the Kafka broker
+# itself — the operator just reconciles CRs, it doesn't need to sit next to the data
+# it manages. Moved from observability-1 to observability-3 on 2026-09-20 along with
+# those components — see the comment in values-otel-collector.yaml for why.
 nodeSelector:
-  kubernetes.io/hostname: k8s-rpi-observability-1
+  kubernetes.io/hostname: k8s-rpi-observability-3
 tolerations:
   - key: role
     operator: Equal
