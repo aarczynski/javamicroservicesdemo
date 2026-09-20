@@ -310,6 +310,15 @@ under [http://localhost:3000/d/e1f890c5-2799-411b-b267-f344670afe6c](http://loca
 It shows response times, and errors count.
 ![](./readme-assets/img/grafana-monitoring.png)
 
+## JVM dashboard
+
+The dashboard is available
+under [http://localhost:3000/d/jvm-resources-dashboard/jvm-monitoring](http://localhost:3000/d/jvm-resources-dashboard/jvm-monitoring).
+It shows per-instance CPU, thread count, heap/non-heap memory and garbage collection activity for whichever service
+is selected in the `$service` variable. The heap panels (Heap Memory, Non-Heap Memory, Memory Used by Pool) query
+Prometheus at a 1-second resolution, matching how often the OTel agent actually pushes JVM metrics — a healthy JVM
+under load shows the classic GC sawtooth (heap climbs, then drops sharply on collection) rather than a smooth line.
+
 ## Logs dashboard
 
 The dashboard is available
@@ -592,6 +601,14 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   at a glance — narrow the dashboard's time range to roughly the test's own duration so that spike is actually in
   the queried window, and cross-check short bursts against a near-instantaneous metric rather than trusting the
   graph alone.
+* **The Prometheus datasource's `timeInterval` floors query resolution for every panel, not just `rate()`-based
+  ones.** JVM metrics are pushed by the OTel agent every 1 second (`OTEL_METRIC_EXPORT_INTERVAL=1000`) straight into
+  Prometheus via `remote_write`, so 1-second-resolution data genuinely exists — but with `timeInterval: "15s"` set
+  (needed elsewhere for a correct `$__rate_interval`, see above), a panel querying that data still got floored to
+  15s by default, showing the JVM heap's GC sawtooth as a flat/aliased line instead of the real climb-and-drop shape.
+  Fixed 2026-09-20 with a panel-level `"interval": "1s"` override on the JVM dashboard's memory panels (see
+  [JVM dashboard](#jvm-dashboard)) — the general lesson: query Prometheus directly with a small `step` before
+  assuming a metric "isn't granular enough."
 
 # Future plans
 
