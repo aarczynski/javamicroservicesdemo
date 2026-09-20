@@ -147,7 +147,19 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8081
-            initialDelaySeconds: 20
+            # initialDelaySeconds 20 -> 60 on 2026-09-20: a freshly-scaled
+            # pod gets its full traffic share the instant it passes
+            # readiness (no LB slow-start available - see hpa.yaml's
+            # comment), and a live 1500rps test caught the cold-JVM
+            # consequence directly: p99 DB query latency on the new pod hit
+            # 150-215ms vs a steady-state ~5ms baseline for a good ~60-90s,
+            # which (same arrival rate, ~30-40x longer per query) blew the
+            # Hikari pool's concurrency budget and produced real 500s. This
+            # doesn't warm the JIT by itself (that still needs real traffic)
+            # but gives Spring Boot's own startup work more idle time to
+            # settle - independent of livenessProbe's own 40s
+            # initialDelaySeconds below, no interaction between the two.
+            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 10
