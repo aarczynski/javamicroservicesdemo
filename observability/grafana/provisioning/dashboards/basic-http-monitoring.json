@@ -122,6 +122,7 @@
           "sort": "none"
         }
       },
+      "interval": "1s",
       "pluginVersion": "12.4.2",
       "targets": [
         {
@@ -130,7 +131,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval]))",
+          "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\"}[5s]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -259,6 +260,7 @@
           "sort": "none"
         }
       },
+      "interval": "1s",
       "pluginVersion": "12.4.2",
       "targets": [
         {
@@ -267,7 +269,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (http_response_status_code, http_request_method, http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\", http_response_status_code!~\"2..\"}[$__rate_interval]))",
+          "expr": "sum by (http_response_status_code, http_request_method, http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\", http_response_status_code!~\"2..\"}[5s]))",
           "instant": false,
           "legendFormat": "{{http_response_status_code}} - ({{http_request_method}}) {{http_route}}",
           "range": true,
@@ -451,6 +453,7 @@
           "sort": "none"
         }
       },
+      "interval": "1s",
       "pluginVersion": "12.4.2",
       "targets": [
         {
@@ -459,7 +462,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.50, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[5s])))",
           "instant": false,
           "legendFormat": "{{http_route}} 50th percentile (median)",
           "range": true,
@@ -471,7 +474,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.75, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[5s])))",
           "instant": false,
           "legendFormat": "{{http_route}} 75th percentile",
           "range": true,
@@ -483,7 +486,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.90, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.90, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[5s])))",
           "instant": false,
           "legendFormat": "{{http_route}} 90th percentile",
           "range": true,
@@ -495,7 +498,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[5s])))",
           "instant": false,
           "legendFormat": "{{http_route}} 95th percentile",
           "range": true,
@@ -508,7 +511,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"$service\", http_route=~\"/api.*\"}[5s])))",
           "instant": false,
           "legendFormat": "{{http_route}} 99th percentile",
           "range": true,
@@ -521,7 +524,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\"}[$__rate_interval])))",
+          "expr": "1000 * (sum by (http_route) (rate(http_server_request_duration_seconds_sum{job=\"$service\", http_route=~\"/api.*\"}[5s]))) / (sum by (http_route) (rate(http_server_request_duration_seconds_count{job=\"$service\", http_route=~\"/api.*\"}[5s])))",
           "instant": false,
           "legendFormat": "{{http_route}} average",
           "range": true,
@@ -582,6 +585,7 @@
           "sort": "none"
         }
       },
+      "interval": "1s",
       "pluginVersion": "12.4.2",
       "targets": [
         {
@@ -590,7 +594,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
+          "expr": "histogram_quantile(0.50, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s])\n))",
           "instant": false,
           "legendFormat": "50th percentile (median)",
           "range": true,
@@ -602,7 +606,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
+          "expr": "histogram_quantile(0.75, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s])\n))",
           "instant": false,
           "legendFormat": "75th percentile",
           "range": true,
@@ -614,7 +618,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
+          "expr": "histogram_quantile(0.90, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s])\n))",
           "instant": false,
           "legendFormat": "90th percentile",
           "range": true,
@@ -626,7 +630,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
+          "expr": "histogram_quantile(0.95, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s])\n))",
           "instant": false,
           "legendFormat": "95th percentile",
           "range": true,
@@ -638,7 +642,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval])\n))",
+          "expr": "histogram_quantile(0.99, sum by (le) (\n  rate(db_duration_milliseconds_bucket{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s])\n))",
           "instant": false,
           "legendFormat": "99th percentile",
           "range": true,
@@ -650,7 +654,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(rate(db_duration_milliseconds_sum{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval]))\n/\nsum(rate(db_duration_milliseconds_count{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[$__rate_interval]))",
+          "expr": "sum(rate(db_duration_milliseconds_sum{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s]))\n/\nsum(rate(db_duration_milliseconds_count{service_name=\"$service\", span_name=~\"SELECT $service.*\"}[5s]))",
           "instant": false,
           "legendFormat": "average",
           "range": true,
