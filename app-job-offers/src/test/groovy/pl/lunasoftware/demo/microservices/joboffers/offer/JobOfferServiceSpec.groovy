@@ -22,7 +22,7 @@ class JobOfferServiceSpec extends Specification {
     def "should return empty list when no offers match"() {
         given:
         def request = searchRequest(['Java': SeniorityLevel.MID], 5)
-        jobOfferRepository.findCandidateMatches(*_) >> []
+        stubMatches([])
 
         when:
         def result = service.search(request)
@@ -47,7 +47,7 @@ class JobOfferServiceSpec extends Specification {
                 offerSkill(javaSkill, '1.00', true, SeniorityLevel.MID),
                 offerSkill(reactSkill, '0.80', false, SeniorityLevel.MID)
         ])
-        jobOfferRepository.findCandidateMatches(*_) >> [offerWithOneSkill, offerWithBothSkills]
+        stubMatches([offerWithOneSkill, offerWithBothSkills])
 
         when:
         def results = service.search(searchRequest(['Java': SeniorityLevel.MID, 'Spring Boot': SeniorityLevel.MID], 3))
@@ -68,7 +68,7 @@ class JobOfferServiceSpec extends Specification {
         ]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId)
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreWithBoth = service.search(searchRequest(['Java': SeniorityLevel.MID, 'Spring Boot': SeniorityLevel.MID], 3))[0].score()
@@ -84,7 +84,7 @@ class JobOfferServiceSpec extends Specification {
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.SENIOR)]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId)
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreAtLevel = service.search(searchRequest(['Java': SeniorityLevel.SENIOR], 5))[0].score()
@@ -99,7 +99,7 @@ class JobOfferServiceSpec extends Specification {
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
         def theOffer = offer(company, 25000, offerSkills)  // Higher than expected
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreHigherOffer = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00')))[0].score()
@@ -115,7 +115,7 @@ class JobOfferServiceSpec extends Specification {
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
         def theOffer = offer(company, 15000, offerSkills)
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreLowerOffer = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('20000.00')))[0].score()
@@ -132,7 +132,7 @@ class JobOfferServiceSpec extends Specification {
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.SENIOR)]
         def theOffer = offer(company, 20000, offerSkills, UUID.randomUUID(), 5)
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreEnoughExp = service.search(searchRequest(['Java': SeniorityLevel.SENIOR], 6))[0].score()
@@ -148,7 +148,7 @@ class JobOfferServiceSpec extends Specification {
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId, 0, 80)
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreCompatible = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00'), 0))[0].score()
@@ -164,7 +164,7 @@ class JobOfferServiceSpec extends Specification {
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
         def fullyRemoteOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 0)
         def inOfficeOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 100)
-        jobOfferRepository.findCandidateMatches(*_) >> [fullyRemoteOffer, inOfficeOffer]
+        stubMatches([fullyRemoteOffer, inOfficeOffer])
 
         when:
         def results = service.search(searchRequest(['Java': SeniorityLevel.MID], 3))
@@ -180,7 +180,7 @@ class JobOfferServiceSpec extends Specification {
         def fullyRemoteOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 0)
         def hybridOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 60)
         def inOfficeOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 100)
-        jobOfferRepository.findCandidateMatches(*_) >> [fullyRemoteOffer, hybridOffer, inOfficeOffer]
+        stubMatches([fullyRemoteOffer, hybridOffer, inOfficeOffer])
 
         when:
         def results = service.search(searchRequest(['Java': SeniorityLevel.MID], 3))
@@ -196,7 +196,7 @@ class JobOfferServiceSpec extends Specification {
         def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId, 0, 40)
-        jobOfferRepository.findCandidateMatches(*_) >> [theOffer]
+        stubMatches([theOffer])
 
         when:
         def scoreWillingMore = service.search(searchRequest(['Java': SeniorityLevel.MID], 3, new BigDecimal('10000.00'), 20))[0].score()
@@ -207,6 +207,11 @@ class JobOfferServiceSpec extends Specification {
     }
 
     // --- helpers ---
+
+    private void stubMatches(List<JobOfferEntity> offers) {
+        jobOfferRepository.findCandidateMatchIds(*_) >> (offers.empty ? [] : [UUID.randomUUID()])
+        jobOfferRepository.findByIdIn(_) >> offers
+    }
 
     private static CandidateSearchRequest searchRequest(Map<String, SeniorityLevel> skills, int yearsOfExperience,
                                                          BigDecimal expectedSalary = new BigDecimal('10000.00'),

@@ -19,6 +19,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import pl.lunasoftware.demo.microservices.joboffers.company.CompanyEntity;
@@ -31,9 +32,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-@NamedEntityGraph(name = "JobOffer.withAllRelations",
+@NamedEntityGraph(name = "JobOffer.withSkillsAndCompany",
         attributeNodes = {
-                @NamedAttributeNode("offeredEmploymentTypes"),
                 @NamedAttributeNode("company"),
                 @NamedAttributeNode(value = "skills", subgraph = "skills-subgraph")
         },
@@ -73,6 +73,7 @@ public class JobOfferEntity {
     @CollectionTable(name = "job_offer_employment_type", joinColumns = @JoinColumn(name = "job_offer_id"))
     @Column(name = "employment_type")
     @Enumerated(EnumType.STRING)
+    @BatchSize(size = 100)
     private Set<EmploymentType> offeredEmploymentTypes = new HashSet<>();
 
     @ManyToOne(fetch = FetchType.LAZY)

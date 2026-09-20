@@ -667,7 +667,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 - (avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) * 100)",
           "refId": "A",
           "legendFormat": "{{node}}"
         }
@@ -1023,7 +1023,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[$__rate_interval])) by (namespace, pod)",
           "refId": "A",
           "legendFormat": "{{namespace}}/{{pod}}"
         }
@@ -1126,7 +1126,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+          "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container!=\"\", container!=\"POD\"}[$__rate_interval])) by (namespace, pod)",
           "refId": "A",
           "legendFormat": "{{namespace}}/{{pod}}"
         }
@@ -1168,7 +1168,7 @@
     "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {

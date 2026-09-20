@@ -29,6 +29,20 @@ metadata:
   namespace: candidates
 spec:
   replicas: 2
+  # Default RollingUpdate (maxSurge=25%) tries to briefly run a 3rd pod during
+  # a rollout — with the hard anti-affinity below and exactly one node per
+  # app replica, there's no valid node for that surge pod, and the rollout
+  # deadlocks (found live 2026-09-20: a restart got stuck on
+  # "0/12 nodes are available: 4 node(s) didn't match pod anti-affinity
+  # rules" until an old pod was deleted by hand). maxSurge=0 keeps rollouts
+  # within the fixed one-pod-per-node budget: terminate one old pod, then
+  # start its replacement, never both variants of the same node's "slot" at
+  # once.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: app-candidates
@@ -51,9 +65,39 @@ spec:
         options:
           - name: ndots
             value: "1"
+      # One pod per node, guaranteed — not left to the scheduler's default
+      # spreading heuristics, which are soft preferences, not hard rules.
+      # 2026-09-19/20: two app-candidates/app-job-offers replicas landing on
+      # the same node (reducing generic workers from 4 to 3 for
+      # observability-3) caused a measured ~10x CPU-throttling gap between
+      # the shared-node pod and a dedicated one, plus a self-reinforcing
+      # Gateway connection-imbalance under load — see
+      # k8s-cluster/RPS-SCALING.md. With exactly one generic worker per app
+      # replica again, this hard-requires that spread instead of hoping for
+      # it after every restart/redeploy.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - app-candidates
+                      - app-job-offers
+              # podAntiAffinity defaults to the scheduled pod's OWN namespace
+              # when this is omitted — app-job-offers lives in a different
+              # namespace (job-offers), so without this the rule silently
+              # only self-avoids (candidates vs candidates) and never sees
+              # job-offers pods at all. Found live 2026-09-20: two pods still
+              # landed on the same node despite this rule being present.
+              namespaces:
+                - candidates
+                - job-offers
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: app-candidates
-          image: 192.168.10.190:5000/app-candidates:5c455a4
+          image: 192.168.10.190:5000/app-candidates:d30c537
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every
@@ -113,7 +157,7 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: "2"
+              cpu: "3"
               memory: 1536Mi
       volumes:
         - name: config

@@ -27,8 +27,8 @@ import_file() {
 }
 
 load_database() {
-  local container="$1" db="$2" check_table="$3" truncate_tables="$4"
-  shift 4
+  local container="$1" db="$2" check_table="$3" truncate_tables="$4" demo_data_file="$5"
+  shift 5
   local files=("$@")
 
   local row_count
@@ -52,6 +52,12 @@ load_database() {
       for t in $truncate_tables; do
         docker exec "$container" psql -U postgres -d "$db" -c "TRUNCATE TABLE $t CASCADE"
       done
+      # TRUNCATE wipes Flyway's own demo-data seed too, but Flyway itself
+      # won't re-run that migration (already marked applied in
+      # flyway_schema_history) - restore it by re-executing the actual
+      # migration file directly, not a copy-pasted duplicate of its SQL.
+      echo "==> Restoring Flyway demo-data seed ($demo_data_file)"
+      import_file "$container" "$db" "$demo_data_file"
     else
       echo "==> $db already has $row_count rows in $check_table — skipping (use --force to reload)"
       return 1
@@ -71,6 +77,7 @@ echo "==> Generating fresh SQL files (make generate-data)"
 OUT="$ROOT_DIR/data-generator/output"
 
 if load_database app-candidates-db app-candidates-db candidate candidate \
+  "$ROOT_DIR/app-candidates/src/main/resources/db/migration/postgres/V1_1__demo-data.sql" \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
   "$OUT/candidates/03-candidate-skills.sql"; then
@@ -84,6 +91,7 @@ fi
 # truncate_tables is "company skill", not "job_offer" - both are roots
 # job_offer/job_offer_skill hang off of, see the comment in load_database.
 load_database app-job-offers-db app-job-offers-db job_offer "company skill" \
+  "$ROOT_DIR/app-job-offers/src/main/resources/db/migration/postgres/V1_1__demo-data.sql" \
   "$OUT/job-offers/01-companies.sql" \
   "$OUT/job-offers/02-skills.sql" \
   "$OUT/job-offers/03-job-offers.sql" \

@@ -34,6 +34,9 @@ for crd in gatewayclasses gateways httproutes referencegrants grpcroutes; do
   kubectl apply -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
 done
 
+echo "==> Cilium GatewayClass (not auto-created by the Cilium chart, see gatewayclass.yaml)"
+kubectl apply -f "$MANIFESTS/cilium/gatewayclass.yaml"
+
 echo "==> MetalLB"
 helm upgrade --install metallb metallb/metallb -n metallb-system --create-namespace \
   -f "$MANIFESTS/metallb/values-metallb.yaml"

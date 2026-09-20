@@ -3,6 +3,7 @@ package pl.lunasoftware.demo.microservices.joboffers.offer;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pl.lunasoftware.demo.microservices.joboffers.company.CompanyEntity;
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSearchRequest;
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSkillRequest;
@@ -15,6 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -36,18 +38,24 @@ public class JobOfferService {
         this.jobOfferRepository = jobOfferRepository;
     }
 
+    @Transactional(readOnly = true)
     @WithSpan
     public List<JobOfferMatchDto> search(CandidateSearchRequest request) {
         double[] bbox = boundingBox(request.geoLat(), request.geoLon(), request.radiusKm());
         Set<String> skillNames = request.candidateSkills().stream()
                 .map(CandidateSkillRequest::skillName)
                 .collect(Collectors.toSet());
-        List<JobOfferEntity> offers = jobOfferRepository.findCandidateMatches(
+        List<UUID> matchedIds = jobOfferRepository.findCandidateMatchIds(
                 bbox[0], bbox[1], bbox[2], bbox[3],
                 request.expectedSalary(),
                 request.preferredEmploymentTypes(),
                 skillNames
         );
+        if (matchedIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<JobOfferEntity> offers = jobOfferRepository.findByIdIn(matchedIds);
         log.info("Found {} candidate-matching offers", offers.size());
 
         return offers.stream()
@@ -193,7 +201,7 @@ public class JobOfferService {
                 e.getSalaryTo().setScale(2, RoundingMode.HALF_UP),
                 e.getCurrency(),
                 e.getRequiredOfficeDaysPercentage(),
-                e.getOfferedEmploymentTypes(),
+                Set.copyOf(e.getOfferedEmploymentTypes()),
                 e.getStatus(),
                 score
         );

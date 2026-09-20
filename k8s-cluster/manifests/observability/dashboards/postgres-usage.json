@@ -100,7 +100,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"postgres-.*\", container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod) and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"}",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"postgres-.*\", container!=\"\", container!=\"POD\"}[$__rate_interval])) by (namespace, pod) and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"}",
           "legendFormat": "{{pod}}",
           "refId": "A"
         },
@@ -419,7 +419,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * sum(rate(node_disk_io_time_seconds_total{device=\"nvme0n1\"}[5m])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
+          "expr": "100 * sum(rate(node_disk_io_time_seconds_total{device=\"nvme0n1\"}[$__rate_interval])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
           "legendFormat": "{{node}}",
           "refId": "A"
         }
@@ -471,7 +471,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(node_disk_read_bytes_total{device=\"nvme0n1\"}[5m])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
+          "expr": "sum(rate(node_disk_read_bytes_total{device=\"nvme0n1\"}[$__rate_interval])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
           "legendFormat": "{{node}} read",
           "refId": "A"
         },
@@ -480,7 +480,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(node_disk_written_bytes_total{device=\"nvme0n1\"}[5m])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
+          "expr": "sum(rate(node_disk_written_bytes_total{device=\"nvme0n1\"}[$__rate_interval])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
           "legendFormat": "{{node}} write",
           "refId": "B"
         }
@@ -523,7 +523,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {

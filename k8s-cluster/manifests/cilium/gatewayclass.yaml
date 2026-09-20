@@ -1,0 +1,14 @@
+# kubectl apply -f gatewayclass.yaml
+#
+# Cluster-scoped, so it isn't owned by any particular Gateway — Cilium's Gateway API
+# controller does NOT create this automatically (verified 2026-09-20: a full
+# `kubeadm reset` wipes it along with the rest of etcd, and every Gateway in the
+# cluster got stuck "Waiting for controller"/Pending until this was re-applied).
+# Whatever originally created it was a manual, undocumented one-off step from before
+# this repo's automation existed — this file closes that gap for good.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cilium
+spec:
+  controllerName: io.cilium/gateway-controller

@@ -18,11 +18,8 @@ class JobOfferRepositorySpec extends Specification {
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('20000.00'),
-                [EmploymentType.B2B],
-                ['Java']
+        def offers = findMatches(
+                box, new BigDecimal('20000.00'), [EmploymentType.B2B], ['Java']
         )
 
         then:
@@ -34,11 +31,8 @@ class JobOfferRepositorySpec extends Specification {
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('21000.00'),
-                [EmploymentType.B2B],
-                ['Java']
+        def offers = findMatches(
+                box, new BigDecimal('21000.00'), [EmploymentType.B2B], ['Java']
         )
 
         then:
@@ -50,11 +44,8 @@ class JobOfferRepositorySpec extends Specification {
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('20000.00'),
-                [EmploymentType.EMPLOYMENT],
-                ['Java']
+        def offers = findMatches(
+                box, new BigDecimal('20000.00'), [EmploymentType.EMPLOYMENT], ['Java']
         )
 
         then:
@@ -66,11 +57,8 @@ class JobOfferRepositorySpec extends Specification {
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 300)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('20000.00'),
-                [EmploymentType.EMPLOYMENT],
-                ['Java']
+        def offers = findMatches(
+                box, new BigDecimal('20000.00'), [EmploymentType.EMPLOYMENT], ['Java']
         )
 
         then:
@@ -82,11 +70,8 @@ class JobOfferRepositorySpec extends Specification {
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 300)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('10000.00'),
-                [EmploymentType.MANDATE_CONTRACT],
-                ['Java']
+        def offers = findMatches(
+                box, new BigDecimal('10000.00'), [EmploymentType.MANDATE_CONTRACT], ['Java']
         )
 
         then:
@@ -98,31 +83,34 @@ class JobOfferRepositorySpec extends Specification {
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 300)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('10000.00'),
-                [EmploymentType.B2B, EmploymentType.EMPLOYMENT],
-                ['Cobol']
+        def offers = findMatches(
+                box, new BigDecimal('10000.00'), [EmploymentType.B2B, EmploymentType.EMPLOYMENT], ['Cobol']
         )
 
         then:
         offers.isEmpty()
     }
 
-    def "should load offered employment types eagerly via entity graph in findCandidateMatches"() {
+    def "should load offered employment types via batched fetch without lazy initialization exceptions"() {
         given:
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
-        def offers = jobOfferRepository.findCandidateMatches(
-                box[0], box[1], box[2], box[3],
-                new BigDecimal('18000.00'),
-                [EmploymentType.B2B],
-                ['Java']
+        def offers = findMatches(
+                box, new BigDecimal('18000.00'), [EmploymentType.B2B], ['Java']
         )
 
         then:
         offers.every { !it.offeredEmploymentTypes.isEmpty() }
+    }
+
+    private List<JobOfferEntity> findMatches(double[] box, BigDecimal expectedSalary,
+                                              Collection<EmploymentType> employmentTypes,
+                                              Collection<String> skillNames) {
+        def ids = jobOfferRepository.findCandidateMatchIds(
+                box[0], box[1], box[2], box[3], expectedSalary, employmentTypes, skillNames
+        )
+        ids.isEmpty() ? [] : jobOfferRepository.findByIdIn(ids)
     }
 
     private static double[] boundingBox(double lat, double lon, double radiusKm) {
