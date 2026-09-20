@@ -69,18 +69,23 @@ datasources:
         editable: false
         jsonData:
           httpMethod: GET
-          # Must match Prometheus's real global scrape_interval (1m, see
-          # `values-prometheus.yaml`'s chart default / `curl .../api/v1/status/config`),
-          # not a guessed/rounded value. Grafana uses this to compute $__rate_interval
-          # as max($__interval + timeInterval, 4 * timeInterval) for every rate()/irate()
-          # panel. The previous "1s" made $__rate_interval collapse to a few seconds on
-          # most dashboard time ranges — far below the real 1m scrape spacing, so rate()
-          # queries had zero chance of ever seeing 2 samples in-window. Confirmed live
-          # 2026-09-20: identical query returns 12 series with a literal [5m] window but
-          # 0 series with [1m], while instant-vector panels (no rate()) were unaffected —
-          # exactly the pattern of the "CPU Usage by Pod/Node"/"CPU Throttling" dashboard
-          # panels reported as "No data" (see .claude/handoff-k8s-rpi-cluster.md).
-          timeInterval: "1m"
+          # Must match Prometheus's real global scrape_interval (15s, see
+          # `values-prometheus.yaml`'s `server.global.scrape_interval` /
+          # `curl .../api/v1/status/config`), not a guessed/rounded value.
+          # Grafana uses this to compute $__rate_interval as
+          # max($__interval + timeInterval, 4 * timeInterval) for every
+          # rate()/irate() panel — a mismatch in EITHER direction breaks things:
+          # too small (the old "1s" bug) collapses $__rate_interval below the
+          # real scrape spacing, so rate() queries see 0 samples in-window
+          # ("No data", fixed 2026-09-20 by setting this to "1m" — see
+          # .claude/handoff-k8s-rpi-cluster.md); too large (that same "1m" fix,
+          # once scrape_interval itself dropped to 15s) floors every rate()
+          # panel's window at 4 minutes, smoothing away single-request HTTP
+          # spikes and GC sawtooth patterns into a flat line. 15s keeps the
+          # floor at a real 1 minute while still safely catching >=4 samples.
+          # Change this value and `server.global.scrape_interval` together,
+          # never one alone.
+          timeInterval: "15s"
       - name: Loki
         type: loki
         uid: loki

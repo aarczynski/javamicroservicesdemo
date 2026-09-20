@@ -32,6 +32,21 @@ prometheus-pushgateway:
   enabled: false
 
 server:
+  # Chart default is 1m, which flattens every rate()-based panel (HTTP request
+  # spikes, GC sawtooth on jvm_memory_used_bytes) into a smoothed line — both
+  # because raw gauge samples are too sparse to catch short GC cycles, and
+  # because $__rate_interval = max($__interval + timeInterval, 4 * timeInterval)
+  # (see values-grafana.yaml) floors at 4 minutes with a 1m scrape_interval.
+  # 15s restores per-request/short-GC-cycle visibility. `timeInterval` in
+  # values-grafana.yaml MUST be changed to match this value — a mismatch is
+  # exactly what caused the "No data" bug fixed 2026-09-20 (see
+  # .claude/handoff-k8s-rpi-cluster.md), so change both together, never one
+  # alone. scrape_timeout stays below scrape_interval (Prometheus requirement).
+  global:
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    evaluation_interval: 15s
+
   # Equivalent of compose.yml's `--web.enable-remote-write-receiver` flag —
   # otel-collector's prometheusremotewrite exporter needs this.
   extraArgs:
