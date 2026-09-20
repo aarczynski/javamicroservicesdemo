@@ -255,6 +255,42 @@ per service on a single dedicated node, nothing more.
 > capacity work on this cluster considers adding a workload to an already-occupied node — instead of a dedicated
 > one — treat that as the default wrong answer, not a convenient shortcut.
 
+### 11. `app-job-offers` CPU-bound above ~2000rps — `app-candidates` is not the bottleneck (2026-09-20)
+
+(Numbered 11, not 10 — "fix #10" elsewhere in this file already refers to the observability-3 repurposing
+documented in `.claude/handoff-k8s-rpi-cluster.md`/`CLAUDE.md`, not a section in this file.)
+
+A 2200rps load test showed `app-candidates` responding slowly (p50 8ms → 225ms, p90 20ms → 650ms, p99 40ms →
+985ms during the peak) — but root-caused by elimination again, not by assuming candidates itself was at fault:
+- **Not the database**: zero `HikariPool`/error log lines in Loki for the entire slow window.
+- **Not `app-candidates`' own CPU**: peaked at ~2.0 of its 3-core limit, throttling negligible (~0.008 fraction).
+- **Was `app-job-offers`**: both replicas hit **2.9-3.0 of their 3-core limit** at the exact same timestamps, with
+  real measured CPU throttling (up to ~7.5% of a 30s window) — and `app-job-offers`' *own* p99 spiked to ~900ms in
+  lockstep with candidates'. `app-candidates` calls `app-job-offers` synchronously (Feign) on every
+  `matching-offers` request and waits for the response — job-offers' throttling becomes candidates' latency
+  directly, with candidates itself never under real pressure.
+
+`app-job-offers` only has 2 replicas (vs. candidates' 3, see fix #1 in
+`.claude/handoff-k8s-rpi-cluster.md`), and there's currently no free worker to add a 3rd — all 5 generic workers
+are occupied (3 pinned `app-candidates` + 2 `app-job-offers`). 2200rps is already well past the documented
+1500rps-safe/1600rps-borderline ceiling above, so this may simply be the real ceiling of the current 5-worker
+layout, not a bug to fix. **No fix applied yet** — next round of capacity work should find the actual current max
+RPS (deliberately not chasing it by adding more hardware) before deciding whether `app-job-offers` needs its own
+capacity increase.
+
+**Bonus finding, unrelated to the bottleneck itself**: `jvm_cpu_recent_utilization_ratio` (the "near-instantaneous"
+cross-check the methodology lessons below recommend) got stuck reporting a flat 0 for one specific JVM instance
+each of the last two test rounds — confirmed via `container_cpu_usage_seconds_total` (cAdvisor, independent of the
+JVM's own self-report) showing real, substantial usage (up to 2.4 cores) on the exact same instance at the exact
+same timestamps. Not a ghost/stale series (the affected instance was confirmed still live and currently scheduled,
+not a leftover from a prior rollout), not node-specific (checked kernel/OS version on the affected node both
+times, no anomaly found — unlike the real kernel-version outlier on `worker-2`, see `CLAUDE.md`'s handoff notes).
+Root cause not identified (would need attaching a profiler/JFR to the specific stuck JVM, and it's an ephemeral pod
+that's already gone by the time this is noticed) — mitigated by deleting the affected pod(s) for a fresh JVM.
+**Practical rule: don't trust `jvm_cpu_recent_utilization_ratio` alone for a single instance that reads exactly
+0 under otherwise-real load — cross-check against `container_cpu_usage_seconds_total` for that specific pod before
+concluding it's actually idle.**
+
 ## Methodology lessons (apply to future rounds)
 
 - **Test one variable at a time under real concurrent load.** A bundled test of two changes can make a working fix
@@ -277,7 +313,10 @@ per service on a single dedicated node, nothing more.
   over a hardcoded window in any new panel), but that still averages a 1-2 minute burst down to nothing if the
   browser has a wide time range open. Narrow the dashboard to roughly the test's duration, and cross-check against a
   near-instantaneous metric instead (`jvm_cpu_recent_utilization_ratio` for the JVMs, or `kubectl top` / Headlamp's
-  live view) before concluding a node has spare capacity.
+  live view) before concluding a node has spare capacity. **Caveat added 2026-09-20 (fix #11 below):**
+  `jvm_cpu_recent_utilization_ratio` itself has been seen stuck at a flat 0 for a single JVM instance under real
+  load, twice — if one instance reads exactly 0 while its siblings show real values, cross-check that specific pod
+  against `container_cpu_usage_seconds_total` (cAdvisor) before trusting it either.
 - **A hard `podAntiAffinity` across namespaces needs an explicit `namespaces` list on the term** — it silently
   defaults to the scheduled pod's own namespace otherwise, so a cross-namespace rule (e.g. keeping two different
   services' pods off the same node) can look correctly configured and simply never fire.
