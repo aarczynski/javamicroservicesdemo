@@ -36,7 +36,32 @@ duplikować tutaj.
    patrz `docs/externalmetrics.md` w repo `kubernetes-sigs/prometheus-adapter` ("Cross-Namespace or No Namespace
    Queries"), bezpieczne tu bo `job="app-candidates"` w `seriesQuery` już jest jednoznaczne.
 
-1. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
+1. **[BLOKOWANE na Cilium, obejście na miejscu] `app-candidates` HPA spięty na sztywno 3 repliki (2026-09-20).**
+   **Problem**: świeży pod po HPA scale-up (2→3) dostaje pełny udział ruchu natychmiast po przejściu
+   `readinessProbe` — braku LB slow-startu (patrz punkt niżej, ten sam dzień). Żywy test 1500rps złapał
+   konsekwencję wprost: p99 zapytań do bazy na świeżym podzie skoczyło z bazowych ~5ms do 150-215ms na ~60-90s
+   (30-40x wolniej), co przy tej samej liczbie requestów/s (prawo Little'a: concurrency = arrival_rate ×
+   czas_obsługi) zapchało pulę połączeń Hikari i wygenerowało realne 500-tki (`HikariPool-1 - Connection is not
+   available`, `waiting=124` przy puli 40). Powtórzyło się dwa razy tego samego dnia mimo kolejnych łatek.
+   **Próbowane, obie wdrożone, żadna nie wyeliminowała problemu w 100%:**
+   - Hikari `maximum-pool-size`/`minimum-idle` 30 → 40 + Postgres `max_connections` 100 → 150
+     (`application.yml`/`postgres.yaml`) — pomogło częściowo, ale przy prawdziwym buście (164 równoległych
+     żądań na jednym podzie) i tak się zapchało.
+   - `readinessProbe.initialDelaySeconds` 20 → 60 (`app.yaml`) — daje JVM więcej czasu w spokoju, ale nie
+     rozgrzewa JIT-a naprawdę (to wymaga realnego ruchu) — user ocenił jako niewystarczające po kolejnym teście.
+   **Decyzja (na jawne polecenie)**: zamiast dalej łatać objawy, `hpa.yaml` przestawiony na sztywno
+   `minReplicas: 3, maxReplicas: 3` — bez zdarzeń skalowania nie ma świeżego, zimnego poda do zalania ruchem,
+   więc cała klasa problemu znika. `prometheus-adapter`/metryka RPS zostają żywe (nieużywane do realnego
+   skalowania), żeby odblokowanie później było zmianą jednej linijki, nie przebudową od zera.
+   **Prawdziwy fix wymaga Cilium**: potwierdzone tego samego dnia — Cilium generuje Envoy Cluster dla Gateway
+   API wewnątrz `cilium-operator`, bez hooka dla `slow_start_config`. Najbliższy odpowiednik, otwarty i
+   niezmergowany CFP na per-service circuit breaking
+   ([cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532)), wymagał od autora forka
+   `cilium-operator`. **Czekamy aż to (albo odpowiednik dla slow-startu) wyląduje w Cilium** — wtedy odblokować
+   `minReplicas` z powrotem do 2. Do tego czasu `app-candidates` zajmuje na stałe 3 z 5 workerów (razem z
+   2 od `app-job-offers` — wszystkie 5 workerów permanentnie zajęte, zero wolnego node'a).
+
+2. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
    trybie L2 jest active-passive per IP — tylko `platform-1` faktycznie obsługuje ruch Gateway (`.100`), `platform-2`
    przy 1200rps stał bezczynny (~1.8% CPU), failover przestał być wart dedykowanego node'a.
    **Zmiana decyzji względem wcześniejszej wersji tej notatki**: pierwotny plan `sso-1`+Keycloak (ten sam dzień)
@@ -61,32 +86,32 @@ duplikować tutaj.
    (`REGISTRY_RE` miał `.104` zamiast `.190`) przez co pinning tagu w manifeście od dawna cicho nic nie robił.
    Affinity entity-operatora Kafki (`kafka-cluster.yaml`) też dociągnięta i zaaplikowana — patrz
    `k8s-cluster/RPS-SCALING.md`/git log dla szczegółów tego osobnego fixu.
-2. **[NOWE] Zwiększenie wolumenu danych w Postgresach (candidates/job-offers) — priorytet: przyszłość, bez
+3. **[NOWE] Zwiększenie wolumenu danych w Postgresach (candidates/job-offers) — priorytet: przyszłość, bez
    konkretów jeszcze.** Obecny wolumen: 100k candidates / 50k job offers, generowany przez `data-generator` i
    ładowany przez `load-data.sh`/`make k8s-reload-data`. Cel/docelowa skala nieustalone w tej sesji — do
    doprecyzowania z użytkownikiem, kiedy przyjdzie pora (nie zgadywać liczb).
-3. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
+4. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
    `platform-1`.** Znalezione 2026-09-20: `registry.yaml` ma tolerancję `role=platform`, ale brak `nodeSelector`
    (tolerancja tylko pozwala, nie wymusza); `local-path-provisioner`/`metallb-controller` nie mają nawet tolerancji.
    Efekt: te pody konkurują o CPU z appkami na workerach (dokładnie ten typ współdzielenia, który
    `RPS-SCALING.md` fix #9 już raz nazwał błędem). Do naprawy przy okazji reorganizacji platform/sso (pkt 1).
-4. **HA/replikacja Postgresa (CloudNativePG/Patroni)** — `local-path-provisioner` trzyma PV lokalnie na dysku
+5. **HA/replikacja Postgresa (CloudNativePG/Patroni)** — `local-path-provisioner` trzyma PV lokalnie na dysku
    node'a, więc samo dopuszczenie schedulowania na oba node'y bazodanowe nic nie da przy awarii. Potrzebny operator
    ze streaming replication. Odłożone, niepriorytetowe.
-5. **GitOps (ArgoCD/Flux)** — cel końcowy, żeby stan klastra był w pełni odtwarzalny z repo bez ręcznych
+6. **GitOps (ArgoCD/Flux)** — cel końcowy, żeby stan klastra był w pełni odtwarzalny z repo bez ręcznych
    `helm install`/`kubectl apply`. Świadomie na końcu planu, nie teraz.
-6. **Lokalny k8s (minikube) do testowania manifestów przed wdrożeniem na fizyczny klaster — ZROBIONE i
+7. **Lokalny k8s (minikube) do testowania manifestów przed wdrożeniem na fizyczny klaster — ZROBIONE i
    zmergowane** (branch `experiment/minikube-local-cluster`, `make minikube-rebuild-all`). Otwarty tylko drobny
    punkt: trzymać w sync ewentualne przyszłe zmiany registry/MinIO między overlayem minikube a produkcyjnymi
    manifestami (już raz się rozjechały, patrz pkt niżej o pułapkach).
-7. **Brak trwałego zabezpieczenia przed rozjazdem `candidatesDataFile` (lokalny plik dla `load-test`) vs. baza
+8. **Brak trwałego zabezpieczenia przed rozjazdem `candidatesDataFile` (lokalny plik dla `load-test`) vs. baza
    faktycznie załadowana na klastrze.** `load-data.sh` po każdym imporcie synchronizuje `load-background`, ale nic
    nie pilnuje pliku używanego ręcznie do `make candidateSimulation` — do rozważenia: osobny plik/katalog dla
    "danych aktualnie na klastrze" albo krok w symulacji weryfikujący próbkę ID przed testem.
-8. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
+9. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
    innych maszyn w LAN; dashboard I/O dysku dla Postgresa (metryki node-exportera już są, brak paneli);
    `postgres-exporter` (metryki natywne Postgresa — connections/cache hit/locki) nie wdrożony, świadomie odłożone.
-9. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
+10. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
     handoffu working tree jest czyste (wszystko z poprzednich sesji już zacommitowane/zmergowane), ale kilka
     wcześniejszych wpisów w historii tego pliku opisywało niezacommitowane zmiany — zawsze weryfikować `git status`
     zamiast ufać starym zapiskom.

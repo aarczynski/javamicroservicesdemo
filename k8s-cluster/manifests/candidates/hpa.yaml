@@ -1,5 +1,25 @@
 # kubectl apply -f hpa.yaml
 #
+# PINNED to a static 3 replicas since 2026-09-20 (minReplicas ==
+# maxReplicas == 3) - not actively scaling right now. Root cause: every
+# 2->3 scale-up hands the fresh pod its full traffic share the instant it
+# passes readinessProbe (no LB slow-start - see the note further down), and
+# a live 1500rps test showed the cold JVM's DB query p99 hitting 150-215ms
+# for ~60-90s (vs a steady-state ~5ms baseline) - same arrival rate, ~30-40x
+# slower per query, which blows the Hikari pool's concurrency budget via
+# basic queueing math and produces real 500s. A pool-size bump
+# (application.yml) and a longer readinessProbe.initialDelaySeconds
+# (app.yaml, 20->60) both landed 2026-09-20 and both helped somewhat but
+# neither eliminated it - repeatedly rediscovered live during testing that
+# same day. Pinning to a static 3 sidesteps the whole class of problem:
+# with no scale events, there's no freshly-cold pod to slam. Revisit once
+# real LB slow-start is available (tracked below,
+# https://github.com/cilium/cilium/issues/43532) - re-lower minReplicas to
+# 2 and this goes back to genuinely elastic. The RPS metric/target
+# reasoning below is kept as-is (kept live via prometheus-adapter, just not
+# driving any actual scaling right now) so re-enabling later is a one-line
+# change, not a redo.
+#
 # Scales app-candidates 2 -> 3 replicas on RPS, not CPU. Switched 2026-09-20
 # after a real 1500rps load test: CPU-based scaling (previous version of this
 # file, see git history) needed average per-pod CPU to *exceed* 70% of the
@@ -55,7 +75,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: app-candidates
-  minReplicas: 2
+  minReplicas: 3
   maxReplicas: 3
   # scaleDown.stabilizationWindowSeconds: 300 is k8s's own default (unset
   # would behave identically) — made explicit so this doesn't silently change

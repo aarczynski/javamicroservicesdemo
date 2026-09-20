@@ -419,13 +419,19 @@ values and Kubernetes manifests.
 
 ### Autoscaling
 
-`app-candidates` has a `HorizontalPodAutoscaler` (`k8s-cluster/manifests/candidates/hpa.yaml`): 2 → 3 replicas when
+`app-candidates` has a `HorizontalPodAutoscaler` (`k8s-cluster/manifests/candidates/hpa.yaml`), currently **pinned to
+a static 3 replicas** (`minReplicas` == `maxReplicas` == 3), not actively scaling. It's designed to go 2 → 3 when
 total request rate crosses ~1000rps (RPS, not CPU — see the manifest's own comments for why, and for the full
-threshold math), scaling back down after a 5-minute cooldown. `maxReplicas: 3` is a hard ceiling today, not a
-placeholder — `worker-5` is the only spare generic-worker slot the hard `podAntiAffinity` above leaves free; going
+threshold math), scaling back down after a 5-minute cooldown — but every real scale-up event handed the fresh pod
+its full traffic share the instant it passed readiness, and a live 1500rps test showed the cold JVM's DB query p99
+hitting 150-215ms (vs a steady-state ~5ms) for ~60-90s, which blew the connection pool's concurrency budget and
+produced real 500s. Pinning to a static 3 sidesteps the problem entirely (no scale event, no freshly-cold pod) —
+see [Future plans](#future-plans) for what unblocks going elastic again. `maxReplicas: 3` (even once unpinned) is a
+hard ceiling — `worker-5` is the only spare generic-worker slot the hard `podAntiAffinity` above leaves free; going
 higher needs another worker node and a deliberate decision, not an automatic bump. Needs `prometheus-adapter`
-(`k8s-cluster/manifests/observability/values-prometheus-adapter.yaml`) installed to expose the RPS metric — see the
-handoff doc if it shows `<unknown>` targets.
+(`k8s-cluster/manifests/observability/values-prometheus-adapter.yaml`) installed to expose the RPS metric (kept
+live even while pinned, so unpinning later is a one-line change) — see the handoff doc if it shows `<unknown>`
+targets.
 
 | Command | What it does |
 |---|---|
@@ -659,7 +665,9 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   override it; the closest thing, an open and still-unmerged CFP for per-service circuit breaking
   ([cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532)), required its author to fork
   `cilium-operator` to implement. Would need that CFP to land, a newer Cilium version with equivalent support, or
-  maintaining a fork — none attempted here.
+  maintaining a fork — none attempted here. **This is also what's blocking `app-candidates`' HPA from going elastic
+  again** (currently pinned to a static 3 replicas, see [Autoscaling](#autoscaling)) — real slow-start is the fix
+  that addresses the cold-pod problem at its source rather than working around it.
 * ~~Third observability node~~ — done 2026-09-20 (`observability-3`, see [Node taints](#node-taints--what-runs-where)).
   ~~Tail-based trace sampling~~ — done 2026-09-20 too, see [Differences from Docker Compose](#differences-from-docker-compose).
 * Keycloak/SSO: real introspection-based auth (not local JWT validation) between `app-candidates` and
