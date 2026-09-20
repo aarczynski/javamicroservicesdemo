@@ -437,9 +437,9 @@
           "id": "organize",
           "options": {
             "indexByName": {
-              "namespace": 0,
+              "node": 0,
               "pod": 1,
-              "node": 2,
+              "namespace": 2,
               "host_ip": 3
             },
             "renameByName": {
