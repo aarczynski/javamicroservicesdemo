@@ -539,6 +539,15 @@ end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/
   package — see the handoff's 2026-08-27 entry) before landing on a plain `registry:3.1.1` pod
   ([`k8s-cluster/manifests/registry/`](k8s-cluster/manifests/registry)) on the platform nodes instead. **Docker
   Compose needs no registry at all** — there's nothing to push to or pull from on a single Docker daemon.
+* **Trace sampling: tail-based, in k8s only.** Compose's OTEL Collector forwards 100% of traces to Tempo
+  unconditionally — fine at Compose's traffic levels. k8s adds a `tail_sampling` processor
+  (`values-otel-collector.yaml`) that keeps **100% of traces with a 4xx/5xx response, 100% of traces slower than
+  500ms end-to-end, and an independent 1% random sample of everything else** (the 1% is not on top of the other
+  two — an error or a slow trace already always matches its own policy; `sample-rest` just also independently
+  rolls the dice on every trace, including those). Added 2026-09-20 after sustained 1200-1500rps load tests pushed
+  enough trace volume through Kafka/Tempo's write path to crash `observability-1`'s kubelet, twice — see
+  [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md). **Docker Compose has no volume problem to sample
+  away** — a single Docker daemon under Gatling never approached that kind of trace throughput.
 * **Clock sync: a local NTP server, in k8s only.** Multiple physical nodes need clocks that agree closely with
   *each other*, not just with UTC — public-pool jitter (13-48ms over WAN, measured) was enough to produce
   out-of-order-looking span timestamps in Tempo once `podAntiAffinity` forced `app-candidates`/`app-job-offers`
@@ -652,8 +661,7 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   `cilium-operator` to implement. Would need that CFP to land, a newer Cilium version with equivalent support, or
   maintaining a fork — none attempted here.
 * ~~Third observability node~~ — done 2026-09-20 (`observability-3`, see [Node taints](#node-taints--what-runs-where)).
-  ~~Tail-based trace sampling~~ — done 2026-09-20 too: 100% of errors, 100% of traces slower than 500ms, and a small
-  percentage of everything else (see `values-otel-collector.yaml`'s `tail_sampling` processor).
+  ~~Tail-based trace sampling~~ — done 2026-09-20 too, see [Differences from Docker Compose](#differences-from-docker-compose).
 * Keycloak/SSO: real introspection-based auth (not local JWT validation) between `app-candidates` and
   `app-job-offers`. No node earmarked for it anymore — the `sso-1` plan (repurposing `platform-2`) was reconsidered
   2026-09-20 in favor of keeping that Pi as generic spare capacity (`worker-5`, see
