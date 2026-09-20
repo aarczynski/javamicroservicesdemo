@@ -24,6 +24,24 @@ loki:
   limits_config:
     retention_period: 168h # 7d, matches observability/loki/loki.yml
     max_query_lookback: 168h
+  # Added 2026-09-20: "Logs Volume" dashboard panel (count_over_time over all services) took
+  # 5-6s to load even on a quiet 30-min window — confirmed via query stats that it decompresses
+  # every matching chunk on every load, no caching at all (resultsCache/chunksCache below are
+  # chart-level extras that deploy a separate memcached Deployment, deliberately left off for a
+  # single-node home lab). Embedded cache runs in-process instead, no new pod. Bounded by
+  # max_size_mb so it can't repeat the 2026-09-03 OOM — see memory bump note below.
+  query_range:
+    cache_results: true
+    results_cache:
+      cache:
+        embedded_cache:
+          enabled: true
+          max_size_mb: 50
+  chunk_store_config:
+    chunk_cache_config:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 50
 
 singleBinary:
   replicas: 1
@@ -38,13 +56,15 @@ singleBinary:
   # cpu 500m->1500m on 2026-09-03 (second burst test, tempo-distributed this time): second-most
   # CPU-throttled pod in the cluster (throttled_seconds rate 0.49 at peak) while observability-1
   # stayed under 23% CPU busy — undersized limit, not a saturated node.
+  # Raised 1Gi->1280Mi on 2026-09-20 alongside the embedded query/chunk cache above (2x50Mi bound)
+  # to keep the same burst-test safety margin as before, not because idle usage grew.
   resources:
     requests:
       cpu: 100m
       memory: 512Mi
     limits:
       cpu: 1500m
-      memory: 1Gi
+      memory: 1280Mi
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-observability-2
   tolerations:

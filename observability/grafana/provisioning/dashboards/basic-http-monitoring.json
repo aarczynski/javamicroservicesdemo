@@ -61,7 +61,7 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
+            "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
@@ -168,7 +168,7 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
+            "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
@@ -306,7 +306,7 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
+            "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
@@ -545,7 +545,7 @@
             "axisLabel": "", "axisMax": 20000, "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6,
             "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
             "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 1, "pointSize": 5,
+            "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5,
             "scaleDistribution": { "type": "linear" }, "showPoints": "never", "showValues": false,
             "spanNulls": false, "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
