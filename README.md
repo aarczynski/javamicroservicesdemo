@@ -396,14 +396,34 @@ Current state:
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
 | `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md) |
-| `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry. `platform-2` planned to move to a dedicated `sso-1` node for Keycloak (not yet executed — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
-| `worker-1`–`worker-4` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)) |
+| `platform-1` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, local NTP server (see below). Down to a single platform node since 2026-09-20 — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; repurposed to `worker-5` instead of keeping a dedicated (and mostly idle) failover node (see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
+| `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)). `worker-5` (added 2026-09-20, repurposed from `platform-2`) is spare capacity, not a 5th standing app replica — see the `app-candidates` HPA below |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
 
+### NTP / clock sync
+
+Every node points at a local `chrony` server on `platform-1` (`ntp_server_host`/`ntp_server_ip` in
+`k8s-cluster/ansible/group_vars/all.yml`) instead of the public NTP pool. Not just tidiness: measured live
+2026-09-20 at 13-48ms jitter per poll over WAN vs. sub-millisecond on the LAN — and once the `podAntiAffinity` fix
+forced `app-candidates`/`app-job-offers` onto separate physical nodes, that jitter was enough to produce
+out-of-order/negative-looking span timestamps in Tempo trace waterfalls, since spans recorded on different nodes
+need to agree closely with *each other*, not just with UTC. Set up by `node_prep`'s NTP tasks
+(`k8s-cluster/ansible/roles/node_prep/tasks/main.yml`) as part of `make k8s-prep`.
+
 Cluster provisioning lives under [k8s-cluster/](k8s-cluster) — `ansible/` for node setup, `manifests/` for Helm
 values and Kubernetes manifests.
+
+### Autoscaling
+
+`app-candidates` has a `HorizontalPodAutoscaler` (`k8s-cluster/manifests/candidates/hpa.yaml`): 2 → 3 replicas when
+total request rate crosses ~1000rps (RPS, not CPU — see the manifest's own comments for why, and for the full
+threshold math), scaling back down after a 5-minute cooldown. `maxReplicas: 3` is a hard ceiling today, not a
+placeholder — `worker-5` is the only spare generic-worker slot the hard `podAntiAffinity` above leaves free; going
+higher needs another worker node and a deliberate decision, not an automatic bump. Needs `prometheus-adapter`
+(`k8s-cluster/manifests/observability/values-prometheus-adapter.yaml`) installed to expose the RPS metric — see the
+handoff doc if it shows `<unknown>` targets.
 
 | Command | What it does |
 |---|---|

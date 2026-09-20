@@ -23,22 +23,44 @@ duplikować tutaj.
 
 ## TODO / Next steps
 
-1. **[NOWE] `platform-2` → `sso-1` + Keycloak/SSO (priorytet: niski, "za jakiś czas").** Zdecydowane 2026-09-20:
-   MetalLB w trybie L2 jest active-passive per IP — tylko `platform-1` faktycznie obsługuje ruch Gateway (`.100`),
-   `platform-2` przy 1200rps stał bezczynny (~1.8% CPU), więc failover przestał być wart dedykowanego node'a.
-   `platform-2` idzie jako `sso-1` pod Keycloak (nowy taint, np. `role=sso:NoSchedule` — nazwa do ustalenia).
-   **Ważny kontekst architektoniczny (ustalony w sesji, zapisać przy implementacji):**
-   - To ma być **prawdziwe SSO, nie lokalna walidacja JWT**. Jedna appka (prawdopodobnie `app-candidates`) pobiera
-     token, druga (`app-job-offers`) weryfikuje go przez wywołanie do Keycloaka — najpewniej **introspection
-     endpoint**, nie lokalna walidacja podpisu.
-   - **Ryzyko do zmierzenia PRZED integracją z candidates/job-offers**: pojedyncza instancja Keycloak na 1 RPi5
-     obsługująca introspection przy docelowym ruchu ~1500rps to prawdopodobny **nowy bottleneck** — Keycloak/Quarkus
-     ma cięższy koszt per-request niż appki tego projektu, a introspection to network round-trip + uwierzytelnienie
-     confidential clienta przy każdym wywołaniu. Zmierzyć Keycloak w izolacji (Gatling bezpośrednio na
-     `/introspect`) tą samą metodologią co reszta projektu (jedna zmienna na raz, pod realnym obciążeniem) zanim
-     się to wpina do appek.
-   - Do zrobienia razem z tą reorganizacją: `l2-advertisement.yaml` nodeSelector zostaje tylko na `platform-1`
-     (świadoma utrata failoveru dla `.100`), zaktualizować `inventory.ini`/nazwę/IP.
+0. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
+   "Cluster-Wide Workload Creation" — zadziałało na "rób sam"), na `platform-1`. `hpa.yaml` (`candidates`) na RPS
+   (`external` metric `candidates_requests_per_second`, target `AverageValue: 500`, `maxReplicas: 3`,
+   `behavior.scaleDown.stabilizationWindowSeconds: 300` — patrz komentarz w pliku dla uzasadnienia liczb),
+   zweryfikowane żywe: `kubectl -n candidates get hpa app-candidates` pokazuje realny `TARGETS` (nie `<unknown>`).
+   **Gotcha znaleziona live**: pierwsza wersja `values-prometheus-adapter.yaml` (bez `resources.namespaced: false`
+   w regule `external`) crashowała na każdym query z `unable to convert resource namespaces into label: no generic
+   resource label form specified for this metric` — `http_server_request_duration_seconds_count` nie ma etykiety
+   `namespace` (przychodzi przez OTel remote_write, tylko `job`+`instance`), a adapter domyślnie próbuje ją tam
+   wstrzyknąć dla każdego external metric query (namespaced API). Fix: `resources: {namespaced: false}` w regule —
+   patrz `docs/externalmetrics.md` w repo `kubernetes-sigs/prometheus-adapter` ("Cross-Namespace or No Namespace
+   Queries"), bezpieczne tu bo `job="app-candidates"` w `seriesQuery` już jest jednoznaczne.
+
+1. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
+   trybie L2 jest active-passive per IP — tylko `platform-1` faktycznie obsługuje ruch Gateway (`.100`), `platform-2`
+   przy 1200rps stał bezczynny (~1.8% CPU), failover przestał być wart dedykowanego node'a.
+   **Zmiana decyzji względem wcześniejszej wersji tej notatki**: pierwotny plan `sso-1`+Keycloak (ten sam dzień)
+   odłożony — user zdecydował zamiast tego trzymać ten Pi jako generyczny spare/worker ("1 wolny rpi do dyspozycji,
+   jak coś będzie kuleć"), a nie od razu wiązać go z konkretnym przyszłym serwisem. Keycloak/SSO wraca jako pomysł
+   bez przypisanego node'a — gdy się pojawi, doprecyzować wtedy które ryzyka z poprzedniej wersji tej notatki
+   (Keycloak/Quarkus introspection jako potencjalny nowy bottleneck przy ~1500rps, real SSO nie lokalna walidacja
+   JWT) nadal obowiązują.
+   **Zrobione (config + fizycznie, na jawne polecenie "rób sam"):** `inventory.ini` (`k8s-rpi-platform-2` →
+   `k8s-rpi-worker-5`, IP przenumerowane `.3` → `.14` — user zaktualizował rezerwację DHCP w Omada),
+   `l2-advertisement.yaml` (nodeSelector Gateway zostaje tylko na `platform-1`, zaaplikowane live), `CLAUDE.md`
+   (tabela taintów) — oraz cordon+drain `k8s-rpi-platform-2`, `kubeadm reset` przez SSH, reboot (żeby złapał nowe
+   DHCP `.14` — stary known_hosts wpis dla `.14` z poprzedniego życia tego IP trzeba było usunąć,
+   `ssh-keygen -R`), `kubectl delete node k8s-rpi-platform-2`, `make k8s-prep` (hostname → `k8s-rpi-worker-5`),
+   `make k8s-init` (join jako worker, bez taintu — zweryfikowane: `Taints: <none>` po tym jak Cilium wystartował).
+   **Przy okazji zrobione też (ten sam dzień, ta sama sesja):** HPA dla `app-candidates` — patrz punkt 0. powyżej
+   dla finalnej, RPS-owej wersji (pierwsza wersja była na CPU, zamieniona po tym jak realny load test pokazał że
+   próg 70% ledwo nie został przekroczony i się nie wyzwolił). `worker-5` to jedyny wolny slot dla 3. repliki dzięki
+   istniejącej twardej podAntiAffinity, brak jawnego nodeSelectora. `load-background` przeniesiony z
+   `observability-2` (był najbardziej obciążonym node'em observability po tym jak `observability-3` odciążył `-1`
+   ale nie `-2`) na `platform-1`. Naprawiony też niezależny bug: literówka IP w `deploy-load-background.sh`
+   (`REGISTRY_RE` miał `.104` zamiast `.190`) przez co pinning tagu w manifeście od dawna cicho nic nie robił.
+   Affinity entity-operatora Kafki (`kafka-cluster.yaml`) też dociągnięta i zaaplikowana — patrz
+   `k8s-cluster/RPS-SCALING.md`/git log dla szczegółów tego osobnego fixu.
 2. **[NOWE] Zwiększenie wolumenu danych w Postgresach (candidates/job-offers) — priorytet: przyszłość, bez
    konkretów jeszcze.** Obecny wolumen: 100k candidates / 50k job offers, generowany przez `data-generator` i
    ładowany przez `load-data.sh`/`make k8s-reload-data`. Cel/docelowa skala nieustalone w tej sesji — do
