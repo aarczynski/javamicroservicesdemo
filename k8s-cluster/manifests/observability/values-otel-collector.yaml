@@ -67,10 +67,15 @@ alternateConfig:
     # trace volume through Kafka/Tempo's write path to crash observability-1's
     # kubelet, twice — see k8s-cluster/RPS-SCALING.md. Multiple top-level
     # policies are OR'd by this processor: a trace is kept if ANY policy says
-    # so, so this is "100% of 4xx/5xx + independently ~1% of everything else"
-    # (the ~1% is not additional on top of the errors — errors already always
-    # match the first policy, the second one just also independently rolls
-    # the dice on every trace including those).
+    # so, so this is "100% of 4xx/5xx + 100% of traces slower than 500ms +
+    # independently ~1% of everything else" (the ~1% is not additional on top
+    # of the other two — errors/slow traces already always match their own
+    # policy, sample-rest just also independently rolls the dice on every
+    # trace including those).
+    # sample-slow added 2026-09-20 on request: `latency` looks at total trace
+    # duration (max span end - min span start across the whole trace), not
+    # any single span, so a fast root handler with one slow downstream call
+    # still gets caught.
     tail_sampling:
       decision_wait: 5s
       policies:
@@ -80,6 +85,10 @@ alternateConfig:
             key: http.response.status_code
             min_value: 400
             max_value: 599
+        - name: sample-slow
+          type: latency
+          latency:
+            threshold_ms: 500
         - name: sample-rest
           type: probabilistic
           probabilistic:
