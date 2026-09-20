@@ -105,3 +105,23 @@ spec:
   entityOperator:
     topicOperator: {}
     userOperator: {}
+    template:
+      # Not inherited from the KafkaNodePool above — Strimzi schedules the entity
+      # operator as its own Deployment, so without this it has no affinity/toleration
+      # and can land on any untainted node (observed: drifted onto worker-2, then
+      # worker-3 after worker-2 died, competing with app-candidates for CPU).
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values:
+                        - k8s-rpi-observability-1
+        tolerations:
+          - key: role
+            operator: Equal
+            value: observability
+            effect: NoSchedule
