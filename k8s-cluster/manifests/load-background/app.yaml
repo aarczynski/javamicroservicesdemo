@@ -47,7 +47,13 @@ spec:
         app: load-background
     spec:
       nodeSelector:
-        kubernetes.io/hostname: k8s-rpi-observability-2
+        # observability-2 was carrying 8 pinned components (Loki, Prometheus,
+        # Grafana, Tempo distributor, MinIO, hubble-relay/ui, this) and sat at
+        # ~51% RAM vs ~21%/31% on -1/-3 (2026-09-20 rebalance). This one moved
+        # to -1 (lightest) — its PVC only holds a copy of the candidates SQL
+        # file re-synced by `load-data.sh` after every import, so losing it on
+        # move costs nothing (unlike Loki/Prometheus/Grafana/MinIO's PVCs).
+        kubernetes.io/hostname: k8s-rpi-observability-1
       tolerations:
         - key: role
           operator: Equal
