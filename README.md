@@ -378,10 +378,10 @@ Current state:
 | Node(s) | Taint | What runs there |
 |---|---|---|
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
-| `db-1`/`db-2`/`db-3` | `role=database` | Postgres instances |
-| `observability-1`/`observability-2` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI |
+| `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
+| `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md) |
 | `platform-1`/`platform-2` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, future Keycloak/SSO |
-| `worker-1`–`worker-4` | none | `app-candidates`, `app-job-offers`, future autoscaled replicas |
+| `worker-1`–`worker-4` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)) |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
@@ -404,22 +404,16 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-19): 1200 RPS sustained, 0% KO, p99=24ms**
-(`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests, `http://192.168.10.100`) — improved from the previous
-p99=49ms after fixing a cartesian `JOIN FETCH` in `JobOfferRepository.findCandidateMatches` (split into an ID-only
-prefilter query plus a single batch-fetch by ID, `offeredEmploymentTypes` moved to `@BatchSize` instead of a second
-eager collection in the same query). `app-job-offers`'s CPU limit is `3` (was `2`).
+**Current state (2026-09-20): 1200 RPS sustained, 0% KO** (`maxRps=1200 ramps=1 stepDuration=60s`, 90,000 requests,
+p99=359ms/mean=20ms). `app-candidates` and `app-job-offers` each get one dedicated worker node per replica (hard
+`podAntiAffinity`, see [Node taints](#node-taints--what-runs-where)); CPU limit `3` on both. Full history —
+including a same-day regression to 5-40% KO from a node-topology change, root-caused and fixed the same session —
+is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
 
-**1500 RPS is not yet clean** (measured ~0.5-14% KO depending on run, all `503`s). Postgres and Hikari are not the
-bottleneck at this level (`postgres-job-offers` CPU stays under 1/3 cores, Hikari `pending` stays at 0 with the
-default pool size — a larger pool made things *worse*, see `.claude/handoff-k8s-rpi-cluster.md`). The real ceiling is
-`app-job-offers`'s own CPU (a single replica was measured at 1.99/2 cores before the bump to 3) combined with the
-Cilium Gateway's Envoy cluster for `app-candidates`, which runs on Envoy's unconfigured default circuit breaker
-(~1024 max pending requests) — once app latency degrades under load, the pending-request queue approaches that
-ceiling and Envoy sheds the excess with `503`s. Next steps: either free up `observability-1` (it currently hosts
-Kafka + all of Tempo's write path + OTEL Collector, and a sustained 1500rps trace volume crashed its kubelet twice
-during testing) so trace volume stops being the limiting factor, or reduce trace volume (tail-based sampling: 100%
-of errors, a small percentage of everything else) before pushing past 1200rps again.
+**1500 RPS is not yet re-attempted** since fixing the regression above; the earlier attempt (before the node-sharing
+issue existed) got to ~0.5-14% KO with the ceiling looking like `app-job-offers` CPU plus the Cilium Gateway's
+unconfigured Envoy circuit breaker (~1024 max pending requests) for `app-candidates` — worth revisiting now that
+node-sharing is no longer a confound. Full detail in `k8s-cluster/RPS-SCALING.md`.
 
 ### Row counts on the home k8s cluster
 
@@ -576,6 +570,19 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
   route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
   the cluster's VLAN for load tests that need clean results.
+* **A load test much shorter than the dashboard's visible time range will not show a real CPU bottleneck.** All
+  `rate()` queries on these dashboards use `$__rate_interval` (Grafana's self-adjusting window based on the visible
+  time range and scrape interval) rather than a hardcoded one — the correct general-purpose choice, since a fixed
+  window is either too coarse when zoomed in or wastefully fine-grained/noisy when zoomed out. It does **not**,
+  however, fix a short *test* viewed against a much longer *time range*: with a wide window open, a 1-2 minute burst
+  still gets averaged down and can look like comfortable headroom when the node was actually saturated the whole
+  time. Found live 2026-09-20: the "CPU Usage by Pod"/"CPU Usage by Node" panels showed ~65% usage during a
+  genuinely 100%-saturated node, confirmed instead via the JVM's own near-instantaneous
+  `jvm_cpu_recent_utilization_ratio` and `kubectl top`/Headlamp's live view. Both panels have "Max" enabled in their
+  legend (`calcs: [..., "max"]`, Grafana's closest equivalent to CloudWatch's Max statistic) to surface a short spike
+  at a glance — narrow the dashboard's time range to roughly the test's own duration so that spike is actually in
+  the queried window, and cross-check short bursts against a near-instantaneous metric rather than trusting the
+  graph alone.
 
 # Future plans
 
