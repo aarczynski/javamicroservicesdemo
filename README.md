@@ -411,16 +411,18 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-20): 1200 RPS sustained, 0% KO** (`maxRps=1200 ramps=1 stepDuration=60s`, 90,000 requests,
-p99=359ms/mean=20ms). `app-candidates` and `app-job-offers` each get one dedicated worker node per replica (hard
-`podAntiAffinity`, see [Node taints](#node-taints--what-runs-where)); CPU limit `3` on both. Full history —
-including a same-day regression to 5-40% KO from a node-topology change, root-caused and fixed the same session —
-is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
-
-**1500 RPS is not yet re-attempted** since fixing the regression above; the earlier attempt (before the node-sharing
-issue existed) got to ~0.5-14% KO with the ceiling looking like `app-job-offers` CPU plus the Cilium Gateway's
-unconfigured Envoy circuit breaker (~1024 max pending requests) for `app-candidates` — worth revisiting now that
-node-sharing is no longer a confound. Full detail in `k8s-cluster/RPS-SCALING.md`.
+**Current state (2026-09-20): 1500 RPS sustained, 0% KO** (`maxRps=1500 stepDuration=3m ramps=1`, 202,500 requests,
+p50=9ms/p95=25ms/p99=78ms/mean=12ms/max=608ms, ~2 min held near peak — 1s buckets touched 1600 during the hold).
+This clears the previous 1500rps blocker (the Cilium Gateway's unconfigured Envoy circuit breaker, ~1024 max
+pending requests, tripping once `app-job-offers` latency degraded under CPU pressure) with no new config beyond
+what was already in place for 1200rps: CPU limit `3` on both apps and one dedicated worker node per replica (hard
+`podAntiAffinity`, see [Node taints](#node-taints--what-runs-where)) — see
+[RPS-SCALING.md](k8s-cluster/RPS-SCALING.md#9-hard-pod-anti-affinity-one-app-replica-per-node-guaranteed-2026-09-20)
+for why that fix matters beyond just fixing the 87/13 CPU split it was built for. 1200 RPS remains separately
+confirmed clean over a full 5-minute sustained hold (`maxRps=1200 stepDuration=5m ramps=1`, 360,000 requests, 0% KO,
+p99=41ms/mean=10ms) on top of the earlier `stepDuration=60s` result (90,000 requests, p99=359ms/mean=20ms). Full
+history — including a same-day regression to 5-40% KO from a node-topology change, root-caused and fixed the same
+session — is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
 
 ### Row counts on the home k8s cluster
 

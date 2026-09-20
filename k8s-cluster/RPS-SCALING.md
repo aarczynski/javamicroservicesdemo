@@ -7,15 +7,25 @@ change measurably moves the ceiling, don't let it rot into a second handoff.
 
 ## Current state
 
-**1200 RPS sustained, 0% KO** — re-confirmed 2026-09-20 (`maxRps=1200 ramps=1 stepDuration=60s`, 90,000 requests,
-p99=359ms/mean=20ms; the original p99=24ms figure below used a longer 3-minute-step profile, see [Methodology
-lessons](#methodology-lessons-apply-to-future-rounds) for why short steps are now preferred against this cluster).
-This had regressed to 5-40% KO for most of 2026-09-20 after reducing generic workers from 4 to 3 for a 3rd
-observability node — fixed by fix #9 below (freed a 3rd, unused database node instead, plus a hard one-pod-per-node
-anti-affinity so the fix survives future restarts). The original **1200 RPS sustained, 0% KO, p99=24ms**
-(`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests) result is preserved below as the historical reference.
-**1500 RPS is not yet clean** — see [Current bottleneck](#current-bottleneck-1500-rps) below; not re-attempted since
-the regression above, worth another look now that the node-sharing confound is gone.
+**1500 RPS sustained, 0% KO** — confirmed 2026-09-20, same session as fix #9 below (`maxRps=1500 stepDuration=3m
+ramps=1`, 202,500 requests, p50=9ms/p95=25ms/p99=78ms/mean=12ms/max=608ms, ~2 min held near peak — 1s buckets
+touched 1600 during the hold). This resolves what the
+[former bottleneck](#former-bottleneck-1500-rps-resolved-2026-09-20) section below used to call the 1500rps ceiling
+— the Gateway's unconfigured Envoy circuit breaker tripping once `app-job-offers`
+latency degraded under CPU pressure — **without any change beyond what fix #9 already put in place for 1200rps**:
+CPU limit `3` on both apps, and one dedicated worker node per app replica (hard `podAntiAffinity`). No new fix
+needed a number of its own; see the bottleneck section for why #9 covers this too, not just the 87/13 split it was
+built for.
+
+1200 RPS also re-confirmed 2026-09-20, twice: (`maxRps=1200 ramps=1 stepDuration=60s`, 90,000 requests,
+p99=359ms/mean=20ms) and again over a full 5-minute sustained hold (`maxRps=1200 stepDuration=5m ramps=1`, 360,000
+requests, 0% KO, p99=41ms/mean=10ms; all 12 nodes stayed healthy afterward — no repeat of the `observability-1`
+`NodeNotReady` seen at 1500rps under the old, longer-step methodology, see [Methodology
+lessons](#methodology-lessons-apply-to-future-rounds)). This had regressed to 5-40% KO for most of 2026-09-20 after
+reducing generic workers from 4 to 3 for a 3rd observability node — fixed by fix #9 below (freed a 3rd, unused
+database node instead, plus a hard one-pod-per-node anti-affinity so the fix survives future restarts). The
+original **1200 RPS sustained, 0% KO, p99=24ms** (`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests) result is
+preserved below as the historical reference.
 
 ## What got us from ~600rps to 1200rps clean
 
@@ -129,44 +139,61 @@ With Postgres no longer the bottleneck, the app itself became one — a single r
 (effectively 100%) under 1500rps load, while Postgres CPU stayed under 1/3 cores. Same lever, same precedent as
 fix #4, just on the app instead of the database this time. Not yet cleanly validated at 1500rps (see below).
 
-## Current bottleneck (1500 RPS)
+## Former bottleneck (1500 RPS), resolved 2026-09-20
 
-Postgres and Hikari are confirmed *not* the constraint at this level (Postgres CPU <1/3 cores, Hikari `pending`=0
-with the default pool). Two things compound instead:
+This section described why 1500rps wasn't clean, before fix #9 (below) turned out to fix it too. Left in place
+because the mechanism explains *why* the fix worked, which the "Current state" summary doesn't have room for.
 
-1. **`app-job-offers` CPU**, addressed by fix #8 above but not yet cleanly re-measured.
-2. **The Cilium Gateway's Envoy circuit breaker** for the `app-candidates` upstream cluster is running on Envoy's
+Postgres and Hikari were confirmed *not* the constraint at this level (Postgres CPU <1/3 cores, Hikari `pending`=0
+with the default pool). Two things compounded instead:
+
+1. **`app-job-offers` CPU**, addressed by fix #8 (2→3) but — at the time this was written — not yet cleanly
+   re-measured, because of #2's test-blocking side effect.
+2. **The Cilium Gateway's Envoy circuit breaker** for the `app-candidates` upstream cluster runs on Envoy's
    *unconfigured default* thresholds (~1024 max pending requests) — nobody ever set this explicitly, and Cilium
    1.19's Gateway API implementation has no exposed extension point to tune it (checked `CiliumGatewayClassConfig` —
    only covers the generated `Service`, not Envoy cluster settings). Once app latency degrades under load, the
    pending-request queue on the Gateway approaches that ceiling (measured peak: 977) and Envoy starts shedding
-   excess load with `503`s. This is not an independent problem — it's downstream of #1: slower app responses →
+   excess load with `503`s. This was never an independent problem — it's downstream of #1: slower app responses →
    bigger pending queue → circuit breaker trips.
 
-Validating whether fix #8 alone is enough has been blocked twice by an unrelated, if likely load-test-induced,
-infrastructure failure: sustained 1500rps trace volume appears to overwhelm `observability-1` (it hosts Kafka + all
-of Tempo's write path + the OTEL Collector — 8 telemetry-heavy services on one RPi5, sized historically for ambient
-load and short bursts, not a sustained 1500rps soak) badly enough that its kubelet stops responding entirely
-(`NodeNotReady`, SSH/ping dead at the userspace level, twice in one session). See the handoff for full incident
-detail.
+Validating whether fix #8 alone was enough had been blocked twice by an unrelated, if likely load-test-induced,
+infrastructure failure: sustained 1500rps trace volume appeared to overwhelm `observability-1` (it hosted Kafka +
+all of Tempo's write path + the OTEL Collector — 8 telemetry-heavy services on one RPi5, sized historically for
+ambient load and short bursts, not a sustained 1500rps soak) badly enough that its kubelet stopped responding
+entirely (`NodeNotReady`, SSH/ping dead at the userspace level, twice in one session). See the handoff for full
+incident detail. **This was independently fixed the same day** by splitting off a 3rd observability node (option 1
+below) — Kafka/Tempo's write path stayed on `-1`, the querier/query-frontend/otel-collector/backend components moved
+to the new `-3`, removing the confound and letting a clean 1500rps run actually complete.
+
+**Resolution: fix #9's anti-affinity + CPU 3 turned out to close #1 *and* #2 at once, with no dedicated 1500rps work
+needed.** Once each app replica had a guaranteed-dedicated node (no more CPU throttling from node-sharing, no more
+the Little's-Law connection-imbalance spiral documented under fix #9) and 3 full cores to use, `app-job-offers`
+latency simply never degraded enough under 1500rps for the Gateway's pending-request queue to approach the ~1024
+circuit-breaker threshold — so #2 never had a trigger to fire. Confirmed 2026-09-20: 202,500 requests at
+`maxRps=1500 stepDuration=3m ramps=1`, **0% KO**, p99=78ms. Options 2 and 3 below remain undone and, for now,
+unnecessary — revisit only if a future round pushes the ceiling past ~1500-1600rps and the Envoy queue becomes the
+limit again.
 
 ## Options for pushing past 1200rps cleanly
 
-Not yet implemented — pick one (or both) in a future session:
-
-1. **A third observability node**, splitting Kafka off from Tempo's other write-path components (or off from
-   `otel-collector`/`querier`/`query-frontend`) so no single RPi5 carries all of it under load. Costs one of the four
-   generic worker nodes (no spare hardware sitting around — this means repurposing, not just adding).
+1. ~~**A third observability node**~~ — **done 2026-09-20**, see fix #9 and the resolution note above. Splitting
+   Kafka off from Tempo's other write-path components (`otel-collector`/`querier`/`query-frontend` moved to the new
+   `-3`) removed the confound that was blocking 1500rps test runs from completing at all. Cost one of the four
+   generic worker nodes at the time — recovered same-day by repurposing an idle 3rd database node instead (see fix
+   #9), so no net loss to app capacity.
 2. **Tail-based trace sampling** in `otel-collector` (already the `contrib` distribution, has `tail_sampling` built
    in; `replicaCount: 1` so there's no cross-instance span-routing complexity to solve first): sample 100% of error
    traces, a small percentage (e.g. 1%) of everything else. Cuts trace volume without losing debuggability for
    failures — the standard production pattern for this exact problem. Will likely also need `otel-collector`'s own
    resource limits raised (currently 500m CPU / 1Gi memory, sized for much lower ambient volume); `tail_sampling`
-   buffers each trace in memory for `decision_wait` before deciding, which adds memory pressure under load.
+   buffers each trace in memory for `decision_wait` before deciding, which adds memory pressure under load. Not
+   needed to hit 1500rps cleanly — revisit only if trace volume becomes the limit again at a higher RPS.
 3. **Raise the Envoy circuit breaker directly** — no supported way to do this on Cilium 1.19 today. Would need a
    newer Cilium version (check release notes for Gateway API `BackendTrafficPolicy` support before upgrading, per
    the version-pinning discipline in the root `CLAUDE.md`) or an unsupported direct edit of the auto-generated
-   `CiliumEnvoyConfig`, which Cilium's Gateway controller can silently revert on its own reconciliation.
+   `CiliumEnvoyConfig`, which Cilium's Gateway controller can silently revert on its own reconciliation. Not needed
+   to hit 1500rps cleanly — the queue never approached the threshold once #1 (former bottleneck) was fixed.
 
 ### 9. Hard pod anti-affinity: one app replica per node, guaranteed (2026-09-20)
 
