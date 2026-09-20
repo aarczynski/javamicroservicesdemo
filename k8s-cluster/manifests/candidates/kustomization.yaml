@@ -7,3 +7,4 @@ resources:
   - namespace.yaml
   - postgres.yaml
   - app.yaml
+  - hpa.yaml

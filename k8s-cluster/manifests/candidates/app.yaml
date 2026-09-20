@@ -28,7 +28,14 @@ metadata:
   name: app-candidates
   namespace: candidates
 spec:
-  replicas: 2
+  # No `replicas` field here on purpose: the HorizontalPodAutoscaler
+  # (hpa.yaml) owns this field once created. Leaving a hardcoded value here
+  # would fight it — every `kubectl apply` (e.g. `make k8s-deploy`) would
+  # reset replicas back to this number, undoing whatever the HPA had scaled
+  # to until it next reconciles. `kubectl apply` never touches a field the
+  # manifest doesn't mention, so omitting it entirely is the correct way to
+  # hand ownership to the HPA. minReplicas there (2) is what actually governs
+  # the floor.
   # Default RollingUpdate (maxSurge=25%) tries to briefly run a 3rd pod during
   # a rollout — with the hard anti-affinity below and exactly one node per
   # app replica, there's no valid node for that surge pod, and the rollout
@@ -97,7 +104,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-candidates
-          image: 192.168.10.190:5000/app-candidates:d30c537
+          image: 192.168.10.190:5000/app-candidates:81949a9
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every

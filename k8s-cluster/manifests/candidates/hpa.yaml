@@ -1,0 +1,79 @@
+# kubectl apply -f hpa.yaml
+#
+# Scales app-candidates 2 -> 3 replicas on RPS, not CPU. Switched 2026-09-20
+# after a real 1500rps load test: CPU-based scaling (previous version of this
+# file, see git history) needed average per-pod CPU to *exceed* 70% of the
+# 3-core limit (2100m) to round up to 3 replicas, but the two pods' CPU only
+# ever reached ~99.7% of that target (2094m peak avg) before the test's
+# short duration ended it — never triggered. RPS measured far more evenly
+# across pods at the same load (~750-756 rps/pod, vs CPU's visibly uneven
+# split between the two), making it both a more reliable *and* a more
+# reactive signal. Requires prometheus-adapter (see
+# k8s-cluster/manifests/observability/values-prometheus-adapter.yaml) to
+# expose `candidates_requests_per_second` on the external.metrics.k8s.io API.
+#
+# Target 500 (rps/pod, AverageValue): the 1500rps test ran ~750-756 rps/pod
+# sustained for ~2.5min with zero errors — 500 leaves ~33% headroom below
+# that measured-safe ceiling, triggering before saturation instead of at it.
+# HPA's AverageValue math (desiredReplicas = ceil(replicas * current/target))
+# means the *total* rps threshold grows with replica count, not flat steps:
+#   2 -> 3 replicas above ~1000 total rps
+#   3 -> 4 replicas above ~1500 total rps (see maxReplicas note below)
+#   4 -> 5 replicas above ~2000 total rps (ditto)
+#
+# maxReplicas: 3, not higher — deliberately matches the one spare generic
+# worker (worker-5, added 2026-09-20 by repurposing platform-2, see
+# inventory.ini/CLAUDE.md) this project currently has. The hard
+# podAntiAffinity in app.yaml (one app-candidates/app-job-offers pod per
+# node) means worker-1..4 are already each holding one pod at minReplicas=2 +
+# app-job-offers' own 2 replicas — a 3rd candidates pod has nowhere to go
+# except that one remaining free worker. No explicit nodeSelector needed:
+# the anti-affinity rule already forces it there on its own, and pinning it
+# would fight that rule instead of relying on it. This is the real ceiling
+# today — do not assume it moves just because a node gets added later; a
+# future node isn't earmarked for this by default, so raising maxReplicas
+# needs a fresh, explicit capacity decision at that time, not an automatic
+# bump.
+#
+# No slow-start / gradual traffic ramp for a freshly-scaled pod: researched
+# 2026-09-20 (see handoff) — Cilium's Gateway API implementation generates
+# the Envoy Cluster for a Service's backends inside cilium-operator with no
+# user-facing hook to attach Envoy's common_lb_config.slow_start_config (the
+# open, unmerged https://github.com/cilium/cilium/issues/43532 proposes
+# something similar for circuit breakers and required forking cilium-operator
+# to implement — not attempted here). This is independent of the HPA metric
+# (CPU or RPS, doesn't matter) — it's a data-plane gap, not a scaling-trigger
+# one. A new pod gets full proportional traffic share the instant it passes
+# readinessProbe.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-candidates
+  namespace: candidates
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app-candidates
+  minReplicas: 2
+  maxReplicas: 3
+  # scaleDown.stabilizationWindowSeconds: 300 is k8s's own default (unset
+  # would behave identically) — made explicit so this doesn't silently change
+  # if that default ever changes upstream. Effect: HPA looks at the highest
+  # recommended replica count over the trailing 5 minutes before scaling
+  # down, so the 3rd pod stays up for a bit after RPS drops below the
+  # threshold instead of disappearing the instant it dips, riding out brief
+  # dips in a load test instead of flapping. scaleUp has no such window
+  # (default: react fast) — deliberately asymmetric, matches "add capacity
+  # quickly, remove it cautiously".
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: candidates_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "500"

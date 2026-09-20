@@ -1,0 +1,50 @@
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm install prometheus-adapter prometheus-community/prometheus-adapter -n observability -f values-prometheus-adapter.yaml --version 5.3.0
+#
+# Bridges PromQL -> the external.metrics.k8s.io API, so HPA can scale
+# app-candidates on real RPS instead of CPU (2026-09-20: CPU utilization was
+# too close to its own target under real load — see RPS-SCALING.md/handoff —
+# and RPS turned out to be the far more evenly-balanced signal across pods
+# anyway, measured ~750rps/pod vs a visibly uneven CPU split at the same
+# load).
+#
+# External metric, not Pods: http_server_request_duration_seconds_count has
+# no `pod` label (it arrives via OTel remote_write with only `instance`, a
+# random service.instance.id UUID, and `job` — not a k8s Pod name), so a
+# Pods-type metric couldn't resolve individual pods here. HPA v2 divides an
+# External metric's AverageValue target by the current replica count exactly
+# the same way it does for a Pods metric, so this sidesteps the missing
+# label entirely without losing per-pod averaging semantics.
+prometheus:
+  url: http://prometheus-server.observability.svc.cluster.local
+  port: 80
+
+# 15s, not the chart default 1m: matches kube-controller-manager's own HPA
+# sync period (--horizontal-pod-autoscaler-sync-period, default 15s) — HPA
+# can't act faster than that regardless, so relisting more often than 15s
+# would just waste Prometheus queries for staleness HPA can't use anyway.
+metricsRelistInterval: 15s
+
+nodeSelector:
+  kubernetes.io/hostname: k8s-rpi-platform-1
+tolerations:
+  - key: role
+    operator: Equal
+    value: platform
+    effect: NoSchedule
+
+rules:
+  default: false
+  external:
+    - seriesQuery: 'http_server_request_duration_seconds_count{job="app-candidates"}'
+      # `namespaced: false` because the series has no `namespace` label to
+      # inject one into (see the file header) — without this, the adapter
+      # errors on every query: "unable to convert resource namespaces into
+      # label: no generic resource label form specified for this metric"
+      # (found live 2026-09-20). Safe here: `job="app-candidates"` in
+      # seriesQuery is already unambiguous, no other namespace could match.
+      resources:
+        namespaced: false
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m]))'
+      name:
+        as: "candidates_requests_per_second"

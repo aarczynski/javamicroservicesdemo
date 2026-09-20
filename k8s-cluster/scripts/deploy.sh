@@ -47,6 +47,7 @@ mv "$MANIFESTS/observability/dashboards-configmap.yaml.tmp" "$MANIFESTS/observab
 
 echo "==> Applying"
 kubectl apply -f "$MANIFESTS/candidates/app.yaml"
+kubectl apply -f "$MANIFESTS/candidates/hpa.yaml"
 kubectl apply -f "$MANIFESTS/job-offers/app.yaml"
 kubectl apply -f "$MANIFESTS/observability/dashboards-configmap.yaml"
 
