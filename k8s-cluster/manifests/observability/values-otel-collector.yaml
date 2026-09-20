@@ -60,6 +60,30 @@ alternateConfig:
       traces:
         span:
           - 'attributes["db.system"] == nil and attributes["db.system.name"] == nil'
+    # Tail sampling for the traces actually stored in Tempo (NOT applied to the
+    # traces/db_spans pipeline below, which feeds span_metrics — that stays on
+    # 100% of spans so DB duration histograms/dashboards keep full accuracy).
+    # Added 2026-09-20: sustained 1200-1500rps load tests were pushing enough
+    # trace volume through Kafka/Tempo's write path to crash observability-1's
+    # kubelet, twice — see k8s-cluster/RPS-SCALING.md. Multiple top-level
+    # policies are OR'd by this processor: a trace is kept if ANY policy says
+    # so, so this is "100% of 4xx/5xx + independently ~1% of everything else"
+    # (the ~1% is not additional on top of the errors — errors already always
+    # match the first policy, the second one just also independently rolls
+    # the dice on every trace including those).
+    tail_sampling:
+      decision_wait: 5s
+      policies:
+        - name: sample-errors
+          type: numeric_attribute
+          numeric_attribute:
+            key: http.response.status_code
+            min_value: 400
+            max_value: 599
+        - name: sample-rest
+          type: probabilistic
+          probabilistic:
+            sampling_percentage: 1
 
   exporters:
     prometheusremotewrite:
@@ -82,7 +106,7 @@ alternateConfig:
         exporters: [prometheusremotewrite]
       traces:
         receivers: [otlp]
-        processors: [batch]
+        processors: [tail_sampling, batch]
         exporters: [otlp_grpc/tempo]
       traces/db_spans:
         receivers: [otlp]
@@ -97,13 +121,18 @@ alternateConfig:
 # repeatedly (6+ times in the test window) — the 512Mi budget was sized for ambient load
 # (5-10rps from load-background), not a burst. See values-tempo.yaml for the matching fix
 # and full incident context.
+# Raised again 1Gi->2Gi, 500m->1000m on 2026-09-20 for tail_sampling above: it now
+# buffers every trace in memory for decision_wait (5s) before deciding whether to
+# keep it, instead of streaming straight through — at 1200-1500rps that's thousands
+# of buffered traces at any given moment, not the near-stateless pass-through this
+# was originally sized for.
 resources:
   requests:
-    cpu: 100m
-    memory: 256Mi
+    cpu: 200m
+    memory: 512Mi
   limits:
-    cpu: 500m
-    memory: 1Gi
+    cpu: "1"
+    memory: 2Gi
 
 # Moved to observability-3 on 2026-09-20: observability-1 was carrying Kafka + all of
 # Tempo's write path + this collector (8 services on one RPi5), and its kubelet
