@@ -2577,7 +2577,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "100 - (avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "expr": "100 - (avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) * 100)",
               "refId": "A",
               "legendFormat": "{{node}}"
             }
@@ -2933,7 +2933,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\", container!=\"POD\"}[$__rate_interval])) by (namespace, pod)",
               "refId": "A",
               "legendFormat": "{{namespace}}/{{pod}}"
             }
@@ -3036,7 +3036,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+              "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container!=\"\", container!=\"POD\"}[$__rate_interval])) by (namespace, pod)",
               "refId": "A",
               "legendFormat": "{{namespace}}/{{pod}}"
             }
@@ -3525,7 +3525,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"postgres-.*\", container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod) and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"}",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"postgres-.*\", container!=\"\", container!=\"POD\"}[$__rate_interval])) by (namespace, pod) and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"}",
               "legendFormat": "{{pod}}",
               "refId": "A"
             },
@@ -3844,7 +3844,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "100 * sum(rate(node_disk_io_time_seconds_total{device=\"nvme0n1\"}[5m])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
+              "expr": "100 * sum(rate(node_disk_io_time_seconds_total{device=\"nvme0n1\"}[$__rate_interval])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
               "legendFormat": "{{node}}",
               "refId": "A"
             }
@@ -3896,7 +3896,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(rate(node_disk_read_bytes_total{device=\"nvme0n1\"}[5m])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
+              "expr": "sum(rate(node_disk_read_bytes_total{device=\"nvme0n1\"}[$__rate_interval])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
               "legendFormat": "{{node}} read",
               "refId": "A"
             },
@@ -3905,7 +3905,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "sum(rate(node_disk_written_bytes_total{device=\"nvme0n1\"}[5m])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
+              "expr": "sum(rate(node_disk_written_bytes_total{device=\"nvme0n1\"}[$__rate_interval])) by (node) and on(node) (kube_pod_info{pod=~\"postgres-.*\"} and on(namespace) kube_deployment_status_replicas_ready{deployment=\"$service\"})",
               "legendFormat": "{{node}} write",
               "refId": "B"
             }
