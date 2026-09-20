@@ -48,6 +48,15 @@ storage:
       secret_key: minioadmin123
       insecure: true # MinIO over plain HTTP, internal-only traffic
       forcepathstyle: true # required for MinIO (no virtual-hosted-style bucket DNS)
+    # Chart default (unset here previously) is 5m: confirmed live via querier logs
+    # ("blocklist poll complete" every 5m on the dot) 2026-09-20 while investigating
+    # "only traces from a few minutes ago, nothing new" - a completed block leaves
+    # live-store's own short-lived searchable buffer (~30-60s after completion) well
+    # before the next 5m poll picks it up from MinIO, leaving a multi-minute blind
+    # spot where a just-ingested trace is in neither place. 30s keeps that blind spot
+    # close to live-store's own window instead of compounding it; MinIO LIST cost at
+    # this data volume is trivial.
+    blocklist_poll: 30s
 
 # No memcached — Compose's single-binary Tempo has no cache config either; adding one
 # here would be new behavior, not parity. Chart defaults to memcached.enabled: true
