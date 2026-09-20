@@ -386,7 +386,6 @@
             "mode": "palette-classic"
           },
           "unit": "bytes",
-          "min": 0,
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -571,7 +570,6 @@
             "mode": "palette-classic"
           },
           "unit": "bytes",
-          "min": 0,
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -715,7 +713,6 @@
             "mode": "palette-classic"
           },
           "unit": "bytes",
-          "min": 0,
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,

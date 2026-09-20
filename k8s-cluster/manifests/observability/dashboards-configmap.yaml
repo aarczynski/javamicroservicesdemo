@@ -1104,7 +1104,6 @@ data:
                 "mode": "palette-classic"
               },
               "unit": "bytes",
-              "min": 0,
               "custom": {
                 "axisBorderShow": false,
                 "axisCenteredZero": false,
@@ -1289,7 +1288,6 @@ data:
                 "mode": "palette-classic"
               },
               "unit": "bytes",
-              "min": 0,
               "custom": {
                 "axisBorderShow": false,
                 "axisCenteredZero": false,
@@ -1433,7 +1431,6 @@ data:
                 "mode": "palette-classic"
               },
               "unit": "bytes",
-              "min": 0,
               "custom": {
                 "axisBorderShow": false,
                 "axisCenteredZero": false,

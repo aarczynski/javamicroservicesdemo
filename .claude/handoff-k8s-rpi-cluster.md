@@ -160,6 +160,14 @@ duplikować tutaj.
   `jvm-monitoring.json`) miało to ustawienie, przez co losowy ruch z Gatlinga wyglądał na dashboardzie jak gładka
   obwiednia zamiast postrzępionej linii. **Fix: `"linear"` na każdym nowym timeseries panelu**, chyba że wygładzanie
   jest świadomym wyborem — dashboard obserwowalności ma pokazywać prawdziwe zachowanie systemu, nie estetykę.
+- **Sztywne `"min": 0` na osi Y ściska realny sygnał, gdy w tym samym panelu jest też duża stała referencja
+  (np. Heap Max/Committed).** Znalezione 2026-09-20: JVM Heap Used realnie oscyluje piłokształtnie (potwierdzone
+  surowymi próbkami co 15s z Prometheusa: ~330-440MB, klasyczny wzorzec GC), ale na panelu "Heap Memory" z osią
+  wymuszoną od 0 do Heap Max (~780MB), to wahanie zajmowało tylko ~15% wysokości wykresu — wyglądało na płaskie,
+  mimo że dane były poprawne. **Fix: usunięte `"min": 0` z paneli bajtowych** (Heap Memory, Non-Heap Memory,
+  Memory Used by Pool w `jvm-monitoring.json`) — oś skaluje się teraz automatycznie do realnego zakresu danych.
+  Zostawić `min: 0` tam, gdzie ma to sens (CPU %, liczba wątków, GC rate) — problem dotyczy tylko paneli, które
+  mieszają wąsko wahającą się wartość z szeroką stałą referencją na tej samej skali.
 - **Panel Loki bez cache'a przelicza całą historię od zera przy każdym odświeżeniu** — `count_over_time` po
   wszystkich serwisach na oknie 30 min potrafi skanować >1.5 mln linii/500MB (potwierdzone przez `stats.summary` w
   odpowiedzi Loki), dając 5-6s czasu ładowania nawet na spokojnym ruchu, więcej po burst teście. Fix (2026-09-20,
