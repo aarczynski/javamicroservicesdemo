@@ -314,22 +314,27 @@ This module runs burst load tests against `app-candidates` using Gatling.
 | `candidatesDataFile`  | —       | Path to SQL file with candidate UUIDs (required) |
 | `targetHost`          | `http://localhost:8080` | Base URL of `app-candidates` |
 | `maxRps`              | `100`   | Peak requests per second (global maximum, reached at the top of the last ramp) |
-| `stepDuration`        | `60s`   | Base time unit for each phase (`30s`, `5m`, `1h`) |
+| `stepDuration`        | `3m`    | Base time unit for each phase (`30s`, `5m`, `1h`) |
 | `ramps`               | `5`     | Number of ramp-up steps |
 
 ### Load profile shape
 
-Each step takes exactly `stepDuration`: half ramping to the next RPS level, half holding
-it. The last step's holding half doubles as the peak hold — no separate peak-steady
-phase. Cooldown ramps from `maxRps` to 0 over `stepDuration`. Total: `(ramps + 1) × stepDuration`.
+Each step's ramp-up portion is fixed at **1 minute** (`RampProfile.rampDuration`, or the
+whole step if `stepDuration` is shorter), then holds steady at that step's RPS level for
+whatever remains of `stepDuration` — decoupled from `stepDuration`'s length, not a
+half/half split. A `stepDuration` at or below 1 minute has no held portion at all: the
+whole step is spent ramping, chaining straight into the next one. Cooldown ramps from
+`maxRps` to 0, also capped at 1 minute. Total: `ramps × stepDuration + min(1 min, stepDuration)`.
 
-With defaults (`maxRps=100`, `stepDuration=60s`, `ramps=5`):
-- Ramp-up: 5 steps × 1 min each = 5 min (0→20, 20→40, … up to 100 RPS, 30s ramp + 30s hold per step)
-- Cooldown: 1 min ramp down to 0
-- **Total: 6 min**
+With defaults (`maxRps=100`, `stepDuration=3m`, `ramps=5`) — see the diagram in
+[README.md](README.md#rps-profile-defaults-maxrps100-stepduration3m-ramps5):
+- Ramp-up: 5 steps of 20 RPS each, each 1 min ramping + 2 min held steady = 15 min
+- Cooldown: 1 min ramp down to 0 (capped, not the full 3-minute stepDuration)
+- **Total: 16 min**
 
 Smoke test example (`maxRps=20`, `stepDuration=30s`, `ramps=2`):
-- **Total: 1.5 min**, peak 20 RPS
+- **Total: 1.5 min**, peak 20 RPS, no held portion at all (30s is below the 1-minute cap,
+  so it's a continuous ramp, not a staircase)
 
 ### Rules for changes to this module
 - All load profile constants (`maxRps`, `stepDuration`, `ramps`) must be read via `CliParamProvider` — no hardcoded values in `CandidateSimulation`.

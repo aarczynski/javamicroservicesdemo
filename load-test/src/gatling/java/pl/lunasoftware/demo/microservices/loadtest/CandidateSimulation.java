@@ -4,6 +4,7 @@ import io.gatling.javaapi.core.OpenInjectionStep;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
+import pl.lunasoftware.demo.microservices.loadtest.profile.RampProfile;
 import pl.lunasoftware.demo.microservices.loadtest.reader.CandidateSqlDataReader;
 import pl.lunasoftware.demo.microservices.loadtest.reader.CliParamProvider;
 
@@ -85,21 +86,26 @@ public class CandidateSimulation extends Simulation {
         ).toArray(OpenInjectionStep[]::new);
     }
 
-    // Each step takes exactly stepDuration: half ramping to the next RPS level, half
-    // holding it — the last step's plateau doubles as the peak hold, so there's no
-    // separate peak-steady phase.
+    // Each step's ramp-up portion is fixed at RampProfile's 1-minute cap (or the whole
+    // step, if stepDuration is shorter), then holds steady at that step's RPS level for
+    // whatever remains of stepDuration — decoupled from stepDuration's length, unlike a
+    // half/half split. A stepDuration at or below 1 minute has no held portion at all:
+    // the whole step is spent ramping, chaining straight into the next one.
     private Stream<OpenInjectionStep> buildRampUpSteps() {
-        Duration half = stepDuration.dividedBy(2);
+        Duration ramp = RampProfile.rampDuration(stepDuration);
+        Duration hold = RampProfile.holdDuration(stepDuration);
         return IntStream.range(0, ramps)
                 .boxed()
-                .flatMap(i -> Stream.of(
-                        rampUsersPerSec(stepRps * i).to(stepRps * (i + 1)).during(half).randomized(),
-                        constantUsersPerSec(stepRps * (i + 1)).during(half).randomized()
-                ));
+                .flatMap(i -> hold.isZero()
+                        ? Stream.of(rampUsersPerSec(stepRps * i).to(stepRps * (i + 1)).during(ramp).randomized())
+                        : Stream.of(
+                                rampUsersPerSec(stepRps * i).to(stepRps * (i + 1)).during(ramp).randomized(),
+                                constantUsersPerSec(stepRps * (i + 1)).during(hold).randomized()
+                        ));
     }
 
     private OpenInjectionStep buildCooldownStep() {
-        return rampUsersPerSec(maxRps).to(0).during(stepDuration).randomized();
+        return rampUsersPerSec(maxRps).to(0).during(RampProfile.rampDuration(stepDuration)).randomized();
     }
 
     private HttpProtocolBuilder httpProtocolBuilder() {

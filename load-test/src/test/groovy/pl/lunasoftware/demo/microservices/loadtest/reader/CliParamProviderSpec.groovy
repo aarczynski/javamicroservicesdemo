@@ -66,7 +66,7 @@ class CliParamProviderSpec extends Specification {
         def actual = CliParamProvider.readStepDuration()
 
         then:
-        actual == Duration.ofSeconds(60)
+        actual == Duration.ofMinutes(3)
     }
 
     def "should read stepDuration in seconds"() {
