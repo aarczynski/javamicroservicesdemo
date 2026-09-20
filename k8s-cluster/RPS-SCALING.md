@@ -7,8 +7,15 @@ change measurably moves the ceiling, don't let it rot into a second handoff.
 
 ## Current state
 
-**1200 RPS sustained, 0% KO, p99=24ms** (`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests).
-**1500 RPS is not yet clean** — see [Current bottleneck](#current-bottleneck-1500-rps) below.
+**1200 RPS sustained, 0% KO** — re-confirmed 2026-09-20 (`maxRps=1200 ramps=1 stepDuration=60s`, 90,000 requests,
+p99=359ms/mean=20ms; the original p99=24ms figure below used a longer 3-minute-step profile, see [Methodology
+lessons](#methodology-lessons-apply-to-future-rounds) for why short steps are now preferred against this cluster).
+This had regressed to 5-40% KO for most of 2026-09-20 after reducing generic workers from 4 to 3 for a 3rd
+observability node — fixed by fix #9 below (freed a 3rd, unused database node instead, plus a hard one-pod-per-node
+anti-affinity so the fix survives future restarts). The original **1200 RPS sustained, 0% KO, p99=24ms**
+(`maxRps=1200 ramps=3 stepDuration=3m`, 486,000 requests) result is preserved below as the historical reference.
+**1500 RPS is not yet clean** — see [Current bottleneck](#current-bottleneck-1500-rps) below; not re-attempted since
+the regression above, worth another look now that the node-sharing confound is gone.
 
 ## What got us from ~600rps to 1200rps clean
 
@@ -161,6 +168,66 @@ Not yet implemented — pick one (or both) in a future session:
    the version-pinning discipline in the root `CLAUDE.md`) or an unsupported direct edit of the auto-generated
    `CiliumEnvoyConfig`, which Cilium's Gateway controller can silently revert on its own reconciliation.
 
+### 9. Hard pod anti-affinity: one app replica per node, guaranteed (2026-09-20)
+
+Repurposing a generic worker as a 3rd observability node (fix #10 below) dropped the pool from 4 workers to 3 for
+4 total app pods (2 candidates + 2 job-offers) — the scheduler's default spreading is a soft preference, not a
+guarantee, and it put one `app-candidates` and one `app-job-offers` replica on the same node. Measured consequences:
+- **~10x CPU-throttling gap** (`container_cpu_cfs_throttled_seconds_total`) on the shared-node pod vs. a dedicated one.
+- **A self-reinforcing Gateway connection-imbalance**: at clean latency, 1200rps only needs ~30-50 concurrent
+  connections (Little's Law: connections ≈ rate × latency), a small enough sample that per-connection round-robin
+  luck can visibly skew. Any small slowdown (the throttling above) raises latency, which raises the connections
+  needed, which amplifies the existing skew, which slows the loaded pod further — a feedback loop that produced an
+  87/13 CPU split between two identical `app-candidates` replicas and repeated `HikariPool "failed to obtain
+  connection"` errors, at an RPS level that had been clean for the entire rest of this session.
+
+Root-caused by elimination, not guesswork — checked and ruled out in this order: the job-offers query split (fix #6;
+re-tested with the pre-split query from `main`, which was worse, not better, at the same RPS), Gateway/Envoy latency
+between nodes (pinged from the Gateway-announcing node to both candidates' nodes, difference was measurement noise),
+node CPU capacity in isolation (`kubectl top`/Grafana panels showing "65% usage, 105% commitment" looked survivable
+until cross-checked against the JVM's own near-instantaneous `jvm_cpu_recent_utilization_ratio`, which showed both
+JVMs on the shared node fully pegged at their 2-core limit — the Kubernetes-panel "CPU Usage by Pod/Node" queries
+use a 5-minute `rate()` window that dilutes a short 1-2 minute test's peak by 2-3x, i.e. don't trust those two panels
+for anything shorter than ~10 minutes).
+
+**Fix:** freed a 3rd database node instead (`db-3`, the project only ever runs 2 Postgres instances, so 3 was
+pre-existing headroom, not a real need) and repurposed it as `worker-4` — no need to give back the observability
+node. Combined with a hard `podAntiAffinity` (`requiredDuringSchedulingIgnoredDuringExecution`, matching on
+`app in (app-candidates, app-job-offers)`, `topologyKey: kubernetes.io/hostname`) on both deployments, so the
+one-pod-per-node placement is guaranteed by the API server, not the scheduler's default heuristics or luck after a
+restart. CPU limits raised 2→3 on both apps to use the now-dedicated node's headroom (leaving 1 core margin for
+per-node DaemonSets — going to the full 4 risks the same >100%-commitment problem fix #10 already found once).
+
+**Two more real bugs found deploying this anti-affinity, both fixed the same day:**
+- `podAntiAffinity` defaults to the scheduled pod's *own* namespace when `namespaces` is omitted from the
+  `labelSelector` term. `app-candidates` (namespace `candidates`) and `app-job-offers` (namespace `job-offers`) never
+  saw each other under the first version of this rule — same-app self-avoidance worked, cross-app avoidance silently
+  did nothing, and two pods still landed on one node. Fixed by adding an explicit `namespaces: [candidates,
+  job-offers]` to the term on both deployments.
+- The default `RollingUpdate` strategy (`maxSurge: 25%`) tries to briefly run a surge pod during any rollout —
+  with the hard anti-affinity above and exactly one node per replica, there is no valid node for that surge pod, and
+  the rollout deadlocks (`0/12 nodes are available: 4 node(s) didn't match pod anti-affinity rules`) until a human
+  deletes an old pod by hand. Fixed by setting `strategy.rollingUpdate: {maxSurge: 0, maxUnavailable: 1}` on both
+  deployments — a rollout now always frees a node before claiming it, never both at once.
+
+**Result:** 1200rps, 90,000 requests, 0% KO, p99=359ms (mean 20ms) — clean, and CPU usage between the two replicas of
+each app now nearly identical (candidates: 299m/325m; job-offers: 482m/440m — compare to the 87/13 split before).
+
+**Postgres got the same one-instance-per-node treatment for the same reason**, applied same-day: `postgres-candidates`
+and `postgres-job-offers` were already each the only workload on their node (`db-1`/`db-2`), so there was no sharing
+to fix, but CPU limit was raised 2→3 on `postgres-candidates` (`postgres-job-offers` already had 3, from the
+2026-09-11 fix) to use the now-uncontested headroom, matching the apps' limit. Historical note: an earlier plan had
+3 database nodes for 2 Postgres instances specifically for *replication/redundancy* (every node holding data for
+both services) — never implemented, and explicitly **not** being revisited now; today's fix is a single instance
+per service on a single dedicated node, nothing more.
+
+> **The headline lesson of this whole incident: on this hardware, one JVM (or Postgres) per physical node is not an
+> optimization — it's a correctness requirement.** A single RPi5's 4 cores cannot reliably host two independent,
+> CPU-hungry processes at once without one measurably starving the other, and that starvation can cascade (via
+> Little's Law) into a load-balancing failure far more dramatic than the CPU numbers alone suggest. Whenever
+> capacity work on this cluster considers adding a workload to an already-occupied node — instead of a dedicated
+> one — treat that as the default wrong answer, not a convenient shortcut.
+
 ## Methodology lessons (apply to future rounds)
 
 - **Test one variable at a time under real concurrent load.** A bundled test of two changes can make a working fix
@@ -178,3 +245,15 @@ Not yet implemented — pick one (or both) in a future session:
   transaction boundary.
 - **Keep load test steps short** (`stepDuration=1m` is enough) — sustaining peak RPS for many minutes is what
   overwhelms the observability pipeline, not the measurement itself.
+- **Don't trust the "CPU Usage by Pod/Node" Grafana panels when the dashboard's visible time range is much longer
+  than the test itself** — they use `$__rate_interval` (correct, self-adjusting to the visible range — prefer this
+  over a hardcoded window in any new panel), but that still averages a 1-2 minute burst down to nothing if the
+  browser has a wide time range open. Narrow the dashboard to roughly the test's duration, and cross-check against a
+  near-instantaneous metric instead (`jvm_cpu_recent_utilization_ratio` for the JVMs, or `kubectl top` / Headlamp's
+  live view) before concluding a node has spare capacity.
+- **A hard `podAntiAffinity` across namespaces needs an explicit `namespaces` list on the term** — it silently
+  defaults to the scheduled pod's own namespace otherwise, so a cross-namespace rule (e.g. keeping two different
+  services' pods off the same node) can look correctly configured and simply never fire.
+- **Hard anti-affinity plus a tight node budget needs `maxSurge: 0`** on the deployment's rolling-update strategy —
+  the default `maxSurge: 25%` tries to run an extra pod during every rollout, and with no spare node satisfying the
+  anti-affinity rule, the rollout deadlocks until a human intervenes.

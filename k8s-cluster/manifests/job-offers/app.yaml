@@ -11,6 +11,14 @@ metadata:
   namespace: job-offers
 spec:
   replicas: 2
+  # See k8s-cluster/manifests/candidates/app.yaml — default maxSurge=25%
+  # deadlocks against the hard anti-affinity below when there's exactly one
+  # node per app replica and no spare capacity for a surge pod.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: app-job-offers
@@ -27,9 +35,31 @@ spec:
         options:
           - name: ndots
             value: "1"
+      # One pod per node, guaranteed — see k8s-cluster/manifests/candidates/app.yaml
+      # for the full rationale (measured ~10x CPU-throttling gap + a
+      # self-reinforcing Gateway connection-imbalance from two app replicas
+      # sharing a node, see k8s-cluster/RPS-SCALING.md).
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - app-candidates
+                      - app-job-offers
+              # See k8s-cluster/manifests/candidates/app.yaml — without this,
+              # the rule defaults to this pod's own namespace and never sees
+              # app-candidates (different namespace), so cross-app avoidance
+              # silently doesn't happen.
+              namespaces:
+                - candidates
+                - job-offers
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: app-job-offers
-          image: 192.168.10.190:5000/app-job-offers:69206da
+          image: 192.168.10.190:5000/app-job-offers:d30c537
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request).
@@ -81,7 +111,7 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: "2"
+              cpu: "3"
               memory: 1536Mi
 
 ---
