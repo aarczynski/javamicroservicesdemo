@@ -15,7 +15,18 @@ services:
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_BSP_SCHEDULE_DELAY: "1000"
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      # false, not true: the Micrometer bridge and the agent's native JVM semconv
+      # instrumentation both export metrics under the same names (e.g.
+      # jvm.memory.committed) with different types/sources, which clashes and can
+      # corrupt the export - confirmed live 2026-09-20 as the cause of
+      # jvm_cpu_recent_utilization_ratio getting stuck at a flat 0 after its first
+      # real sample. Known, closed-as-not-planned upstream issue:
+      # https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122
+      # ("your best option is not to enable both of these instrumentations at the
+      # same time"). Nothing here actually reads Micrometer-named metrics (every
+      # panel queries the native semconv names), so there's no downside to leaving
+      # it off.
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
       JOB_OFFERS_URL: "http://app-job-offers:8080"
     ports:
@@ -55,7 +66,8 @@ services:
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_BSP_SCHEDULE_DELAY: "1000"
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      # See app-candidates above for why this is false, not true.
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
       - "8081:8080"
