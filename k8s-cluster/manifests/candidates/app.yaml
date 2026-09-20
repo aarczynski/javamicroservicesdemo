@@ -104,7 +104,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-candidates
-          image: 192.168.10.190:5000/app-candidates:81949a9
+          image: 192.168.10.190:5000/app-candidates:aeb84de
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every
