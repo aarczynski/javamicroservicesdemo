@@ -8,11 +8,17 @@ spec:
     - default-pool
 
 ---
-# Restricts the Gateway's L2 announcement to the two nodes tainted
-# role=platform:NoSchedule (platform-1/platform-2, renamed from
-# worker-1/worker-2 2026-09-14) — see ip-address-pool.yaml for why this IP
-# got its own pool, and CLAUDE.md's node/taint table for the platform vs
-# generic-worker split.
+# Restricts the Gateway's L2 announcement to the node tainted
+# role=platform:NoSchedule (platform-1, renamed from worker-1 2026-09-14) —
+# see ip-address-pool.yaml for why this IP got its own pool, and CLAUDE.md's
+# node/taint table for the platform vs generic-worker split.
+#
+# platform-2 dropped from this list 2026-09-20: MetalLB's L2 mode is
+# active-passive per IP, so platform-2 was never actually carrying Gateway
+# traffic (measured near-idle, ~1.8% CPU, even at 1200rps) — a dedicated
+# failover node wasn't earning its keep, so it was repurposed to worker-5
+# instead (see inventory.ini). No failover for `.100` anymore; accepted
+# trade-off, not an oversight.
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
@@ -27,4 +33,3 @@ spec:
           operator: In
           values:
             - k8s-rpi-platform-1
-            - k8s-rpi-platform-2
