@@ -69,7 +69,18 @@ datasources:
         editable: false
         jsonData:
           httpMethod: GET
-          timeInterval: "1s"
+          # Must match Prometheus's real global scrape_interval (1m, see
+          # `values-prometheus.yaml`'s chart default / `curl .../api/v1/status/config`),
+          # not a guessed/rounded value. Grafana uses this to compute $__rate_interval
+          # as max($__interval + timeInterval, 4 * timeInterval) for every rate()/irate()
+          # panel. The previous "1s" made $__rate_interval collapse to a few seconds on
+          # most dashboard time ranges — far below the real 1m scrape spacing, so rate()
+          # queries had zero chance of ever seeing 2 samples in-window. Confirmed live
+          # 2026-09-20: identical query returns 12 series with a literal [5m] window but
+          # 0 series with [1m], while instant-vector panels (no rate()) were unaffected —
+          # exactly the pattern of the "CPU Usage by Pod/Node"/"CPU Throttling" dashboard
+          # panels reported as "No data" (see .claude/handoff-k8s-rpi-cluster.md).
+          timeInterval: "1m"
       - name: Loki
         type: loki
         uid: loki
