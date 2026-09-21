@@ -20,6 +20,14 @@ App to analyze distributed microservices system and DB performance using Gatling
 * **observability** - dashboards showing app performance and logs in Grafana. OTEL agent exports data to OTEL collector.
   It pushes data to proper backends. Prometheus gathers metrics from Spring Boot Actuator and Micrometer.
   Loki is used for aggregating logs. Tempo gathers traces about methods time execution.
+* **otel-metrics-filter** - a small OpenTelemetry javaagent extension (loaded via `OTEL_JAVAAGENT_EXTENSIONS`, not a
+  library dependency of either app). The agent's native JVM instrumentation and the Micrometer bridge (needed for
+  `hikaricp_*` connection pool metrics, which have no native equivalent) both export `jvm.*` metrics under the same
+  names, which clashes and gets `jvm_cpu_recent_utilization_ratio` stuck at a flat 0
+  ([opentelemetry-java-instrumentation#11122](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122)).
+  This extension drops just the Micrometer bridge's `jvm.*` metrics before export, so native instrumentation stays
+  the sole source of `jvm.*` and the bridge stays the sole source of everything else — both CPU and Hikari metrics
+  work at once. See the module's `MicrometerJvmMetricFilterCustomizer` for the implementation.
 
 ```mermaid
 flowchart LR
@@ -282,6 +290,14 @@ Override `targetHost`, `candidatesDataFile`, or load profile parameters:
 make candidateSimulation targetHost=http://192.168.0.140:8080 candidatesDataFile=/path/to/01-candidates.sql
 ```
 
+**Against minikube**, use `targetHost=http://localhost:30080` — the real, Kubernetes-load-balanced NodePort (see
+[Real load balancing on minikube](#real-load-balancing-on-minikube)), not the default `localhost:8080`, which on
+minikube is `kubectl port-forward` locked onto a single pod and would never spread load across replicas:
+
+```shell
+make candidateSimulation targetHost=http://localhost:30080 candidatesDataFile=/path/to/01-candidates.sql
+```
+
 Quick smoke test (peak 20 RPS, 1.5 min total, `stepDuration=30s` is below the 1-minute
 cap so it's a continuous ramp with no held peak):
 
@@ -491,20 +507,46 @@ pushing to the RPi cluster:
 | Command | What it does |
 |---|---|
 | `make minikube-rebuild-all` | Bare → running cluster: Cilium/Gateway/MetalLB, full observability stack, apps+Postgres+load-background, Flyway's own demo data (no data-generator load) |
+| `make minikube-start` | Cluster was `minikube-stop`'d (not deleted) and already has everything deployed — starts it and restores port-forwarding, nothing to rebuild. Also the first step of `minikube-rebuild-all` |
 | `make minikube-image` | Rebuild app-candidates/app-job-offers/load-background and load them straight into minikube's image cache (no registry, not even ghcr.io — see [`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md)). Chained into `minikube-rebuild-all`; run standalone after changing app source, then `minikube-deploy` |
 | `make minikube-deploy` | Day-to-day: redeploy the apps after a manifest change |
 | `make minikube-load-data` | Load real generated data (`make minikube-reload-data` to force a reload) — skipped by the two above since it's slow |
-| `make minikube-tunnel` | Real Gateway/MetalLB IP on the host instead of forwarded ports (needs sudo) |
+| `make minikube-tunnel` | Real Gateway/MetalLB IP on the host, with actual load balancing across replicas (needs sudo, blocks the terminal — run it in its own terminal window and leave it open, same as `minikube tunnel` itself recommends) |
 | `make minikube-stop` | Stop the cluster — data stays |
 | `make minikube-delete` | Delete the cluster — data goes too |
 
-`minikube-rebuild-all` and `minikube-deploy` both end by port-forwarding everything to the Mac **in the background**
+`minikube-start`, `minikube-rebuild-all` and `minikube-deploy` all end by port-forwarding everything to the Mac **in the background**
 and returning immediately — the terminal stays free, no second command needed to get access:
 
-* `http://localhost:8080` — `app-candidates`
+* `http://localhost:8080` — `app-candidates` (straight to one pod behind the Service — fine for hitting the API, not for a load test that's supposed to spread across replicas; use `http://localhost:30080` below for that)
 * `http://localhost:3000` — Grafana (anonymous admin)
 * `http://localhost:4466` — Headlamp (no login)
 * `http://localhost:4040` — Hubble UI (live network traffic/flows)
+
+#### Real load balancing on minikube
+
+`http://localhost:30080` is `app-candidates` behind a real, Kubernetes-load-balanced path (kube-proxy replacement,
+via Cilium) — traffic spreads across every replica, unlike the single-pod `localhost:8080` port-forward above.
+Nothing to start, nothing to leave running: `minikube start --ports=30080:30080`
+([`minikube-start.sh`](k8s-cluster/scripts/minikube-start.sh)) publishes that container port straight to
+`127.0.0.1` on the host, permanently, at container-creation time — docker-driver-only, no sudo, no separate
+process. Paired with a fixed `NodePort` Service, `app-candidates-lb`
+([`k8s-cluster/manifests/overlays/minikube/nodeport-candidates.yaml`](k8s-cluster/manifests/overlays/minikube/nodeport-candidates.yaml)),
+`nodePort: 30080` — deliberately a plain Service of our own, not the Gateway's auto-generated LoadBalancer one
+(`cilium-gateway-api-gateway`), which gets a random nodePort from Kubernetes on every recreation and can't easily be
+pinned to match a fixed `--ports` flag.
+
+`--ports` only takes effect when the container is created, so changing it needs `minikube delete` first — it can't
+be applied to an already-running minikube with `minikube start` alone.
+
+`make minikube-tunnel` still exists for the one thing `localhost:30080` doesn't cover: the *actual* Gateway/MetalLB
+path (`http://192.168.49.90`, HTTPRoute and all — see [`gateway.yaml`](k8s-cluster/manifests/overlays/minikube/gateway.yaml)),
+if you specifically need to exercise that instead of a plain NodePort. It's a separate, manual, foreground command
+(needs sudo, blocks the terminal — run it in its own terminal window and leave it open, same as `minikube tunnel`
+itself recommends), deliberately not chained into `minikube-start`: `minikube tunnel` shells out to sudo separately
+for each privileged-port (80) service as it starts them, not once up front, so wrapping the whole thing in a single
+non-interactive `sudo` (tried and reverted 2026-09-21) leaves it stuck with no route ever added — those inner sudo
+calls have no terminal to prompt on.
 
 `minikube-stop`/`minikube-delete` stop the forwards too, along with the cluster. See
 [`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md) for what's

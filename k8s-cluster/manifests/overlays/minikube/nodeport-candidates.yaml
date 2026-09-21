@@ -1,0 +1,27 @@
+# Real load-balanced access to app-candidates from the host, persistent across
+# minikube restarts, no `minikube tunnel`/sudo needed at all: a plain NodePort
+# Service (not the Gateway's auto-generated LoadBalancer one - that gets a
+# random nodePort from Kubernetes on every recreation, see minikube's own
+# README section "LoadBalancer / real load balancing" for why this exists as
+# a separate object instead of trying to pin the Gateway's).
+#
+# Paired with `--ports=30080:30080` on `minikube start` (minikube-start.sh) -
+# minikube's docker driver publishes that container port straight to
+# 127.0.0.1 on the host at container-creation time, so nodePort 30080 here
+# must match exactly. Kubernetes' own load balancing (kube-proxy replacement,
+# via Cilium here) spreads traffic across all app-candidates replicas, unlike
+# `kubectl port-forward`, which locks onto one pod for the life of the
+# forward.
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-candidates-lb
+  namespace: candidates
+spec:
+  type: NodePort
+  selector:
+    app: app-candidates
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080

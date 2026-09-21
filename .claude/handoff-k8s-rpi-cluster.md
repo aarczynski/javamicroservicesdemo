@@ -55,13 +55,52 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
      serie z `io.opentelemetry.micrometer-1.5` to tylko widmowe próbki z usuniętych podów, wygasną same);
      `jvm_cpu_recent_utilization_ratio` faluje normalnie na wszystkich 5 instancjach (`query_range` na nowych
      instance ID — brak flat 0).
-   - **Minikube**: dziedziczy z bazowych manifestów (patrz niżej, bez zmian) — **nie zweryfikowane w tej sesji**,
-     do zrobienia: `make minikube-rebuild-all` + sprawdzenie dashboardu JVM.
-   - **Docker Compose**: zmiana zrobiona w `compose.yml`, **`docker compose up` i weryfikacja dashboardu JVM nie
-     zrobione w tej sesji.**
+   - **Minikube**: dziedziczy z bazowych manifestów — **zweryfikowane wieczorem 2026-09-21** (patrz notatka
+     "SUPERSEDOWANE" niżej dla finalnej wersji z `otel-metrics-filter`, nie tym pierwotnym "oba false").
+   - **Docker Compose**: zmiana zrobiona w `compose.yml`, **`docker compose up` i weryfikacja dashboardu JVM dalej
+     nie zrobione — jedyne środowisko z 3 bez live weryfikacji.**
    **Lekcja ogólna**: przy instrumentacjach OTel javaagent zawsze sprawdzać `metadata.yaml` konkretnego modułu w
    repo upstream zamiast zgadywać po nazwie zmiennej środowiskowej co dana flaga robi — nazwy takie jak
    `SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED` nie sugerują że to one kontrolują bridge metryk.
+
+   **[SUPERSEDOWANE tego samego dnia, 2026-09-21 wieczorem] "Oba `false`" był kompromisem (poprawny CPU, martwe
+   `hikaricp_*` na dashboardzie Postgresa — Hikari Pool/Pending Connections), nie finalnym rozwiązaniem.**
+   Użytkownik chciał obu naraz. Sprawdzone: nie da się tego osiągnąć samą flagą — SDK OTel nie ma dla samodzielnego
+   javaagenta żadnego wbudowanego mechanizmu filtrowania metryk po nazwie/scope (`otel.experimental.metrics.view.config`
+   istnieje tylko dla OTel Spring Boot Startera, którego tu nie ma). Jedyny działający, oficjalnie wspierany sposób:
+   **własne rozszerzenie javaagenta** — nowy moduł Gradle `otel-metrics-filter/`
+   (`MicrometerJvmMetricFilterCustomizer implements AutoConfigurationCustomizerProvider`,
+   `addMetricExporterCustomizer`), które odrzuca metryki `jvm.*` **tylko** ze scope'u `io.opentelemetry.micrometer-1.5`
+   tuż przed eksportem — natywna instrumentacja zostaje jedynym źródłem `jvm.*` (wszystkie 38 nazw, bez strat),
+   most Micrometer zostaje jedynym źródłem `hikaricp.*` i reszty. Podpięte przez `OTEL_JAVAAGENT_EXTENSIONS=./otel-metrics-filter.jar`
+   + z powrotem `OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED=true`. Zweryfikowane empirycznie
+   (dwukrotnie, po tym jak pierwszy test złapał stary, niezaktualizowany obraz w cache minikube — patrz pułapka
+   `minikube image load` niżej): `jvm_cpu_recent_utilization_ratio` faluje normalnie na wszystkich instancjach na
+   **obu** klastrach (RPi i minikube), `hikaricp_connections_active` ma dane na obu. Jar kopiowany do obrazu obok
+   agenta (`build.gradle`: `copyOtelMetricsFilter`, Dockerfile: `COPY ./build/otel-agent/otel-metrics-filter.jar ./`).
+   Wdrożone i zacommitowane na stałe na RPi i minikube — nie tymczasowy eksperyment.
+   **Pułapka po drodze**: `minikube image load` (nawet z domyślnym `--overwrite=true`) potrafi cicho **nie**
+   odświeżyć zawartości tagu `:local` w wewnętrznym cache Dockera minikube, mimo zgłoszenia sukcesu — appka w
+   podach dalej używała pliku jara sprzed całej sesji (`ls -la /app/` pokazywał starą datę), fałszywie sugerując że
+   fix nie działa. Fix: `minikube image rm <tag>` (jawnie, ignorować błąd "must force" o kontenerach wciąż
+   używających starego obrazu — to tylko potwierdza że stare kontenery żyją) → `minikube image load <tag>` ponownie
+   → `kubectl rollout restart` żeby pody faktycznie przeszły na nowy obraz. Zawsze weryfikować `ls -la /app/` w
+   świeżym podzie po `minikube-image` + redeploy, nie ufać samemu komunikatowi sukcesu skryptu.
+
+   **[ZROBIONE, 2026-09-21] Trwały load balancer na minikube, bez `minikube tunnel`.** Load test przez
+   `kubectl port-forward` (`localhost:8080`) zawsze trafia w **jeden** konkretny pod (wybrany raz, przy starcie
+   forwarda) — realny problem, gdy chce się przetestować rozkład ruchu na repliki. `minikube tunnel` w tle
+   (background wrapper przez `sudo -n`) okazał się niedziałający — `minikube tunnel` osobno woła `sudo` dla
+   **każdego** serwisu z portem uprzywilejowanym (80), nie raz na starcie, więc nie da się tego bezpiecznie
+   owinąć jednym nieinteraktywnym `sudo` (próba i wycofanie tego samego dnia, patrz git log). Zamiast tego:
+   `minikube start --ports=30080:30080` (driver Docker publikuje port kontenera na hosta **trwale**, przy
+   tworzeniu kontenera — bez sudo, bez tunelu, bez terminala trzymanego otwartym) + własny, jawny `NodePort`
+   Service `app-candidates-lb` (`k8s-cluster/manifests/overlays/minikube/nodeport-candidates.yaml`, `nodePort: 30080`
+   na sztywno) — **nie** Service generowany automatycznie przez Gateway (`cilium-gateway-api-gateway`), bo ten
+   dostaje losowy nodePort przy każdym odtworzeniu, nie da się go przypiąć do stałej wartości `--ports`.
+   `--ports` działa tylko przy tworzeniu kontenera — wymaga `minikube delete` + rebuild, nie da się dodać do już
+   działającego minikube. Zweryfikowane żywe: różne pody dostają ruch przy kolejnych requestach (nie ten sam pod
+   w kółko jak przy porcie 8080).
 
 1. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
    "Cluster-Wide Workload Creation" — zadziałało na "rób sam"), na `platform-1`. `hpa.yaml` (`candidates`) na RPS
@@ -206,7 +245,16 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   rozwiązuje problemu. Fix: dla każdego z 4 ID z komunikatu błędu — `sudo ctr -n k8s.io tasks kill -s SIGKILL <id>`
   → `sudo ctr -n k8s.io tasks rm <id>` → `sudo ctr -n k8s.io containers delete <id>` — zwalnia rezerwację nazwy,
   kubelet od razu tworzy czysty kontener (parosekundowa przerwa w apiserverze, akceptowalna na single-masterowym
-  klastrze bez HA). Zdarzenie z 2026-09-21, pełny przebieg diagnozy w historii sesji.
+  klastrze bez HA). **Powtórzyło się identycznie przy KOLEJNYM power-cyklu tego samego dnia (2026-09-21,
+  ~1h później)** — to nie jednorazowy fluk, trzeba to robić po każdym power-cyklu całego klastra, dopóki nie
+  znajdzie się trwały fix (nieznaleziony jeszcze; podejrzenie: coś w kolejności/timingu boot-time między
+  containerd a kubelet na tym sprzęcie/OS). Fix identyczny za drugim razem (nowe ID kontenerów, sama procedura).
+  **Efekt uboczny do sprawdzenia przy każdym takim incydencie**: `cilium-operator` może wpaść w
+  `CrashLoopBackOff` przez utratę leader election w oknie, gdy apiserver był niedostępny (`"Leader election
+  lost, shutting down"` w jego logach, `dial tcp <master>:6443: connect: connection refused`) — samo się nie
+  naprawia od razu przez rosnący backoff kubeleta; `kubectl delete pod` na nim (Deployment go odtworzy) jest
+  szybsze niż czekanie na kolejny backoff. Sprawdzać `kubectl get pods -A | grep -v Running` całościowo po
+  naprawie control-plane, nie tylko 4 static pody na masterze.
 
 ### MetalLB / Gateway / sieć
 - MetalLB w trybie L2 jest **active-passive per IP** — tylko jeden node ogłasza dany adres ARP-em na raz, drugi

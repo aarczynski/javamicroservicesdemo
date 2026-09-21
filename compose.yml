@@ -14,26 +14,31 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_BSP_SCHEDULE_DELAY: "1000"
-      # false, not true: this instrumentation's ONLY effect is "configures the
+      # true, not false: this instrumentation's ONLY effect is "configures the
       # OpenTelemetry Micrometer bridge to receive metrics from Spring Boot
       # Actuator" (upstream metadata.yaml) - it is the actual Micrometer bridge,
       # not OTEL_INSTRUMENTATION_MICROMETER_ENABLED below (that one instruments an
       # app's own manually-created MeterRegistry, and was never the live bridge
-      # here). The 2026-09-20 fix disabled the wrong flag - this one was still
-      # true the whole time, still bridging, confirmed live 2026-09-21 by finding
-      # a `process_cpu_usage{otel_scope_name="io.opentelemetry.micrometer-1.5"}`
-      # series still being exported after that fix. Both instrumentations export
-      # JVM metrics under the same semconv names (e.g. jvm.memory.committed) as
-      # the agent's native instrumentation, which clashes and corrupts the export
-      # - root cause of jvm_cpu_recent_utilization_ratio getting stuck at a flat 0
-      # after its first real sample. Known, closed-as-not-planned upstream issue:
+      # here). Needed for hikaricp.* connection pool metrics (Postgres dashboard's
+      # Hikari panels), which have no equivalent in the agent's native
+      # instrumentation. Both instrumentations ALSO export jvm.* metrics under the
+      # same names (e.g. jvm.memory.committed) as the agent's native
+      # instrumentation, which clashes and corrupts the export - root cause of
+      # jvm_cpu_recent_utilization_ratio getting stuck at a flat 0 after its first
+      # real sample. Known, closed-as-not-planned upstream issue:
       # https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122
       # ("your best option is not to enable both of these instrumentations at the
-      # same time"). Nothing here actually reads Micrometer-named metrics (every
-      # panel queries the native semconv names), so there's no downside to leaving
-      # both off.
-      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: false
+      # same time") - so OTEL_JAVAAGENT_EXTENSIONS below points at
+      # otel-metrics-filter.jar (module otel-metrics-filter/), a small javaagent
+      # extension that drops jvm.* specifically from the Micrometer bridge's scope
+      # before export, leaving native instrumentation as the sole source of jvm.*
+      # and the bridge as the sole source of everything else (hikaricp.*, etc).
+      # Confirmed live 2026-09-21: without the extension, re-enabling this flag
+      # reproduces the stuck-at-0 bug within seconds; with it, both jvm_cpu_recent_
+      # utilization_ratio and hikaricp_connections_active work simultaneously.
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
+      OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
       JOB_OFFERS_URL: "http://app-job-offers:8080"
     ports:
@@ -72,9 +77,11 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_BSP_SCHEDULE_DELAY: "1000"
-      # See app-candidates above for why both of these are false, not true.
-      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: false
+      # See app-candidates above for why this is true (with the extension jar),
+      # not false.
+      OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
+      OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
       - "8081:8080"

@@ -78,6 +78,10 @@ k8s-deploy-load-background: ensure-insecure-registry
 # k8s-cluster/manifests/overlays/minikube/README.md for what's deployed and
 # why each override exists.
 
+# Also re-establishes port-forwards as its last step (minikube-forward.sh
+# safely skips any service not deployed yet) - on a cluster that was
+# `minikube-stop`'d (not deleted) and already has everything on it, plain
+# minikube-start is enough to get access back, no separate command needed.
 minikube-start:
 	./k8s-cluster/scripts/minikube-start.sh
 
@@ -111,6 +115,16 @@ minikube-unforward:
 
 minikube-rebuild-all: minikube-start minikube-image minikube-bootstrap minikube-forward
 
+# Real Gateway/MetalLB LoadBalancer IP on the host (proper load balancing
+# across replicas, unlike minikube-forward's straight-to-one-pod
+# port-forwards) - blocks the terminal, needs sudo. Deliberately NOT
+# backgrounded/chained into minikube-start: `minikube tunnel` shells out to
+# sudo separately for EACH privileged-port (80) service as it starts them,
+# not once up front - wrapping the whole thing in one non-interactive
+# `sudo -n` (tried 2026-09-21) leaves it stuck with no route ever added,
+# since those inner sudo calls have no terminal to prompt on and no way to
+# know the outer process is already root. Run this in its own terminal and
+# leave it open, same as minikube itself recommends.
 minikube-tunnel:
 	KUBECONFIG=$(shell pwd)/k8s-cluster/kubeconfig-minikube MINIKUBE_HOME=$(shell pwd)/k8s-cluster/.minikube minikube tunnel
 

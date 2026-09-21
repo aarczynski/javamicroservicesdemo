@@ -1,0 +1,22 @@
+plugins {
+    id 'java'
+}
+
+group = 'pl.luna-software.demo.microservices'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+}
+
+repositories {
+    mavenCentral()
+}
+
+// compileOnly, not implementation: this jar is loaded by the OTel javaagent via
+// -Dotel.javaagent.extensions/OTEL_JAVAAGENT_EXTENSIONS, which already provides these classes
+// on its own (shaded) classpath at runtime - bundling them here would duplicate/shadow them.
+dependencies {
+    compileOnly "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:$otelSdkVer"
+    compileOnly "io.opentelemetry:opentelemetry-sdk-metrics:$otelSdkVer"
+    compileOnly "io.opentelemetry:opentelemetry-sdk-common:$otelSdkVer"
+}

@@ -3,5 +3,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 WORKDIR /app
 COPY ./build/libs/app-candidates-*.jar ./app-candidates.jar
 COPY ./build/otel-agent/opentelemetry-javaagent.jar ./
+COPY ./build/otel-agent/otel-metrics-filter.jar ./
 COPY ./docker/application.yml ./
 CMD ["java", "-jar", "./app-candidates.jar"]

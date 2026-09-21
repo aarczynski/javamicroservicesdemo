@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../../candidates
   - gateway.yaml
+  - nodeport-candidates.yaml
   - ../../job-offers
   - ../../load-background
 
@@ -59,3 +60,25 @@ patches:
         path: /spec/template/spec/nodeSelector
       - op: remove
         path: /spec/template/spec/tolerations
+  # app-candidates/app-job-offers carry a hard podAntiAffinity (added
+  # 2026-09-20 for the RPi cluster - see CLAUDE.md/RPS-SCALING.md) requiring
+  # exactly one app replica per physical node. minikube's single node can
+  # never satisfy that for more than one replica total, so every replica past
+  # the first sits Pending forever ("didn't match pod anti-affinity rules")
+  # instead of ever becoming Ready - found live 2026-09-21 rebuilding this
+  # overlay for the first time since that change landed in the base
+  # manifests. The affinity rule's whole point is multi-node distribution,
+  # which is moot on one node anyway - strip it here rather than trying to
+  # keep 3/2 replicas that can't schedule.
+  - target:
+      kind: Deployment
+      name: app-candidates
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/affinity
+  - target:
+      kind: Deployment
+      name: app-job-offers
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/affinity

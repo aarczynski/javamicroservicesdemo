@@ -104,7 +104,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-candidates
-          image: 192.168.10.190:5000/app-candidates:aeb84de
+          image: 192.168.10.190:5000/app-candidates:5792c42
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every
@@ -127,32 +127,36 @@ spec:
               value: "1000"
             - name: OTEL_BSP_SCHEDULE_DELAY
               value: "1000"
-            # false, not true: this instrumentation's ONLY effect is "configures
+            # true, not false: this instrumentation's ONLY effect is "configures
             # the OpenTelemetry Micrometer bridge to receive metrics from Spring
             # Boot Actuator" (upstream metadata.yaml) - it is the actual
             # Micrometer bridge, not OTEL_INSTRUMENTATION_MICROMETER_ENABLED below
             # (that one instruments an app's own manually-created MeterRegistry,
-            # and was never the live bridge here). The 2026-09-20 fix disabled the
-            # wrong flag - this one was still true the whole time, still
-            # bridging, confirmed live 2026-09-21 by finding a
-            # process_cpu_usage{otel_scope_name="io.opentelemetry.micrometer-1.5"}
-            # series still being exported after that fix. Both instrumentations
-            # export JVM metrics under the same semconv names (e.g.
-            # jvm.memory.committed) as the agent's native instrumentation, which
-            # clashes and corrupts the export - root cause of
+            # and was never the live bridge here). Needed for hikaricp.*
+            # connection pool metrics (Postgres dashboard's Hikari panels), which
+            # have no equivalent in the agent's native instrumentation. Both
+            # instrumentations ALSO export jvm.* metrics under the same names
+            # (e.g. jvm.memory.committed) as the agent's native instrumentation,
+            # which clashes and corrupts the export - root cause of
             # jvm_cpu_recent_utilization_ratio getting stuck at a flat 0 after its
-            # first real sample (worse right after a full cluster restart - 4/5
-            # app instances hit it that time). Known, closed-as-not-planned
-            # upstream issue:
+            # first real sample. Known, closed-as-not-planned upstream issue:
             # https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122
             # ("your best option is not to enable both of these instrumentations
-            # at the same time"). Nothing here actually reads Micrometer-named
-            # metrics (every dashboard panel queries the native semconv names),
-            # so there's no downside to leaving both off.
+            # at the same time") - so OTEL_JAVAAGENT_EXTENSIONS below points at
+            # otel-metrics-filter.jar (module otel-metrics-filter/), a small
+            # javaagent extension that drops jvm.* specifically from the
+            # Micrometer bridge's scope before export, leaving native
+            # instrumentation as the sole source of jvm.* and the bridge as the
+            # sole source of everything else (hikaricp.*, etc). Confirmed live
+            # 2026-09-21: without the extension, re-enabling this flag reproduces
+            # the stuck-at-0 bug within seconds; with it, both metrics work
+            # simultaneously.
             - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
-              value: "false"
+              value: "true"
             - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
               value: "false"
+            - name: OTEL_JAVAAGENT_EXTENSIONS
+              value: "./otel-metrics-filter.jar"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
             # Logs now go through Alloy (reads stdout directly, see
