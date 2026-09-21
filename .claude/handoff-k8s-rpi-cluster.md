@@ -257,17 +257,27 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
     connection has been closed)` + `DataSourceHealthIndicator - DataSource health check failed` (503 na
     liveness/readiness, kaskadowe restarty podów appek) w oknie ok. 21:08-21:47 — czyli Postgres sam nie wstał
     czysto/na czas, appki dobijały się do niego zanim był gotowy. **Nadal otwarte i nierozwiązane**:
-    `tempo-block-builder-0` (`observability` namespace) w CrashLoopBackOff od tego samego power cycle (13 restartów
-    w chwili pisania) — to jest realny "1 pod down" widoczny w Headlampie (patrz pułapka niżej o
-    `kube_pod_status_phase` w Grafanie, która tego nie pokazuje). Logi wyglądają na start bez błędu (`Tempo
-    started`, joina memberlist, zaczyna konsumować partycję Kafki), ale zaraz potem `OFFSET_OUT_OF_RANGE na
-    pierwszym fetchu, reset do skonfigurowanego ConsumeResetOffset` — niepotwierdzone czy to jest przyczyna
-    zawieszenia `/ready` (liveness `connection refused`/503 na `:3200/ready`), czy tylko normalny log przy resecie
-    offsetu. **Do zrobienia następna sesja**: (a) właściwa diagnoza `tempo-block-builder-0` (offset Kafki
-    faktycznie nieprawidłowy po restarcie Kafki w tym samym power cycle? sprawdzić stan topicu
-    `tempo-traces`/consumer group), (b) sprawdzić czy Postgresy (`postgres-candidates`/`postgres-job-offers`) mają
+    `tempo-block-builder-0` (`observability` namespace) w CrashLoopBackOff od tego samego power cycle (14+
+    restartów) — to jest realny "1 pod down" widoczny w Headlampie (patrz pułapka niżej o `kube_pod_status_phase`
+    w Grafanie, która tego nie pokazuje). **Root cause potwierdzony, 2026-09-22**: `OOMKilled` (exit code 137,
+    `lastState.terminated.reason=OOMKilled`), nie zawieszony `/ready` — kontener żyje tylko ok. 21s od startu do
+    zabicia. Łańcuch: startuje czysto (`Tempo started`, joina memberlist, zaczyna konsumować partycję Kafki od
+    swojego ostatniego committed offsetu `126928`) → od razu `OFFSET_OUT_OF_RANGE na pierwszym fetchu` (potwierdzone
+    przez `kafka-get-offsets.sh --time -2/-1` na topicu `tempo-traces`: dostępny zakres to `138880`-`185712` —
+    `126928` już dawno spadło poniżej `earliest` przez retencję, bo block-builder stał dłużej niż retencja Kafki
+    pozwala) → resetuje się do skonfigurowanego `ConsumeResetOffset` → **jeśli to `earliest`, próbuje dogonić
+    ~47k zaległych wiadomości (`185712-138880`) w jednym rzucie i to zapycha pamięć mimo szczodrego limitu 4608Mi**
+    (`resources.limits.memory` w StatefulSecie) — restart pętli się, bo po każdym restarcie znów próbuje tego
+    samego catch-upu i znów pada, zanim zdąży zacommitować dalej. Niepotwierdzone: czy to faktycznie proporcjonalne
+    do rozmiaru backlogu (realny memory pressure z 47k wiadomości trace'ów) czy bug w samej ścieżce catch-up w tej
+    wersji Tempo (3.0.3) niezależny od wolumenu. **Do zrobienia następna sesja**: (a) sprawdzić realny
+    `ConsumeResetOffset`/target resetu w configu block-buildera (nie widać w `tempo-config` ConfigMapie — może być
+    hardkodowany domyślny w binarce), (b) rozważyć tymczasowe podniesienie limitu pamięci żeby przepchnąć
+    jednorazowy catch-up i wyjść z pętli, (c) doprecyzować dlaczego offset `126928` w ogóle spadł poniżej retencji
+    — ile trwała przerwa w działaniu block-buildera podczas power cycle vs jak krótka jest retencja topicu
+    `tempo-traces` (do sprawdzenia w configu Kafki/Strimzi), (d) sprawdzić czy Postgresy (`postgres-candidates`/`postgres-job-offers`) mają
     sensowny `startupProbe`/kolejność startu względem appek, żeby power cycle nie generował kaskady 503 zanim baza
-    jest gotowa, (c) rozważyć czy to jeden wspólny root cause (np. węzły bazodanowe/Kafki wstają wolniej niż
+    jest gotowa, (e) rozważyć czy to jeden wspólny root cause (np. węzły bazodanowe/Kafki wstają wolniej niż
     reszta po reboot, wszystko inne dobija się za wcześnie) czy niezależne przypadki.
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
