@@ -87,6 +87,31 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    → `kubectl rollout restart` żeby pody faktycznie przeszły na nowy obraz. Zawsze weryfikować `ls -la /app/` w
    świeżym podzie po `minikube-image` + redeploy, nie ufać samemu komunikatowi sukcesu skryptu.
 
+   **[NAWRÓT #3, 2026-09-22, skorelowany z power cycle klastra — filtr NIE jest wadliwy, to wyścig przy starcie
+   JVM.** `jvm_cpu_recent_utilization_ratio` znów flat 0 na 4 z 5 instancji (obie `app-job-offers`, jedna z trzech
+   `app-candidates` — jedna złapała dokładnie wzorzec "jedna realna próbka, potem flat 0" z oryginalnego opisu buga).
+   Zanim cokolwiek zmieniono, zweryfikowano po kolei i **wykluczono** regresję configu: `otel-metrics-filter.jar`
+   fizycznie obecny w obu żywych obrazach (`kubectl exec ... ls -la /app/`), env vary na żywym Deploymencie
+   identyczne z `k8s-cluster/manifests/{candidates,job-offers}/app.yaml` (bez dryfu), logika filtra w
+   `otel-metrics-filter/src/.../MicrometerJvmMetricFilterCustomizer.java` poprawna (odrzuca `jvm.*` tylko ze
+   scope'u `io.opentelemetry.micrometer-1.5`, tuż przed eksportem). **Fix**: zwykły `kubectl delete pod` (nie
+   `rollout restart` — po prostu skasowanie, Deployment sam odtworzył) na wszystkich 5 podach — po restarcie
+   wszystkie 5 nowych instancji od razu zdrowe (`query_range` na nowych `instance` ID: faluje normalnie,
+   min 0.01-max 1.0, zero flat 0). **To NIE jest dowód, że problem jest naprawiony na stałe** — to dowód, że
+   **filtr eksportowy (`addMetricExporterCustomizer`) usuwa duplikat z payloadu, ale nie zapobiega wyścigowi na
+   poziomie SDK przy rejestracji instrumentu** między natywną instrumentacją a mostem Micrometera w momencie startu
+   JVM — dokładnie to, co [opentelemetry-java-instrumentation#11122](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122)
+   sugeruje wprost ("your best option is not to enable both of these instrumentations at the same time"). **Hipoteza
+   robocza**: wynik wyścigu zależy od obciążenia systemu w momencie startu JVM — izolowany restart pojedynczego
+   poda na skądinąd bezczynnym klastrze (ten test) idzie zdrowo praktycznie zawsze, a pełny power cycle (12 node'ów
+   bootujących jednocześnie, realny I/O+CPU contention) systematycznie trafia w złą kolejność rejestracji. Pasuje do
+   pierwszego nawrotu opisanego wyżej (linia ~32: też po `power outage`, nie po zwykłym restarcie). **Nie
+   zaimplementowane jeszcze**: trwalszy fix po stronie Spring/Micrometer — `MeterFilter.deny(...)` w becie
+   `@Bean MeterRegistryCustomizer` odrzucającym `jvm.*` **przed** rejestracją w Micrometerowym `MeterRegistry`,
+   zamiast filtrować dopiero na eksporcie. To eliminowałoby wyścig u źródła (Micrometer nigdy nie tworzy instrumentu
+   `jvm.*`, więc nie ma z czym kolidować), niezależnie od obciążenia systemu przy starcie. Do zrobienia i
+   przetestowania pod następny power cycle/restart całego klastra, zanim uznamy sprawę za faktycznie zamkniętą.
+
    **[ZROBIONE, 2026-09-21] Trwały load balancer na minikube, bez `minikube tunnel`.** Load test przez
    `kubectl port-forward` (`localhost:8080`) zawsze trafia w **jeden** konkretny pod (wybrany raz, przy starcie
    forwarda) — realny problem, gdy chce się przetestować rozkład ruchu na repliki. `minikube tunnel` w tle
@@ -193,7 +218,9 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    "danych aktualnie na klastrze" albo krok w symulacji weryfikujący próbkę ID przed testem.
 10. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
    innych maszyn w LAN; dashboard I/O dysku dla Postgresa (metryki node-exportera już są, brak paneli);
-   `postgres-exporter` (metryki natywne Postgresa — connections/cache hit/locki) nie wdrożony, świadomie odłożone.
+   `postgres-exporter` (metryki natywne Postgresa — connections/cache hit/locki) wdrożony w Docker Compose
+   (2026-09-22, dashboard `observability/grafana/provisioning/dashboards/postgres-monitoring.json`), na k8s
+   świadomie wciąż odłożone (`a2f37c7 revert(k8s): drop postgres_exporter sidecar - only asked about Compose`).
 11. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
     handoffu working tree jest czyste (wszystko z poprzednich sesji już zacommitowane/zmergowane), ale kilka
     wcześniejszych wpisów w historii tego pliku opisywało niezacommitowane zmiany — zawsze weryfikować `git status`
@@ -224,6 +251,24 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
         `kubectl patch svc cilium-gateway-api-gateway -n candidates` **po** tym jak kontroler go utworzy (wyścig
         do obsłużenia — poczekać aż istnieje), z ryzykiem że kontroler Cilium nadpisze patch przy własnej
         reconciliacji (nieprzetestowane, czy to się utrzyma).
+13. **[OTWARTE, 2026-09-22] Klaster źle wstaje po power cycle — nie tylko JVM CPU (patrz punkt 0. wyżej,
+    "NAWRÓT #3"), to szerszy wzorzec.** Ten sam power cycle, który zresetował `jvm_cpu_recent_utilization_ratio`,
+    zostawił w logach `app-candidates`/`app-job-offers` `HikariPool-1 - Failed to validate connection ... (This
+    connection has been closed)` + `DataSourceHealthIndicator - DataSource health check failed` (503 na
+    liveness/readiness, kaskadowe restarty podów appek) w oknie ok. 21:08-21:47 — czyli Postgres sam nie wstał
+    czysto/na czas, appki dobijały się do niego zanim był gotowy. **Nadal otwarte i nierozwiązane**:
+    `tempo-block-builder-0` (`observability` namespace) w CrashLoopBackOff od tego samego power cycle (13 restartów
+    w chwili pisania) — to jest realny "1 pod down" widoczny w Headlampie (patrz pułapka niżej o
+    `kube_pod_status_phase` w Grafanie, która tego nie pokazuje). Logi wyglądają na start bez błędu (`Tempo
+    started`, joina memberlist, zaczyna konsumować partycję Kafki), ale zaraz potem `OFFSET_OUT_OF_RANGE na
+    pierwszym fetchu, reset do skonfigurowanego ConsumeResetOffset` — niepotwierdzone czy to jest przyczyna
+    zawieszenia `/ready` (liveness `connection refused`/503 na `:3200/ready`), czy tylko normalny log przy resecie
+    offsetu. **Do zrobienia następna sesja**: (a) właściwa diagnoza `tempo-block-builder-0` (offset Kafki
+    faktycznie nieprawidłowy po restarcie Kafki w tym samym power cycle? sprawdzić stan topicu
+    `tempo-traces`/consumer group), (b) sprawdzić czy Postgresy (`postgres-candidates`/`postgres-job-offers`) mają
+    sensowny `startupProbe`/kolejność startu względem appek, żeby power cycle nie generował kaskady 503 zanim baza
+    jest gotowa, (c) rozważyć czy to jeden wspólny root cause (np. węzły bazodanowe/Kafki wstają wolniej niż
+    reszta po reboot, wszystko inne dobija się za wcześnie) czy niezależne przypadki.
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
@@ -298,6 +343,15 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   to appka/Cilium/apiserver.
 
 ### Observability / Tempo / dane
+- **Grafana "Running Pods" (`kubernetes-cluster-dashboard`) i Headlamp mogą się rozjeżdżać dla poda w
+  CrashLoopBackOff — to nie bug dashboardu, tylko inna metryka.** Panel liczy
+  `count(kube_pod_status_phase{phase="Running"} == 1)` — **faza poda**, nie gotowość kontenera. Pod w
+  CrashLoopBackOff zostaje w fazie `Running` między restartami (kubelet go faktycznie odpala, tylko kontener zaraz
+  pada), więc licznik go nie odejmuje. Headlamp czyta `containerStatuses[].ready` (per-kontener), co poprawnie
+  pokazuje `false`. Znalezione 2026-09-22: `tempo-block-builder-0` crash-looping, Headlamp poprawnie pokazywał
+  "1 down", Grafana dalej liczyła "111 up" (zgadza się z realną liczbą podów w klastrze — tylko "Running" nie
+  znaczy "zdrowy"). Do poprawy kiedyś: `kube_pod_container_status_ready` zamiast `kube_pod_status_phase` złapałby
+  ten przypadek, ale nie zrobione teraz (poza zakresem sesji).
 - **Tempo 3.x w trybie mikroserwisowym (`tempo-distributed`) wymaga Kafki** — to twardy wymóg architektury, nie
   opcja do wyłączenia. Monolityczny single-binary chart Tempo utknął na appVersion 2.10.8 i nigdy nie dostanie
   configu pod schemat Tempo 3.x (`app.Config` przebudowany od zera) — jedyna droga do Tempo 3.x to `tempo-distributed`.
