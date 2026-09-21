@@ -198,6 +198,32 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
     handoffu working tree jest czyste (wszystko z poprzednich sesji już zacommitowane/zmergowane), ale kilka
     wcześniejszych wpisów w historii tego pliku opisywało niezacommitowane zmiany — zawsze weryfikować `git status`
     zamiast ufać starym zapiskom.
+12. **[NASTĘPNA SESJA, na minikube] `app-candidates-lb` (NodePort 30080, dodany 2026-09-21) nie rozkłada ruchu tak
+    równo jak wcześniejszy Gateway/`minikube tunnel` — pod load testem (Gatling, 2000rps) czasem tylko 2 z 3
+    instancji candidates dostają ruch, zaobserwowane live przez użytkownika.** Root cause: to różnica warstwy, nie
+    bug. NodePort Service (kube-proxy-replacement, Cilium eBPF) to czysty **L4** — jedno połączenie TCP przypina
+    się do jednego poda na cały czas swojego życia, bez świadomości HTTP. Wcześniejszy Gateway (Envoy, generowany
+    przez Cilium jako `cilium-gateway-api-gateway`) to **L7** — Envoy terminuje połączenie klienta i sam zarządza
+    własnymi połączeniami do backendów, rozkładając **per request**, nie per połączenie — stąd wcześniej (przez
+    tunnel) równy rozkład nawet z małą pulą połączeń. Gatling używa `.shareConnections()`
+    (`load-test/src/gatling/java/.../CandidateSimulation.java:124`, komentarz w kodzie: potrzebne powyżej ~300rps
+    żeby nie wyczerpać puli portów efemerycznych na Macu) — dzieli WSZYSTKIE virtual usery przez wspólną, niewielką
+    pulę trwałych połączeń, więc przy L4 nierówny rozkład jest statystycznie prawdopodobny. Dokładny rozmiar tej
+    puli **nieustalony** — `gatling.conf` nic nie ustawia (brak `maxConnectionsPerHost`), więc to defaulty
+    Gatling/AsyncHttpClient; nie potwierdzone empirycznie (próba pomiaru żywych połączeń przez `/proc/net/tcp`
+    złapała głównie szum od ciągłego ruchu `load-background`, nie samego testu — do zrobienia precyzyjnie: pomiar
+    **w trakcie** aktywnego load testu, nie po fakcie).
+    **Opcje do rozważenia (nie zrealizowane, decyzja z użytkownikiem odłożona)**:
+    - Zostawić jak jest — L4 wciąż lepszy niż `kubectl port-forward` (który zawsze bije w jeden konkretny pod, zero
+      rozkładu), tylko nie idealnie równy.
+      - Przypiąć `30080` do Gateway'a (Envoy) zamiast własnego bypassu `app-candidates-lb` — dałoby z powrotem
+        rozkład per-request jak przy tunelu. Problem: `cilium-gateway-api-gateway` to Service generowany
+        dynamicznie przez kontroler Gateway API Cilium (nie z YAML aplikowanego przez nas), dostaje **losowy**
+        nodePort przy każdym odtworzeniu — nie da się go przypiąć przez `kustomize` (patche kustomize działają
+        tylko na zasoby z własnej listy `resources:`, a ten nim nie jest). Wymagałoby osobnego kroku
+        `kubectl patch svc cilium-gateway-api-gateway -n candidates` **po** tym jak kontroler go utworzy (wyścig
+        do obsłużenia — poczekać aż istnieje), z ryzykiem że kontroler Cilium nadpisze patch przy własnej
+        reconciliacji (nieprzetestowane, czy to się utrzyma).
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
