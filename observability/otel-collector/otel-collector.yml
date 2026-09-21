@@ -6,6 +6,22 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+  # Native Postgres metrics (postgres_exporter, one per DB instance) - pulled
+  # here rather than adding a scrape config to Prometheus itself, keeping
+  # Prometheus config-free and everything flowing through this one collector
+  # (matches how app metrics arrive: push via the otlp receiver above, not a
+  # Prometheus-side scrape).
+  prometheus/postgres_exporters:
+    config:
+      scrape_configs:
+        - job_name: postgres-candidates
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["postgres-exporter-candidates:9187"]
+        - job_name: postgres-job-offers
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["postgres-exporter-job-offers:9187"]
 
 connectors:
   span_metrics:
@@ -52,7 +68,7 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [otlp, span_metrics]
+      receivers: [otlp, span_metrics, prometheus/postgres_exporters]
       processors: [batch/metrics]
       exporters: [prometheusremotewrite]
     traces:

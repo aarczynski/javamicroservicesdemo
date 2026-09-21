@@ -140,6 +140,40 @@ services:
         limits:
           cpus: "2.00"
 
+  # Native Postgres metrics (connections, cache hit ratio, locks, transaction
+  # rate) - server-side, complementary to app-candidates'/app-job-offers'
+  # client-side hikaricp_* pool metrics (see OTEL_JAVAAGENT_EXTENSIONS above
+  # for why those need otel-metrics-filter.jar to coexist with a correct JVM
+  # CPU metric). Not on the k8s clusters yet either - deliberately deferred
+  # there (see .claude/handoff-k8s-rpi-cluster.md), added here first.
+  postgres-exporter-candidates:
+    container_name: postgres-exporter-candidates
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:password@postgres-candidates:5432/app-candidates-db?sslmode=disable"
+    depends_on:
+      postgres-candidates:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:9187/metrics >/dev/null" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres-exporter-job-offers:
+    container_name: postgres-exporter-job-offers
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:password@postgres-job-offers:5432/app-job-offers-db?sslmode=disable"
+    depends_on:
+      postgres-job-offers:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:9187/metrics >/dev/null" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   otel-collector:
     container_name: otel-collector
     build:
@@ -155,6 +189,10 @@ services:
       loki:
         condition: service_healthy
       tempo:
+        condition: service_healthy
+      postgres-exporter-candidates:
+        condition: service_healthy
+      postgres-exporter-job-offers:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "/http-probe" ]

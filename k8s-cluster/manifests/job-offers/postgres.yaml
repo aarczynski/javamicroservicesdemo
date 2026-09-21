@@ -101,6 +101,36 @@ spec:
             limits:
               cpu: "3"
               memory: 2Gi
+        # See k8s-cluster/manifests/candidates/postgres.yaml for why this
+        # sidecar exists and how it's scraped (Service annotations below,
+        # same `kubernetes-service-endpoints` Prometheus job as kube-state-
+        # metrics/node-exporter - no otel-collector change needed).
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          env:
+            # Order matters: $(VAR) interpolation below only resolves
+            # variables already defined earlier in this same list.
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-job-offers-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-job-offers-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/app-job-offers-db?sslmode=disable"
+          ports:
+            - containerPort: 9187
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -112,6 +142,9 @@ kind: Service
 metadata:
   name: postgres-job-offers
   namespace: job-offers
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
 spec:
   type: LoadBalancer
   selector:
