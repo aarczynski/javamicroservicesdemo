@@ -251,8 +251,9 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
         `kubectl patch svc cilium-gateway-api-gateway -n candidates` **po** tym jak kontroler go utworzy (wyścig
         do obsłużenia — poczekać aż istnieje), z ryzykiem że kontroler Cilium nadpisze patch przy własnej
         reconciliacji (nieprzetestowane, czy to się utrzyma).
-13. **[OTWARTE, 2026-09-22] Klaster źle wstaje po power cycle — nie tylko JVM CPU (patrz punkt 0. wyżej,
-    "NAWRÓT #3"), to szerszy wzorzec.** Ten sam power cycle, który zresetował `jvm_cpu_recent_utilization_ratio`,
+13. **[CZĘŚCIOWO ZROBIONE, 2026-09-22 — realny power cycle wywołany celowo (`sudo systemctl reboot` przez SSH na
+    wszystkich 12 node'ach naraz) do zweryfikowania tej całej notatki na żywo] Klaster źle wstaje po power cycle —
+    nie tylko JVM CPU (patrz punkt 0. wyżej, "NAWRÓT #3"), to szerszy wzorzec.** Ten sam power cycle, który zresetował `jvm_cpu_recent_utilization_ratio`,
     zostawił w logach `app-candidates`/`app-job-offers` `HikariPool-1 - Failed to validate connection ... (This
     connection has been closed)` + `DataSourceHealthIndicator - DataSource health check failed` (503 na
     liveness/readiness, kaskadowe restarty podów appek) w oknie ok. 21:08-21:47 — czyli Postgres sam nie wstał
@@ -270,15 +271,44 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
     (`resources.limits.memory` w StatefulSecie) — restart pętli się, bo po każdym restarcie znów próbuje tego
     samego catch-upu i znów pada, zanim zdąży zacommitować dalej. Niepotwierdzone: czy to faktycznie proporcjonalne
     do rozmiaru backlogu (realny memory pressure z 47k wiadomości trace'ów) czy bug w samej ścieżce catch-up w tej
-    wersji Tempo (3.0.3) niezależny od wolumenu. **Do zrobienia następna sesja**: (a) sprawdzić realny
-    `ConsumeResetOffset`/target resetu w configu block-buildera (nie widać w `tempo-config` ConfigMapie — może być
-    hardkodowany domyślny w binarce), (b) rozważyć tymczasowe podniesienie limitu pamięci żeby przepchnąć
-    jednorazowy catch-up i wyjść z pętli, (c) doprecyzować dlaczego offset `126928` w ogóle spadł poniżej retencji
-    — ile trwała przerwa w działaniu block-buildera podczas power cycle vs jak krótka jest retencja topicu
-    `tempo-traces` (do sprawdzenia w configu Kafki/Strimzi), (d) sprawdzić czy Postgresy (`postgres-candidates`/`postgres-job-offers`) mają
-    sensowny `startupProbe`/kolejność startu względem appek, żeby power cycle nie generował kaskady 503 zanim baza
-    jest gotowa, (e) rozważyć czy to jeden wspólny root cause (np. węzły bazodanowe/Kafki wstają wolniej niż
-    reszta po reboot, wszystko inne dobija się za wcześnie) czy niezależne przypadki.
+    wersji Tempo (3.0.3) niezależny od wolumenu.
+
+    **[ROZWIĄZANE (obejście), 2026-09-22 wieczorem, po celowym pełnym power cycle całego klastra]** Węzeł
+    `k8s-rpi-observability-1` (gdzie przypięty jest `blockBuilder` przez `nodeSelector`) ma tylko **8GiB RAM
+    fizycznie** (`kubectl get node ... -o jsonpath='{.status.capacity.memory}'` → `8127688Ki`), z czego w chwili
+    diagnozy ~74% już zajęte przez sąsiadów na tym samym node'zie (Kafka, live-store, Alloy, Headlamp) — **wolne
+    ~2GiB**. Backlog w międzyczasie urósł do **58843 wiadomości** (`kafka-consumer-groups.sh --describe --group
+    block-builder`: `LAG=58843`, bo `CURRENT-OFFSET` utknęło na `126928` a `LOG-END-OFFSET` rosło dalej przez
+    ciągły ambient traffic `load-background` — dokładnie spirala opisana w komentarzu przy `blockBuilder.resources`
+    w `values-tempo-distributed.yaml`). Ekstrapolując wcześniejszy wzorzec (4.5Gi na 20801 wiadomości) ten backlog
+    wymagałby **~13GiB** — fizycznie niemożliwe na tym node'zie. Dalsze podnoszenie limitu pamięci **nie było
+    wykonalne**, więc zamiast tego: **reset offsetu konsumenckiej grupy `block-builder` na `--to-latest`**
+    (`kubectl -n observability scale statefulset tempo-block-builder --replicas=0` → poczekać aż pod zniknie →
+    `bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group block-builder --topic tempo-traces
+    --reset-offsets --to-latest --execute` z poziomu `tempo-kafka-dual-role-0` → `--replicas=1` z powrotem).
+    **Świadoma utrata danych**: pominięty cały backlog (traces z okna od ostatniego udanego commitu do teraz) —
+    zaakceptowane, bo to dane obserwowalności demo/homelab, nie dane biznesowe, i node fizycznie nie miał jak tego
+    przetworzyć. Zweryfikowane żywe po resecie: `commit_offset` w logach realnie rośnie
+    (`"successfully committed offset to kafka" partition=0 commit_offset=185785 processed_records=3`), pod stabilny
+    `1/1 Running`, `0` restartów przez kolejne ~9 min obserwacji. **Nie naprawione u źródła** — ten sam spiral
+    (offset ucieka poniżej retencji Kafki podczas przerwy w działaniu, potem OOM przy próbie catch-upu) powtórzy
+    się przy następnym długim przestoju block-buildera, chyba że: (a) skrócona zostanie retencja topicu
+    `tempo-traces` tak, żeby backlog nigdy nie urósł do rozmiaru wymagającego więcej RAM niż node fizycznie ma, (b)
+    `blockBuilder` przeniesiony na node z większym zapasem RAM, albo (c) dodany automatyczny reset-offset-do-latest
+    jako część procedury startowej zamiast ręcznej interwencji. Do rozważenia następna sesja, nie zrobione teraz.
+
+    **Do zrobienia następna sesja (reszta punktu 13, nadal otwarte)**: sprawdzić czy Postgresy
+    (`postgres-candidates`/`postgres-job-offers`) mają sensowny `startupProbe`/kolejność startu względem appek,
+    żeby power cycle nie generował kaskady 503 zanim baza jest gotowa; rozważyć czy to jeden wspólny root cause
+    (np. węzły bazodanowe/Kafki wstają wolniej niż reszta po reboot, wszystko inne dobija się za wcześnie) czy
+    niezależne przypadki. **Potwierdzone tym samym testem**: `jvm_cpu_recent_utilization_ratio` (punkt 0., NAWRÓT
+    #3) faktycznie odtworzyło się przy tym realnym power cyclu — 3 z 5 instancji flat 0 zaraz po restarcie węzłów,
+    naprawione tym samym `kubectl delete pod` co poprzednio (potwierdzone żywe przez `kubectl top pod` — realne
+    zużycie CPU 19-154m na wszystkich 5 podach pod obciążeniem, nie tylko przez metrykę OTel, która przez chwilę po
+    restarcie miała mylące osierocone serie ze starych, usuniętych już podów w Prometheusie — nie mylić z realnym
+    stanem appki). To czwarty udokumentowany nawrót skorelowany z restartem/power cycle — trwały fix
+    (`MeterFilter.deny` po stronie Spring/Micrometer, patrz punkt 0.) wciąż niezaimplementowany, coraz mocniej
+    uzasadniony.
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
