@@ -14,7 +14,7 @@ działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj)
 
 **Zmierzony sufit RPS: 1900 RPS bezpieczne, 2200 RPS już zamula.** 1900rps potwierdzone czyste (0% KO, p99=556ms,
 max=1033ms, ~9 min sustained hold, 1.14M requestów) 2026-09-20 po tym jak `app-candidates` dostał 3. replikę
-(`worker-5`, HPA pinned na stałe — patrz punkt 1. niżej). To jest wyższe niż poprzedni udokumentowany sufit
+(`worker-5`, HPA pinned na stałe — patrz punkt 2. niżej). To jest wyższe niż poprzedni udokumentowany sufit
 (1500 bezpieczne/1600 na granicy, z 2 replikami candidates) — 3. replika realnie podniosła pułap. **2200rps już
 zamula, ale to nie candidates** — `app-job-offers` (dalej tylko 2 repliki, brak wolnego workera na 3.) dobija do
 swojego limitu 3 rdzeni i jest realnie throttlowany, co przez synchroniczne wywołanie Feign z candidates objawia
@@ -25,7 +25,33 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps
 
-0. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
+0. **[NASTĘPNA SESJA — ZACZNIJ TUTAJ] Zweryfikować fix OTel Micrometer bridge w 3 miejscach (2026-09-20).**
+   `jvm_cpu_recent_utilization_ratio` zamulało się na sztywne 0 dla pojedynczych instancji JVM zaraz po pierwszej
+   realnej próbce (gorzej po pełnym restarcie klastra — 4/5 instancji obu appek złapało to naraz). Root-caused:
+   `OTEL_INSTRUMENTATION_MICROMETER_ENABLED=true` razem z natywną instrumentacją semconw JVM (włączoną domyślnie)
+   eksportują metryki pod tymi samymi nazwami (np. `jvm.memory.committed`) z różnym typem/źródłem — realny konflikt,
+   potwierdzony znanym, zamkniętym jako `not_planned` bugiem upstream:
+   [opentelemetry-java-instrumentation#11122](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122)
+   ("your best option is not to enable both of these instrumentations at the same time"). Zweryfikowane przed
+   wyłączeniem: żaden panel na żadnym dashboardzie nie czyta metryk nazwanych po Micrometerowemu — wszystko używa
+   natywnego nazewnictwa semconv, więc wyłączenie nie ma wad.
+   **Fix na branchu `fix/otel-micrometer-jvm-metric-clash`** (nie zmergowany do `main`, pushnięty), 3 miejsca do
+   sprawdzenia po przebudzeniu:
+   - **k8s (fizyczny klaster)**: `k8s-cluster/manifests/{candidates,job-offers}/app.yaml`,
+     `OTEL_INSTRUMENTATION_MICROMETER_ENABLED: "false"`. Już zaaplikowane (`kubectl apply`, oba rollouty
+     zakończone, brak rebuildu — sama zmienna env, nie kod) — **do zweryfikowania czy `jvm_cpu_recent_utilization_ratio`
+     faktycznie przestało się zamulać** (najlepszy test: kolejny pełny restart klastra, bo wtedy problem był
+     najgorszy).
+   - **Minikube**: `k8s-cluster/manifests/overlays/minikube/kustomization.yaml` dziedziczy bazowe
+     `candidates/app.yaml`/`job-offers/app.yaml` (`resources: [../../candidates, ../../job-offers, ...]`) bez
+     żadnego patcha na te Deploymenty (jego `patches:` dotyczą tylko `postgres-candidates`/`postgres-job-offers`/
+     `load-background`, nie appek) — **sprawdzone w tej sesji, fix dziedziczy się automatycznie, zero dodatkowej
+     zmiany potrzebnej w overlayu.** Do zrobienia: `make minikube-rebuild-all` (albo `minikube-deploy` jeśli
+     klaster już stoi) i weryfikacja dashboardu JVM.
+   - **Docker Compose**: `compose.yml`, `OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false` dla obu appek. Zmiana
+     zrobiona na branchu, `docker compose up` i weryfikacja dashboardu JVM nie zrobione w tej sesji.
+
+1. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
    "Cluster-Wide Workload Creation" — zadziałało na "rób sam"), na `platform-1`. `hpa.yaml` (`candidates`) na RPS
    (`external` metric `candidates_requests_per_second`, target `AverageValue: 500`, `maxReplicas: 3`,
    `behavior.scaleDown.stabilizationWindowSeconds: 300` — patrz komentarz w pliku dla uzasadnienia liczb),
@@ -38,7 +64,7 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    patrz `docs/externalmetrics.md` w repo `kubernetes-sigs/prometheus-adapter` ("Cross-Namespace or No Namespace
    Queries"), bezpieczne tu bo `job="app-candidates"` w `seriesQuery` już jest jednoznaczne.
 
-1. **[BLOKOWANE na Cilium, obejście na miejscu] `app-candidates` HPA spięty na sztywno 3 repliki (2026-09-20).**
+2. **[BLOKOWANE na Cilium, obejście na miejscu] `app-candidates` HPA spięty na sztywno 3 repliki (2026-09-20).**
    **Problem**: świeży pod po HPA scale-up (2→3) dostaje pełny udział ruchu natychmiast po przejściu
    `readinessProbe` — braku LB slow-startu (patrz punkt niżej, ten sam dzień). Żywy test 1500rps złapał
    konsekwencję wprost: p99 zapytań do bazy na świeżym podzie skoczyło z bazowych ~5ms do 150-215ms na ~60-90s
@@ -63,7 +89,7 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    `minReplicas` z powrotem do 2. Do tego czasu `app-candidates` zajmuje na stałe 3 z 5 workerów (razem z
    2 od `app-job-offers` — wszystkie 5 workerów permanentnie zajęte, zero wolnego node'a).
 
-2. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
+3. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
    trybie L2 jest active-passive per IP — tylko `platform-1` faktycznie obsługuje ruch Gateway (`.100`), `platform-2`
    przy 1200rps stał bezczynny (~1.8% CPU), failover przestał być wart dedykowanego node'a.
    **Zmiana decyzji względem wcześniejszej wersji tej notatki**: pierwotny plan `sso-1`+Keycloak (ten sam dzień)
@@ -79,7 +105,7 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    DHCP `.14` — stary known_hosts wpis dla `.14` z poprzedniego życia tego IP trzeba było usunąć,
    `ssh-keygen -R`), `kubectl delete node k8s-rpi-platform-2`, `make k8s-prep` (hostname → `k8s-rpi-worker-5`),
    `make k8s-init` (join jako worker, bez taintu — zweryfikowane: `Taints: <none>` po tym jak Cilium wystartował).
-   **Przy okazji zrobione też (ten sam dzień, ta sama sesja):** HPA dla `app-candidates` — patrz punkt 0. powyżej
+   **Przy okazji zrobione też (ten sam dzień, ta sama sesja):** HPA dla `app-candidates` — patrz punkt 1. powyżej
    dla finalnej, RPS-owej wersji (pierwsza wersja była na CPU, zamieniona po tym jak realny load test pokazał że
    próg 70% ledwo nie został przekroczony i się nie wyzwolił). `worker-5` to jedyny wolny slot dla 3. repliki dzięki
    istniejącej twardej podAntiAffinity, brak jawnego nodeSelectora. `load-background` przeniesiony z
@@ -88,36 +114,36 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    (`REGISTRY_RE` miał `.104` zamiast `.190`) przez co pinning tagu w manifeście od dawna cicho nic nie robił.
    Affinity entity-operatora Kafki (`kafka-cluster.yaml`) też dociągnięta i zaaplikowana — patrz
    `k8s-cluster/RPS-SCALING.md`/git log dla szczegółów tego osobnego fixu.
-3. **[NASTĘPNA SESJA, kandydat #1 — na jawne polecenie 2026-09-20] Zwiększenie wolumenu danych w Postgresach
+4. **[NASTĘPNA SESJA, kandydat #1 — na jawne polecenie 2026-09-20] Zwiększenie wolumenu danych w Postgresach
    (candidates/job-offers), bez konkretów jeszcze.** Obecny wolumen: 100k candidates / 50k job offers, generowany
    przez `data-generator` i ładowany przez `load-data.sh`/`make k8s-reload-data`. Cel/docelowa skala nieustalone w
    tej sesji — do doprecyzowania z użytkownikiem, kiedy przyjdzie pora (nie zgadywać liczb). **Kandydat #2
    (alternatywa, nie oba naraz)**: problem estymacji percentyli (`README.md`'s Known issues —
    `histogram_quantile()` na rzadkim ogonie histogramu daje niedokładne p99 względem Gatlinga, np. zmierzone
-   2026-09-20: Grafana ~900ms vs realne p99=556-1576ms w zależności od runu). Keycloak/SSO (patrz punkt 2. wyżej)
+   2026-09-20: Grafana ~900ms vs realne p99=556-1576ms w zależności od runu). Keycloak/SSO (patrz punkt 3. wyżej)
    zostaje świadomie za oboma tymi kandydatami — bez node'a, bez terminu.
-4. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
+5. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
    `platform-1`.** Znalezione 2026-09-20: `registry.yaml` ma tolerancję `role=platform`, ale brak `nodeSelector`
    (tolerancja tylko pozwala, nie wymusza); `local-path-provisioner`/`metallb-controller` nie mają nawet tolerancji.
    Efekt: te pody konkurują o CPU z appkami na workerach (dokładnie ten typ współdzielenia, który
    `RPS-SCALING.md` fix #9 już raz nazwał błędem). Do naprawy przy okazji reorganizacji platform/sso (pkt 1).
-5. **HA/replikacja Postgresa (CloudNativePG/Patroni)** — `local-path-provisioner` trzyma PV lokalnie na dysku
+6. **HA/replikacja Postgresa (CloudNativePG/Patroni)** — `local-path-provisioner` trzyma PV lokalnie na dysku
    node'a, więc samo dopuszczenie schedulowania na oba node'y bazodanowe nic nie da przy awarii. Potrzebny operator
    ze streaming replication. Odłożone, niepriorytetowe.
-6. **GitOps (ArgoCD/Flux)** — cel końcowy, żeby stan klastra był w pełni odtwarzalny z repo bez ręcznych
+7. **GitOps (ArgoCD/Flux)** — cel końcowy, żeby stan klastra był w pełni odtwarzalny z repo bez ręcznych
    `helm install`/`kubectl apply`. Świadomie na końcu planu, nie teraz.
-7. **Lokalny k8s (minikube) do testowania manifestów przed wdrożeniem na fizyczny klaster — ZROBIONE i
+8. **Lokalny k8s (minikube) do testowania manifestów przed wdrożeniem na fizyczny klaster — ZROBIONE i
    zmergowane** (branch `experiment/minikube-local-cluster`, `make minikube-rebuild-all`). Otwarty tylko drobny
    punkt: trzymać w sync ewentualne przyszłe zmiany registry/MinIO między overlayem minikube a produkcyjnymi
    manifestami (już raz się rozjechały, patrz pkt niżej o pułapkach).
-8. **Brak trwałego zabezpieczenia przed rozjazdem `candidatesDataFile` (lokalny plik dla `load-test`) vs. baza
+9. **Brak trwałego zabezpieczenia przed rozjazdem `candidatesDataFile` (lokalny plik dla `load-test`) vs. baza
    faktycznie załadowana na klastrze.** `load-data.sh` po każdym imporcie synchronizuje `load-background`, ale nic
    nie pilnuje pliku używanego ręcznie do `make candidateSimulation` — do rozważenia: osobny plik/katalog dla
    "danych aktualnie na klastrze" albo krok w symulacji weryfikujący próbkę ID przed testem.
-9. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
+10. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
    innych maszyn w LAN; dashboard I/O dysku dla Postgresa (metryki node-exportera już są, brak paneli);
    `postgres-exporter` (metryki natywne Postgresa — connections/cache hit/locki) nie wdrożony, świadomie odłożone.
-10. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
+11. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
     handoffu working tree jest czyste (wszystko z poprzednich sesji już zacommitowane/zmergowane), ale kilka
     wcześniejszych wpisów w historii tego pliku opisywało niezacommitowane zmiany — zawsze weryfikować `git status`
     zamiast ufać starym zapiskom.
