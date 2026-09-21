@@ -335,6 +335,21 @@ is selected in the `$service` variable. The heap panels (Heap Memory, Non-Heap M
 Prometheus at a 1-second resolution, matching how often the OTel agent actually pushes JVM metrics — a healthy JVM
 under load shows the classic GC sawtooth (heap climbs, then drops sharply on collection) rather than a smooth line.
 
+## Postgres dashboard
+
+The dashboard is available
+under [http://localhost:3000/d/postgres-monitoring-dashboard/postgres-monitoring](http://localhost:3000/d/postgres-monitoring-dashboard/postgres-monitoring).
+It combines two views: native server-side metrics from `postgres_exporter` (exporter status, database size,
+connections vs max, locks by mode) for whichever instance is selected in the `$db` variable, and the app-side
+HikariCP connection pool (active/idle/pending/max) for whichever service is
+selected in `$service` — the two views are independent because a Postgres instance and the app pooling connections
+to it aren't the same "job" in Prometheus. Postgres-side metrics arrive via a `prometheus` receiver on the OTEL
+collector scraping both `postgres-exporter-*` containers directly, not through a Prometheus scrape config — see the
+comment in `observability/otel-collector/otel-collector.yml`. Counter metrics from that path get suffixed `_total`
+(OTel's Prometheus translation convention), e.g. `pg_stat_database_xact_commit` becomes
+`pg_stat_database_xact_commit_total` — the raw exporter output at `:9187/metrics` does not have that suffix, so
+querying it directly for debugging will not match the dashboard's queries.
+
 ## Logs dashboard
 
 The dashboard is available
