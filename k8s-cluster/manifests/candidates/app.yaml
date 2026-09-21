@@ -127,21 +127,30 @@ spec:
               value: "1000"
             - name: OTEL_BSP_SCHEDULE_DELAY
               value: "1000"
-            - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
-              value: "true"
-            # false, not true: the Micrometer bridge and the agent's native JVM
-            # semconv instrumentation both export metrics under the same names
-            # (e.g. jvm.memory.committed) with different types/sources, which
-            # clashes and can corrupt the export - confirmed live 2026-09-20 as
-            # the cause of jvm_cpu_recent_utilization_ratio getting stuck at a
-            # flat 0 after its first real sample (worse right after a full
-            # cluster restart - 4/5 app instances hit it that time). Known,
-            # closed-as-not-planned upstream issue:
+            # false, not true: this instrumentation's ONLY effect is "configures
+            # the OpenTelemetry Micrometer bridge to receive metrics from Spring
+            # Boot Actuator" (upstream metadata.yaml) - it is the actual
+            # Micrometer bridge, not OTEL_INSTRUMENTATION_MICROMETER_ENABLED below
+            # (that one instruments an app's own manually-created MeterRegistry,
+            # and was never the live bridge here). The 2026-09-20 fix disabled the
+            # wrong flag - this one was still true the whole time, still
+            # bridging, confirmed live 2026-09-21 by finding a
+            # process_cpu_usage{otel_scope_name="io.opentelemetry.micrometer-1.5"}
+            # series still being exported after that fix. Both instrumentations
+            # export JVM metrics under the same semconv names (e.g.
+            # jvm.memory.committed) as the agent's native instrumentation, which
+            # clashes and corrupts the export - root cause of
+            # jvm_cpu_recent_utilization_ratio getting stuck at a flat 0 after its
+            # first real sample (worse right after a full cluster restart - 4/5
+            # app instances hit it that time). Known, closed-as-not-planned
+            # upstream issue:
             # https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122
             # ("your best option is not to enable both of these instrumentations
             # at the same time"). Nothing here actually reads Micrometer-named
             # metrics (every dashboard panel queries the native semconv names),
-            # so there's no downside to leaving it off.
+            # so there's no downside to leaving both off.
+            - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
+              value: "false"
             - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
               value: "false"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED

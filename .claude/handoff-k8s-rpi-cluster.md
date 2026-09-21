@@ -25,31 +25,43 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps
 
-0. **[NASTĘPNA SESJA — ZACZNIJ TUTAJ] Zweryfikować fix OTel Micrometer bridge w 3 miejscach (2026-09-20).**
-   `jvm_cpu_recent_utilization_ratio` zamulało się na sztywne 0 dla pojedynczych instancji JVM zaraz po pierwszej
-   realnej próbce (gorzej po pełnym restarcie klastra — 4/5 instancji obu appek złapało to naraz). Root-caused:
-   `OTEL_INSTRUMENTATION_MICROMETER_ENABLED=true` razem z natywną instrumentacją semconw JVM (włączoną domyślnie)
-   eksportują metryki pod tymi samymi nazwami (np. `jvm.memory.committed`) z różnym typem/źródłem — realny konflikt,
-   potwierdzony znanym, zamkniętym jako `not_planned` bugiem upstream:
+0. **[ZROBIONE i zweryfikowane na k8s, 2026-09-21] Fix OTel Micrometer bridge — poprzednia wersja (2026-09-20)
+   wyłączyła złą flagę.** `jvm_cpu_recent_utilization_ratio` zamulało się na sztywne 0 dla pojedynczych instancji
+   JVM zaraz po pierwszej realnej próbce (gorzej po pełnym restarcie klastra). Sesja 2026-09-20 wyłączyła
+   `OTEL_INSTRUMENTATION_MICROMETER_ENABLED` sądząc, że to on bridguje Micrometer→OTel — **błędnie**: po kolejnym
+   pełnym restarcie klastra (2026-09-21, power outage) problem wrócił identycznie (1 instancja na serwis, flat 0
+   przez >30 min ciągłych próbek, potwierdzone `query_range`), mimo że ta flaga była poprawnie `false` na
+   wszystkich podach. Real root cause znaleziony przez sprawdzenie `metadata.yaml` obu modułów instrumentacji w
+   repo `open-telemetry/opentelemetry-java-instrumentation`:
+   - `instrumentation/micrometer/micrometer-1.5` (`OTEL_INSTRUMENTATION_MICROMETER_ENABLED`) — instrumentuje
+     **appki własny, ręcznie tworzony** `MeterRegistry`. Ta appka żadnego takiego nie tworzy — flaga nigdy nie
+     robiła nic w tym projekcie.
+   - `instrumentation/spring/spring-boot-actuator-autoconfigure-2.0`
+     (`OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED`) — opis wprost: *"This instrumentation
+     configures the OpenTelemetry Micrometer bridge to receive metrics from Spring Boot Actuator. It does not
+     produce telemetry on its own."* **To jest faktyczny bridge** — i został zostawiony `true` przez cały czas.
+   Potwierdzone live 2026-09-21: mimo `MICROMETER_ENABLED=false` na obu podach ze stuck-0, Prometheus dalej miał
+   serię `process_cpu_usage{otel_scope_name="io.opentelemetry.micrometer-1.5"}` dla dokładnie tych instancji —
+   dowód, że bridge nadal eksportował i nadal się bił o te same nazwy metryk z natywną instrumentacją semconw
+   (`io.opentelemetry.runtime-telemetry-java8`), tak jak opisuje
    [opentelemetry-java-instrumentation#11122](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122)
-   ("your best option is not to enable both of these instrumentations at the same time"). Zweryfikowane przed
-   wyłączeniem: żaden panel na żadnym dashboardzie nie czyta metryk nazwanych po Micrometerowemu — wszystko używa
-   natywnego nazewnictwa semconv, więc wyłączenie nie ma wad.
-   **Fix na branchu `fix/otel-micrometer-jvm-metric-clash`** (nie zmergowany do `main`, pushnięty), 3 miejsca do
-   sprawdzenia po przebudzeniu:
-   - **k8s (fizyczny klaster)**: `k8s-cluster/manifests/{candidates,job-offers}/app.yaml`,
-     `OTEL_INSTRUMENTATION_MICROMETER_ENABLED: "false"`. Już zaaplikowane (`kubectl apply`, oba rollouty
-     zakończone, brak rebuildu — sama zmienna env, nie kod) — **do zweryfikowania czy `jvm_cpu_recent_utilization_ratio`
-     faktycznie przestało się zamulać** (najlepszy test: kolejny pełny restart klastra, bo wtedy problem był
-     najgorszy).
-   - **Minikube**: `k8s-cluster/manifests/overlays/minikube/kustomization.yaml` dziedziczy bazowe
-     `candidates/app.yaml`/`job-offers/app.yaml` (`resources: [../../candidates, ../../job-offers, ...]`) bez
-     żadnego patcha na te Deploymenty (jego `patches:` dotyczą tylko `postgres-candidates`/`postgres-job-offers`/
-     `load-background`, nie appek) — **sprawdzone w tej sesji, fix dziedziczy się automatycznie, zero dodatkowej
-     zmiany potrzebnej w overlayu.** Do zrobienia: `make minikube-rebuild-all` (albo `minikube-deploy` jeśli
-     klaster już stoi) i weryfikacja dashboardu JVM.
-   - **Docker Compose**: `compose.yml`, `OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false` dla obu appek. Zmiana
-     zrobiona na branchu, `docker compose up` i weryfikacja dashboardu JVM nie zrobione w tej sesji.
+   ("your best option is not to enable both of these instrumentations at the same time"). Oba moduły są
+   `disabled_by_default: true` upstream — projekt jawnie włączał oba bez potrzeby.
+   **Fix (branch `fix/otel-micrometer-jvm-metric-clash`)**: `OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED`
+   ustawione na `false` obok już-`false` `MICROMETER_ENABLED`, w `compose.yml` i obu
+   `k8s-cluster/manifests/{candidates,job-offers}/app.yaml`.
+   - **k8s (fizyczny klaster)**: zaaplikowane i wdrożone (`kubectl apply` + `rollout restart` obu Deploymentów,
+     2026-09-21). **Zweryfikowane żywe**: żaden z 5 nowych podów nie eksportuje już `process_cpu_usage` (stare
+     serie z `io.opentelemetry.micrometer-1.5` to tylko widmowe próbki z usuniętych podów, wygasną same);
+     `jvm_cpu_recent_utilization_ratio` faluje normalnie na wszystkich 5 instancjach (`query_range` na nowych
+     instance ID — brak flat 0).
+   - **Minikube**: dziedziczy z bazowych manifestów (patrz niżej, bez zmian) — **nie zweryfikowane w tej sesji**,
+     do zrobienia: `make minikube-rebuild-all` + sprawdzenie dashboardu JVM.
+   - **Docker Compose**: zmiana zrobiona w `compose.yml`, **`docker compose up` i weryfikacja dashboardu JVM nie
+     zrobione w tej sesji.**
+   **Lekcja ogólna**: przy instrumentacjach OTel javaagent zawsze sprawdzać `metadata.yaml` konkretnego modułu w
+   repo upstream zamiast zgadywać po nazwie zmiennej środowiskowej co dana flaga robi — nazwy takie jak
+   `SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED` nie sugerują że to one kontrolują bridge metryk.
 
 1. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
    "Cluster-Wide Workload Creation" — zadziałało na "rób sam"), na `platform-1`. `hpa.yaml` (`candidates`) na RPS
@@ -183,6 +195,18 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   ogóle ustawień CRI, daje fałszywe potwierdzenia. Testować przez realny `kubectl delete pod` + obserwację.
 - Dopisanie starego inline `[registry.mirrors]`/`[registry.configs]` OBOK `config_path` zabija cały plugin CRI
   (`"mirrors" cannot be set when "config_path" is provided`) — nie mieszać obu stylów configu.
+- **Po power-cyklu całego klastra static pody control-plane na masterze (`etcd`, `kube-apiserver`,
+  `kube-controller-manager`, `kube-scheduler`) mogą wisieć w Headlamp/`kubectl get pods` jako
+  `CreateContainerError` z `"failed to reserve container name ... is reserved for <id>"`, mimo że realne procesy
+  za `<id>` **już działają** (żywy PID w `ctr -n k8s.io tasks list`, `kubectl` normalnie odpowiada). To fałszywy
+  status, nie realna awaria: kubelet po restarcie gubi synchronizację z containerd i w kółko próbuje utworzyć
+  nowy kontener pod tą samą nazwą/numerem próby, za każdym razem obijając się o rezerwację trzymaną przez
+  kontener, który już poprawnie wystartował. **`crictl` nie jest zainstalowany na tych node'ach — używać `ctr`
+  bezpośrednio** (`sudo ctr -n k8s.io containers list` / `tasks list`). Samo `systemctl restart kubelet` NIE
+  rozwiązuje problemu. Fix: dla każdego z 4 ID z komunikatu błędu — `sudo ctr -n k8s.io tasks kill -s SIGKILL <id>`
+  → `sudo ctr -n k8s.io tasks rm <id>` → `sudo ctr -n k8s.io containers delete <id>` — zwalnia rezerwację nazwy,
+  kubelet od razu tworzy czysty kontener (parosekundowa przerwa w apiserverze, akceptowalna na single-masterowym
+  klastrze bez HA). Zdarzenie z 2026-09-21, pełny przebieg diagnozy w historii sesji.
 
 ### MetalLB / Gateway / sieć
 - MetalLB w trybie L2 jest **active-passive per IP** — tylko jeden node ogłasza dany adres ARP-em na raz, drugi

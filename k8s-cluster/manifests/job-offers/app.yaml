@@ -78,10 +78,10 @@ spec:
               value: "1000"
             - name: OTEL_BSP_SCHEDULE_DELAY
               value: "1000"
+            # See k8s-cluster/manifests/candidates/app.yaml for why both of these
+            # are false, not true (opentelemetry-java-instrumentation#11122).
             - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
-              value: "true"
-            # See k8s-cluster/manifests/candidates/app.yaml for why this is
-            # false, not true (opentelemetry-java-instrumentation#11122).
+              value: "false"
             - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
               value: "false"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
