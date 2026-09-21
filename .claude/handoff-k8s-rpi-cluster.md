@@ -459,6 +459,19 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   nakładający się zakres 6s→0.13s. Limit pamięci Loki podniesiony `1Gi→1280Mi` przy okazji, żeby zachować ten sam
   margines na burst testy co przed dodaniem cache'u.
 
+### JVM / OTel javaagent
+- **`OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap
+  classpath has been appended` w logach `app-candidates`/`app-job-offers` przy starcie jest nieszkodliwy, spodziewany
+  szum, nie błąd.** Standardowy efekt uboczny tego, jak działa `-javaagent:./opentelemetry-javaagent.jar` —
+  agenty Javy wstrzykujące instrumentację na poziomie bootstrap classloadera używają
+  `Instrumentation.appendToBootstrapClassLoaderSearch()`, co wyłącza korzyści CDS (Class Data Sharing) dla
+  wszystkiego poza klasami samego boot loadera (wolniejszy start JVM o ułamki sekundy, nic więcej — nie dotyczy
+  poprawności działania appki ani jakości eksportowanych metryk/traców/logów). Pojawia się na każdym starcie, na
+  wszystkich środowiskach (Compose, k8s, minikube) — nie mylić z realnym problemem przy przeglądaniu logów pod
+  kątem `warn`/`error` (dokładnie to zdarzyło się w tej sesji: złapane przez grep po "warn" przy skanowaniu logów
+  `app-job-offers` w poszukiwaniu prawdziwej przyczyny innego problemu). Nic do zrobienia — nie próbować "naprawiać"
+  przez usuwanie klas z bootstrap classpath, bo to zepsułoby samą instrumentację OTel.
+
 ### Load-testing / metodologia wydajności
 - **Testować jedną zmienną na raz pod realnym współbieżnym obciążeniem** — bundlowana zmiana dwóch rzeczy naraz
   potrafi zamaskować, że jedna z nich jest katastrofalna a druga to czysty zysk (patrz historia w
