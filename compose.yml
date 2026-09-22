@@ -14,8 +14,31 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_BSP_SCHEDULE_DELAY: "1000"
+      # true, not false: this instrumentation's ONLY effect is "configures the
+      # OpenTelemetry Micrometer bridge to receive metrics from Spring Boot
+      # Actuator" (upstream metadata.yaml) - it is the actual Micrometer bridge,
+      # not OTEL_INSTRUMENTATION_MICROMETER_ENABLED below (that one instruments an
+      # app's own manually-created MeterRegistry, and was never the live bridge
+      # here). Needed for hikaricp.* connection pool metrics (Postgres dashboard's
+      # Hikari panels), which have no equivalent in the agent's native
+      # instrumentation. Both instrumentations ALSO export jvm.* metrics under the
+      # same names (e.g. jvm.memory.committed) as the agent's native
+      # instrumentation, which clashes and corrupts the export - root cause of
+      # jvm_cpu_recent_utilization_ratio getting stuck at a flat 0 after its first
+      # real sample. Known, closed-as-not-planned upstream issue:
+      # https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122
+      # ("your best option is not to enable both of these instrumentations at the
+      # same time") - so OTEL_JAVAAGENT_EXTENSIONS below points at
+      # otel-metrics-filter.jar (module otel-metrics-filter/), a small javaagent
+      # extension that drops jvm.* specifically from the Micrometer bridge's scope
+      # before export, leaving native instrumentation as the sole source of jvm.*
+      # and the bridge as the sole source of everything else (hikaricp.*, etc).
+      # Confirmed live 2026-09-21: without the extension, re-enabling this flag
+      # reproduces the stuck-at-0 bug within seconds; with it, both jvm_cpu_recent_
+      # utilization_ratio and hikaricp_connections_active work simultaneously.
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
+      OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
       JOB_OFFERS_URL: "http://app-job-offers:8080"
     ports:
@@ -54,8 +77,11 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_METRIC_EXPORT_INTERVAL: "1000"
       OTEL_BSP_SCHEDULE_DELAY: "1000"
+      # See app-candidates above for why this is true (with the extension jar),
+      # not false.
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
-      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: true
+      OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
+      OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
       OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
     ports:
       - "8081:8080"
@@ -114,6 +140,40 @@ services:
         limits:
           cpus: "2.00"
 
+  # Native Postgres metrics (connections, cache hit ratio, locks, transaction
+  # rate) - server-side, complementary to app-candidates'/app-job-offers'
+  # client-side hikaricp_* pool metrics (see OTEL_JAVAAGENT_EXTENSIONS above
+  # for why those need otel-metrics-filter.jar to coexist with a correct JVM
+  # CPU metric). Not on the k8s clusters yet either - deliberately deferred
+  # there (see .claude/handoff-k8s-rpi-cluster.md), added here first.
+  postgres-exporter-candidates:
+    container_name: postgres-exporter-candidates
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:password@postgres-candidates:5432/app-candidates-db?sslmode=disable"
+    depends_on:
+      postgres-candidates:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:9187/metrics >/dev/null" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres-exporter-job-offers:
+    container_name: postgres-exporter-job-offers
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:password@postgres-job-offers:5432/app-job-offers-db?sslmode=disable"
+    depends_on:
+      postgres-job-offers:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:9187/metrics >/dev/null" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   otel-collector:
     container_name: otel-collector
     build:
@@ -129,6 +189,10 @@ services:
       loki:
         condition: service_healthy
       tempo:
+        condition: service_healthy
+      postgres-exporter-candidates:
+        condition: service_healthy
+      postgres-exporter-job-offers:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "/http-probe" ]

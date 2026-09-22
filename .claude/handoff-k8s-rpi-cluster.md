@@ -14,7 +14,7 @@ działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj)
 
 **Zmierzony sufit RPS: 1900 RPS bezpieczne, 2200 RPS już zamula.** 1900rps potwierdzone czyste (0% KO, p99=556ms,
 max=1033ms, ~9 min sustained hold, 1.14M requestów) 2026-09-20 po tym jak `app-candidates` dostał 3. replikę
-(`worker-5`, HPA pinned na stałe — patrz punkt 1. niżej). To jest wyższe niż poprzedni udokumentowany sufit
+(`worker-5`, HPA pinned na stałe — patrz punkt 2. niżej). To jest wyższe niż poprzedni udokumentowany sufit
 (1500 bezpieczne/1600 na granicy, z 2 replikami candidates) — 3. replika realnie podniosła pułap. **2200rps już
 zamula, ale to nie candidates** — `app-job-offers` (dalej tylko 2 repliki, brak wolnego workera na 3.) dobija do
 swojego limitu 3 rdzeni i jest realnie throttlowany, co przez synchroniczne wywołanie Feign z candidates objawia
@@ -25,7 +25,109 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps
 
-0. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
+0. **[ZROBIONE i zweryfikowane na k8s, 2026-09-21] Fix OTel Micrometer bridge — poprzednia wersja (2026-09-20)
+   wyłączyła złą flagę.** `jvm_cpu_recent_utilization_ratio` zamulało się na sztywne 0 dla pojedynczych instancji
+   JVM zaraz po pierwszej realnej próbce (gorzej po pełnym restarcie klastra). Sesja 2026-09-20 wyłączyła
+   `OTEL_INSTRUMENTATION_MICROMETER_ENABLED` sądząc, że to on bridguje Micrometer→OTel — **błędnie**: po kolejnym
+   pełnym restarcie klastra (2026-09-21, power outage) problem wrócił identycznie (1 instancja na serwis, flat 0
+   przez >30 min ciągłych próbek, potwierdzone `query_range`), mimo że ta flaga była poprawnie `false` na
+   wszystkich podach. Real root cause znaleziony przez sprawdzenie `metadata.yaml` obu modułów instrumentacji w
+   repo `open-telemetry/opentelemetry-java-instrumentation`:
+   - `instrumentation/micrometer/micrometer-1.5` (`OTEL_INSTRUMENTATION_MICROMETER_ENABLED`) — instrumentuje
+     **appki własny, ręcznie tworzony** `MeterRegistry`. Ta appka żadnego takiego nie tworzy — flaga nigdy nie
+     robiła nic w tym projekcie.
+   - `instrumentation/spring/spring-boot-actuator-autoconfigure-2.0`
+     (`OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED`) — opis wprost: *"This instrumentation
+     configures the OpenTelemetry Micrometer bridge to receive metrics from Spring Boot Actuator. It does not
+     produce telemetry on its own."* **To jest faktyczny bridge** — i został zostawiony `true` przez cały czas.
+   Potwierdzone live 2026-09-21: mimo `MICROMETER_ENABLED=false` na obu podach ze stuck-0, Prometheus dalej miał
+   serię `process_cpu_usage{otel_scope_name="io.opentelemetry.micrometer-1.5"}` dla dokładnie tych instancji —
+   dowód, że bridge nadal eksportował i nadal się bił o te same nazwy metryk z natywną instrumentacją semconw
+   (`io.opentelemetry.runtime-telemetry-java8`), tak jak opisuje
+   [opentelemetry-java-instrumentation#11122](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122)
+   ("your best option is not to enable both of these instrumentations at the same time"). Oba moduły są
+   `disabled_by_default: true` upstream — projekt jawnie włączał oba bez potrzeby.
+   **Fix (branch `fix/otel-micrometer-jvm-metric-clash`)**: `OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED`
+   ustawione na `false` obok już-`false` `MICROMETER_ENABLED`, w `compose.yml` i obu
+   `k8s-cluster/manifests/{candidates,job-offers}/app.yaml`.
+   - **k8s (fizyczny klaster)**: zaaplikowane i wdrożone (`kubectl apply` + `rollout restart` obu Deploymentów,
+     2026-09-21). **Zweryfikowane żywe**: żaden z 5 nowych podów nie eksportuje już `process_cpu_usage` (stare
+     serie z `io.opentelemetry.micrometer-1.5` to tylko widmowe próbki z usuniętych podów, wygasną same);
+     `jvm_cpu_recent_utilization_ratio` faluje normalnie na wszystkich 5 instancjach (`query_range` na nowych
+     instance ID — brak flat 0).
+   - **Minikube**: dziedziczy z bazowych manifestów — **zweryfikowane wieczorem 2026-09-21** (patrz notatka
+     "SUPERSEDOWANE" niżej dla finalnej wersji z `otel-metrics-filter`, nie tym pierwotnym "oba false").
+   - **Docker Compose**: zmiana zrobiona w `compose.yml`, **`docker compose up` i weryfikacja dashboardu JVM dalej
+     nie zrobione — jedyne środowisko z 3 bez live weryfikacji.**
+   **Lekcja ogólna**: przy instrumentacjach OTel javaagent zawsze sprawdzać `metadata.yaml` konkretnego modułu w
+   repo upstream zamiast zgadywać po nazwie zmiennej środowiskowej co dana flaga robi — nazwy takie jak
+   `SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED` nie sugerują że to one kontrolują bridge metryk.
+
+   **[SUPERSEDOWANE tego samego dnia, 2026-09-21 wieczorem] "Oba `false`" był kompromisem (poprawny CPU, martwe
+   `hikaricp_*` na dashboardzie Postgresa — Hikari Pool/Pending Connections), nie finalnym rozwiązaniem.**
+   Użytkownik chciał obu naraz. Sprawdzone: nie da się tego osiągnąć samą flagą — SDK OTel nie ma dla samodzielnego
+   javaagenta żadnego wbudowanego mechanizmu filtrowania metryk po nazwie/scope (`otel.experimental.metrics.view.config`
+   istnieje tylko dla OTel Spring Boot Startera, którego tu nie ma). Jedyny działający, oficjalnie wspierany sposób:
+   **własne rozszerzenie javaagenta** — nowy moduł Gradle `otel-metrics-filter/`
+   (`MicrometerJvmMetricFilterCustomizer implements AutoConfigurationCustomizerProvider`,
+   `addMetricExporterCustomizer`), które odrzuca metryki `jvm.*` **tylko** ze scope'u `io.opentelemetry.micrometer-1.5`
+   tuż przed eksportem — natywna instrumentacja zostaje jedynym źródłem `jvm.*` (wszystkie 38 nazw, bez strat),
+   most Micrometer zostaje jedynym źródłem `hikaricp.*` i reszty. Podpięte przez `OTEL_JAVAAGENT_EXTENSIONS=./otel-metrics-filter.jar`
+   + z powrotem `OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED=true`. Zweryfikowane empirycznie
+   (dwukrotnie, po tym jak pierwszy test złapał stary, niezaktualizowany obraz w cache minikube — patrz pułapka
+   `minikube image load` niżej): `jvm_cpu_recent_utilization_ratio` faluje normalnie na wszystkich instancjach na
+   **obu** klastrach (RPi i minikube), `hikaricp_connections_active` ma dane na obu. Jar kopiowany do obrazu obok
+   agenta (`build.gradle`: `copyOtelMetricsFilter`, Dockerfile: `COPY ./build/otel-agent/otel-metrics-filter.jar ./`).
+   Wdrożone i zacommitowane na stałe na RPi i minikube — nie tymczasowy eksperyment.
+   **Pułapka po drodze**: `minikube image load` (nawet z domyślnym `--overwrite=true`) potrafi cicho **nie**
+   odświeżyć zawartości tagu `:local` w wewnętrznym cache Dockera minikube, mimo zgłoszenia sukcesu — appka w
+   podach dalej używała pliku jara sprzed całej sesji (`ls -la /app/` pokazywał starą datę), fałszywie sugerując że
+   fix nie działa. Fix: `minikube image rm <tag>` (jawnie, ignorować błąd "must force" o kontenerach wciąż
+   używających starego obrazu — to tylko potwierdza że stare kontenery żyją) → `minikube image load <tag>` ponownie
+   → `kubectl rollout restart` żeby pody faktycznie przeszły na nowy obraz. Zawsze weryfikować `ls -la /app/` w
+   świeżym podzie po `minikube-image` + redeploy, nie ufać samemu komunikatowi sukcesu skryptu.
+
+   **[NAWRÓT #3, 2026-09-22, skorelowany z power cycle klastra — filtr NIE jest wadliwy, to wyścig przy starcie
+   JVM.** `jvm_cpu_recent_utilization_ratio` znów flat 0 na 4 z 5 instancji (obie `app-job-offers`, jedna z trzech
+   `app-candidates` — jedna złapała dokładnie wzorzec "jedna realna próbka, potem flat 0" z oryginalnego opisu buga).
+   Zanim cokolwiek zmieniono, zweryfikowano po kolei i **wykluczono** regresję configu: `otel-metrics-filter.jar`
+   fizycznie obecny w obu żywych obrazach (`kubectl exec ... ls -la /app/`), env vary na żywym Deploymencie
+   identyczne z `k8s-cluster/manifests/{candidates,job-offers}/app.yaml` (bez dryfu), logika filtra w
+   `otel-metrics-filter/src/.../MicrometerJvmMetricFilterCustomizer.java` poprawna (odrzuca `jvm.*` tylko ze
+   scope'u `io.opentelemetry.micrometer-1.5`, tuż przed eksportem). **Fix**: zwykły `kubectl delete pod` (nie
+   `rollout restart` — po prostu skasowanie, Deployment sam odtworzył) na wszystkich 5 podach — po restarcie
+   wszystkie 5 nowych instancji od razu zdrowe (`query_range` na nowych `instance` ID: faluje normalnie,
+   min 0.01-max 1.0, zero flat 0). **To NIE jest dowód, że problem jest naprawiony na stałe** — to dowód, że
+   **filtr eksportowy (`addMetricExporterCustomizer`) usuwa duplikat z payloadu, ale nie zapobiega wyścigowi na
+   poziomie SDK przy rejestracji instrumentu** między natywną instrumentacją a mostem Micrometera w momencie startu
+   JVM — dokładnie to, co [opentelemetry-java-instrumentation#11122](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/11122)
+   sugeruje wprost ("your best option is not to enable both of these instrumentations at the same time"). **Hipoteza
+   robocza**: wynik wyścigu zależy od obciążenia systemu w momencie startu JVM — izolowany restart pojedynczego
+   poda na skądinąd bezczynnym klastrze (ten test) idzie zdrowo praktycznie zawsze, a pełny power cycle (12 node'ów
+   bootujących jednocześnie, realny I/O+CPU contention) systematycznie trafia w złą kolejność rejestracji. Pasuje do
+   pierwszego nawrotu opisanego wyżej (linia ~32: też po `power outage`, nie po zwykłym restarcie). **Nie
+   zaimplementowane jeszcze**: trwalszy fix po stronie Spring/Micrometer — `MeterFilter.deny(...)` w becie
+   `@Bean MeterRegistryCustomizer` odrzucającym `jvm.*` **przed** rejestracją w Micrometerowym `MeterRegistry`,
+   zamiast filtrować dopiero na eksporcie. To eliminowałoby wyścig u źródła (Micrometer nigdy nie tworzy instrumentu
+   `jvm.*`, więc nie ma z czym kolidować), niezależnie od obciążenia systemu przy starcie. Do zrobienia i
+   przetestowania pod następny power cycle/restart całego klastra, zanim uznamy sprawę za faktycznie zamkniętą.
+
+   **[ZROBIONE, 2026-09-21] Trwały load balancer na minikube, bez `minikube tunnel`.** Load test przez
+   `kubectl port-forward` (`localhost:8080`) zawsze trafia w **jeden** konkretny pod (wybrany raz, przy starcie
+   forwarda) — realny problem, gdy chce się przetestować rozkład ruchu na repliki. `minikube tunnel` w tle
+   (background wrapper przez `sudo -n`) okazał się niedziałający — `minikube tunnel` osobno woła `sudo` dla
+   **każdego** serwisu z portem uprzywilejowanym (80), nie raz na starcie, więc nie da się tego bezpiecznie
+   owinąć jednym nieinteraktywnym `sudo` (próba i wycofanie tego samego dnia, patrz git log). Zamiast tego:
+   `minikube start --ports=30080:30080` (driver Docker publikuje port kontenera na hosta **trwale**, przy
+   tworzeniu kontenera — bez sudo, bez tunelu, bez terminala trzymanego otwartym) + własny, jawny `NodePort`
+   Service `app-candidates-lb` (`k8s-cluster/manifests/overlays/minikube/nodeport-candidates.yaml`, `nodePort: 30080`
+   na sztywno) — **nie** Service generowany automatycznie przez Gateway (`cilium-gateway-api-gateway`), bo ten
+   dostaje losowy nodePort przy każdym odtworzeniu, nie da się go przypiąć do stałej wartości `--ports`.
+   `--ports` działa tylko przy tworzeniu kontenera — wymaga `minikube delete` + rebuild, nie da się dodać do już
+   działającego minikube. Zweryfikowane żywe: różne pody dostają ruch przy kolejnych requestach (nie ten sam pod
+   w kółko jak przy porcie 8080).
+
+1. **[ZROBIONE] `prometheus-adapter` (2026-09-20).** Zainstalowany (`helm install`, po jednej blokadzie classifiera
    "Cluster-Wide Workload Creation" — zadziałało na "rób sam"), na `platform-1`. `hpa.yaml` (`candidates`) na RPS
    (`external` metric `candidates_requests_per_second`, target `AverageValue: 500`, `maxReplicas: 3`,
    `behavior.scaleDown.stabilizationWindowSeconds: 300` — patrz komentarz w pliku dla uzasadnienia liczb),
@@ -38,7 +140,7 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    patrz `docs/externalmetrics.md` w repo `kubernetes-sigs/prometheus-adapter` ("Cross-Namespace or No Namespace
    Queries"), bezpieczne tu bo `job="app-candidates"` w `seriesQuery` już jest jednoznaczne.
 
-1. **[BLOKOWANE na Cilium, obejście na miejscu] `app-candidates` HPA spięty na sztywno 3 repliki (2026-09-20).**
+2. **[BLOKOWANE na Cilium, obejście na miejscu] `app-candidates` HPA spięty na sztywno 3 repliki (2026-09-20).**
    **Problem**: świeży pod po HPA scale-up (2→3) dostaje pełny udział ruchu natychmiast po przejściu
    `readinessProbe` — braku LB slow-startu (patrz punkt niżej, ten sam dzień). Żywy test 1500rps złapał
    konsekwencję wprost: p99 zapytań do bazy na świeżym podzie skoczyło z bazowych ~5ms do 150-215ms na ~60-90s
@@ -63,7 +165,7 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    `minReplicas` z powrotem do 2. Do tego czasu `app-candidates` zajmuje na stałe 3 z 5 workerów (razem z
    2 od `app-job-offers` — wszystkie 5 workerów permanentnie zajęte, zero wolnego node'a).
 
-2. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
+3. **[ZROBIONE, w tym fizycznie] `platform-2` → `worker-5` (2026-09-20).** Ten sam powód co wcześniej: MetalLB w
    trybie L2 jest active-passive per IP — tylko `platform-1` faktycznie obsługuje ruch Gateway (`.100`), `platform-2`
    przy 1200rps stał bezczynny (~1.8% CPU), failover przestał być wart dedykowanego node'a.
    **Zmiana decyzji względem wcześniejszej wersji tej notatki**: pierwotny plan `sso-1`+Keycloak (ten sam dzień)
@@ -79,7 +181,7 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    DHCP `.14` — stary known_hosts wpis dla `.14` z poprzedniego życia tego IP trzeba było usunąć,
    `ssh-keygen -R`), `kubectl delete node k8s-rpi-platform-2`, `make k8s-prep` (hostname → `k8s-rpi-worker-5`),
    `make k8s-init` (join jako worker, bez taintu — zweryfikowane: `Taints: <none>` po tym jak Cilium wystartował).
-   **Przy okazji zrobione też (ten sam dzień, ta sama sesja):** HPA dla `app-candidates` — patrz punkt 0. powyżej
+   **Przy okazji zrobione też (ten sam dzień, ta sama sesja):** HPA dla `app-candidates` — patrz punkt 1. powyżej
    dla finalnej, RPS-owej wersji (pierwsza wersja była na CPU, zamieniona po tym jak realny load test pokazał że
    próg 70% ledwo nie został przekroczony i się nie wyzwolił). `worker-5` to jedyny wolny slot dla 3. repliki dzięki
    istniejącej twardej podAntiAffinity, brak jawnego nodeSelectora. `load-background` przeniesiony z
@@ -88,39 +190,125 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
    (`REGISTRY_RE` miał `.104` zamiast `.190`) przez co pinning tagu w manifeście od dawna cicho nic nie robił.
    Affinity entity-operatora Kafki (`kafka-cluster.yaml`) też dociągnięta i zaaplikowana — patrz
    `k8s-cluster/RPS-SCALING.md`/git log dla szczegółów tego osobnego fixu.
-3. **[NASTĘPNA SESJA, kandydat #1 — na jawne polecenie 2026-09-20] Zwiększenie wolumenu danych w Postgresach
+4. **[NASTĘPNA SESJA, kandydat #1 — na jawne polecenie 2026-09-20] Zwiększenie wolumenu danych w Postgresach
    (candidates/job-offers), bez konkretów jeszcze.** Obecny wolumen: 100k candidates / 50k job offers, generowany
    przez `data-generator` i ładowany przez `load-data.sh`/`make k8s-reload-data`. Cel/docelowa skala nieustalone w
    tej sesji — do doprecyzowania z użytkownikiem, kiedy przyjdzie pora (nie zgadywać liczb). **Kandydat #2
    (alternatywa, nie oba naraz)**: problem estymacji percentyli (`README.md`'s Known issues —
    `histogram_quantile()` na rzadkim ogonie histogramu daje niedokładne p99 względem Gatlinga, np. zmierzone
-   2026-09-20: Grafana ~900ms vs realne p99=556-1576ms w zależności od runu). Keycloak/SSO (patrz punkt 2. wyżej)
+   2026-09-20: Grafana ~900ms vs realne p99=556-1576ms w zależności od runu). Keycloak/SSO (patrz punkt 3. wyżej)
    zostaje świadomie za oboma tymi kandydatami — bez node'a, bez terminu.
-4. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
+5. **`registry`/`local-path-provisioner`/`metallb-controller` dryfują na generyczne workery zamiast trzymać się
    `platform-1`.** Znalezione 2026-09-20: `registry.yaml` ma tolerancję `role=platform`, ale brak `nodeSelector`
    (tolerancja tylko pozwala, nie wymusza); `local-path-provisioner`/`metallb-controller` nie mają nawet tolerancji.
    Efekt: te pody konkurują o CPU z appkami na workerach (dokładnie ten typ współdzielenia, który
    `RPS-SCALING.md` fix #9 już raz nazwał błędem). Do naprawy przy okazji reorganizacji platform/sso (pkt 1).
-5. **HA/replikacja Postgresa (CloudNativePG/Patroni)** — `local-path-provisioner` trzyma PV lokalnie na dysku
+6. **HA/replikacja Postgresa (CloudNativePG/Patroni)** — `local-path-provisioner` trzyma PV lokalnie na dysku
    node'a, więc samo dopuszczenie schedulowania na oba node'y bazodanowe nic nie da przy awarii. Potrzebny operator
    ze streaming replication. Odłożone, niepriorytetowe.
-6. **GitOps (ArgoCD/Flux)** — cel końcowy, żeby stan klastra był w pełni odtwarzalny z repo bez ręcznych
+7. **GitOps (ArgoCD/Flux)** — cel końcowy, żeby stan klastra był w pełni odtwarzalny z repo bez ręcznych
    `helm install`/`kubectl apply`. Świadomie na końcu planu, nie teraz.
-7. **Lokalny k8s (minikube) do testowania manifestów przed wdrożeniem na fizyczny klaster — ZROBIONE i
+8. **Lokalny k8s (minikube) do testowania manifestów przed wdrożeniem na fizyczny klaster — ZROBIONE i
    zmergowane** (branch `experiment/minikube-local-cluster`, `make minikube-rebuild-all`). Otwarty tylko drobny
    punkt: trzymać w sync ewentualne przyszłe zmiany registry/MinIO między overlayem minikube a produkcyjnymi
    manifestami (już raz się rozjechały, patrz pkt niżej o pułapkach).
-8. **Brak trwałego zabezpieczenia przed rozjazdem `candidatesDataFile` (lokalny plik dla `load-test`) vs. baza
+9. **Brak trwałego zabezpieczenia przed rozjazdem `candidatesDataFile` (lokalny plik dla `load-test`) vs. baza
    faktycznie załadowana na klastrze.** `load-data.sh` po każdym imporcie synchronizuje `load-background`, ale nic
    nie pilnuje pliku używanego ręcznie do `make candidateSimulation` — do rozważenia: osobny plik/katalog dla
    "danych aktualnie na klastrze" albo krok w symulacji weryfikujący próbkę ID przed testem.
-9. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
+10. Drobne, niepriorytetowe: rozszerzenie `HTTPRoute` o kolejne reguły/serwisy; weryfikacja dostępu do Gateway z
    innych maszyn w LAN; dashboard I/O dysku dla Postgresa (metryki node-exportera już są, brak paneli);
-   `postgres-exporter` (metryki natywne Postgresa — connections/cache hit/locki) nie wdrożony, świadomie odłożone.
-10. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
+   `postgres-exporter` (metryki natywne Postgresa — connections/cache hit/locki) wdrożony w Docker Compose
+   (2026-09-22, dashboard `observability/grafana/provisioning/dashboards/postgres-monitoring.json`), na k8s
+   świadomie wciąż odłożone (`a2f37c7 revert(k8s): drop postgres_exporter sidecar - only asked about Compose`).
+11. **Commit bieżących zmian** — sprawdzić `git status` na starcie kolejnej sesji; w chwili pisania tej wersji
     handoffu working tree jest czyste (wszystko z poprzednich sesji już zacommitowane/zmergowane), ale kilka
     wcześniejszych wpisów w historii tego pliku opisywało niezacommitowane zmiany — zawsze weryfikować `git status`
     zamiast ufać starym zapiskom.
+12. **[NASTĘPNA SESJA, na minikube] `app-candidates-lb` (NodePort 30080, dodany 2026-09-21) nie rozkłada ruchu tak
+    równo jak wcześniejszy Gateway/`minikube tunnel` — pod load testem (Gatling, 2000rps) czasem tylko 2 z 3
+    instancji candidates dostają ruch, zaobserwowane live przez użytkownika.** Root cause: to różnica warstwy, nie
+    bug. NodePort Service (kube-proxy-replacement, Cilium eBPF) to czysty **L4** — jedno połączenie TCP przypina
+    się do jednego poda na cały czas swojego życia, bez świadomości HTTP. Wcześniejszy Gateway (Envoy, generowany
+    przez Cilium jako `cilium-gateway-api-gateway`) to **L7** — Envoy terminuje połączenie klienta i sam zarządza
+    własnymi połączeniami do backendów, rozkładając **per request**, nie per połączenie — stąd wcześniej (przez
+    tunnel) równy rozkład nawet z małą pulą połączeń. Gatling używa `.shareConnections()`
+    (`load-test/src/gatling/java/.../CandidateSimulation.java:124`, komentarz w kodzie: potrzebne powyżej ~300rps
+    żeby nie wyczerpać puli portów efemerycznych na Macu) — dzieli WSZYSTKIE virtual usery przez wspólną, niewielką
+    pulę trwałych połączeń, więc przy L4 nierówny rozkład jest statystycznie prawdopodobny. Dokładny rozmiar tej
+    puli **nieustalony** — `gatling.conf` nic nie ustawia (brak `maxConnectionsPerHost`), więc to defaulty
+    Gatling/AsyncHttpClient; nie potwierdzone empirycznie (próba pomiaru żywych połączeń przez `/proc/net/tcp`
+    złapała głównie szum od ciągłego ruchu `load-background`, nie samego testu — do zrobienia precyzyjnie: pomiar
+    **w trakcie** aktywnego load testu, nie po fakcie).
+    **Opcje do rozważenia (nie zrealizowane, decyzja z użytkownikiem odłożona)**:
+    - Zostawić jak jest — L4 wciąż lepszy niż `kubectl port-forward` (który zawsze bije w jeden konkretny pod, zero
+      rozkładu), tylko nie idealnie równy.
+      - Przypiąć `30080` do Gateway'a (Envoy) zamiast własnego bypassu `app-candidates-lb` — dałoby z powrotem
+        rozkład per-request jak przy tunelu. Problem: `cilium-gateway-api-gateway` to Service generowany
+        dynamicznie przez kontroler Gateway API Cilium (nie z YAML aplikowanego przez nas), dostaje **losowy**
+        nodePort przy każdym odtworzeniu — nie da się go przypiąć przez `kustomize` (patche kustomize działają
+        tylko na zasoby z własnej listy `resources:`, a ten nim nie jest). Wymagałoby osobnego kroku
+        `kubectl patch svc cilium-gateway-api-gateway -n candidates` **po** tym jak kontroler go utworzy (wyścig
+        do obsłużenia — poczekać aż istnieje), z ryzykiem że kontroler Cilium nadpisze patch przy własnej
+        reconciliacji (nieprzetestowane, czy to się utrzyma).
+13. **[CZĘŚCIOWO ZROBIONE, 2026-09-22 — realny power cycle wywołany celowo (`sudo systemctl reboot` przez SSH na
+    wszystkich 12 node'ach naraz) do zweryfikowania tej całej notatki na żywo] Klaster źle wstaje po power cycle —
+    nie tylko JVM CPU (patrz punkt 0. wyżej, "NAWRÓT #3"), to szerszy wzorzec.** Ten sam power cycle, który zresetował `jvm_cpu_recent_utilization_ratio`,
+    zostawił w logach `app-candidates`/`app-job-offers` `HikariPool-1 - Failed to validate connection ... (This
+    connection has been closed)` + `DataSourceHealthIndicator - DataSource health check failed` (503 na
+    liveness/readiness, kaskadowe restarty podów appek) w oknie ok. 21:08-21:47 — czyli Postgres sam nie wstał
+    czysto/na czas, appki dobijały się do niego zanim był gotowy. **Nadal otwarte i nierozwiązane**:
+    `tempo-block-builder-0` (`observability` namespace) w CrashLoopBackOff od tego samego power cycle (14+
+    restartów) — to jest realny "1 pod down" widoczny w Headlampie (patrz pułapka niżej o `kube_pod_status_phase`
+    w Grafanie, która tego nie pokazuje). **Root cause potwierdzony, 2026-09-22**: `OOMKilled` (exit code 137,
+    `lastState.terminated.reason=OOMKilled`), nie zawieszony `/ready` — kontener żyje tylko ok. 21s od startu do
+    zabicia. Łańcuch: startuje czysto (`Tempo started`, joina memberlist, zaczyna konsumować partycję Kafki od
+    swojego ostatniego committed offsetu `126928`) → od razu `OFFSET_OUT_OF_RANGE na pierwszym fetchu` (potwierdzone
+    przez `kafka-get-offsets.sh --time -2/-1` na topicu `tempo-traces`: dostępny zakres to `138880`-`185712` —
+    `126928` już dawno spadło poniżej `earliest` przez retencję, bo block-builder stał dłużej niż retencja Kafki
+    pozwala) → resetuje się do skonfigurowanego `ConsumeResetOffset` → **jeśli to `earliest`, próbuje dogonić
+    ~47k zaległych wiadomości (`185712-138880`) w jednym rzucie i to zapycha pamięć mimo szczodrego limitu 4608Mi**
+    (`resources.limits.memory` w StatefulSecie) — restart pętli się, bo po każdym restarcie znów próbuje tego
+    samego catch-upu i znów pada, zanim zdąży zacommitować dalej. Niepotwierdzone: czy to faktycznie proporcjonalne
+    do rozmiaru backlogu (realny memory pressure z 47k wiadomości trace'ów) czy bug w samej ścieżce catch-up w tej
+    wersji Tempo (3.0.3) niezależny od wolumenu.
+
+    **[ROZWIĄZANE (obejście), 2026-09-22 wieczorem, po celowym pełnym power cycle całego klastra]** Węzeł
+    `k8s-rpi-observability-1` (gdzie przypięty jest `blockBuilder` przez `nodeSelector`) ma tylko **8GiB RAM
+    fizycznie** (`kubectl get node ... -o jsonpath='{.status.capacity.memory}'` → `8127688Ki`), z czego w chwili
+    diagnozy ~74% już zajęte przez sąsiadów na tym samym node'zie (Kafka, live-store, Alloy, Headlamp) — **wolne
+    ~2GiB**. Backlog w międzyczasie urósł do **58843 wiadomości** (`kafka-consumer-groups.sh --describe --group
+    block-builder`: `LAG=58843`, bo `CURRENT-OFFSET` utknęło na `126928` a `LOG-END-OFFSET` rosło dalej przez
+    ciągły ambient traffic `load-background` — dokładnie spirala opisana w komentarzu przy `blockBuilder.resources`
+    w `values-tempo-distributed.yaml`). Ekstrapolując wcześniejszy wzorzec (4.5Gi na 20801 wiadomości) ten backlog
+    wymagałby **~13GiB** — fizycznie niemożliwe na tym node'zie. Dalsze podnoszenie limitu pamięci **nie było
+    wykonalne**, więc zamiast tego: **reset offsetu konsumenckiej grupy `block-builder` na `--to-latest`**
+    (`kubectl -n observability scale statefulset tempo-block-builder --replicas=0` → poczekać aż pod zniknie →
+    `bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group block-builder --topic tempo-traces
+    --reset-offsets --to-latest --execute` z poziomu `tempo-kafka-dual-role-0` → `--replicas=1` z powrotem).
+    **Świadoma utrata danych**: pominięty cały backlog (traces z okna od ostatniego udanego commitu do teraz) —
+    zaakceptowane, bo to dane obserwowalności demo/homelab, nie dane biznesowe, i node fizycznie nie miał jak tego
+    przetworzyć. Zweryfikowane żywe po resecie: `commit_offset` w logach realnie rośnie
+    (`"successfully committed offset to kafka" partition=0 commit_offset=185785 processed_records=3`), pod stabilny
+    `1/1 Running`, `0` restartów przez kolejne ~9 min obserwacji. **Nie naprawione u źródła** — ten sam spiral
+    (offset ucieka poniżej retencji Kafki podczas przerwy w działaniu, potem OOM przy próbie catch-upu) powtórzy
+    się przy następnym długim przestoju block-buildera, chyba że: (a) skrócona zostanie retencja topicu
+    `tempo-traces` tak, żeby backlog nigdy nie urósł do rozmiaru wymagającego więcej RAM niż node fizycznie ma, (b)
+    `blockBuilder` przeniesiony na node z większym zapasem RAM, albo (c) dodany automatyczny reset-offset-do-latest
+    jako część procedury startowej zamiast ręcznej interwencji. Do rozważenia następna sesja, nie zrobione teraz.
+
+    **Do zrobienia następna sesja (reszta punktu 13, nadal otwarte)**: sprawdzić czy Postgresy
+    (`postgres-candidates`/`postgres-job-offers`) mają sensowny `startupProbe`/kolejność startu względem appek,
+    żeby power cycle nie generował kaskady 503 zanim baza jest gotowa; rozważyć czy to jeden wspólny root cause
+    (np. węzły bazodanowe/Kafki wstają wolniej niż reszta po reboot, wszystko inne dobija się za wcześnie) czy
+    niezależne przypadki. **Potwierdzone tym samym testem**: `jvm_cpu_recent_utilization_ratio` (punkt 0., NAWRÓT
+    #3) faktycznie odtworzyło się przy tym realnym power cyclu — 3 z 5 instancji flat 0 zaraz po restarcie węzłów,
+    naprawione tym samym `kubectl delete pod` co poprzednio (potwierdzone żywe przez `kubectl top pod` — realne
+    zużycie CPU 19-154m na wszystkich 5 podach pod obciążeniem, nie tylko przez metrykę OTel, która przez chwilę po
+    restarcie miała mylące osierocone serie ze starych, usuniętych już podów w Prometheusie — nie mylić z realnym
+    stanem appki). To czwarty udokumentowany nawrót skorelowany z restartem/power cycle — trwały fix
+    (`MeterFilter.deny` po stronie Spring/Micrometer, patrz punkt 0.) wciąż niezaimplementowany, coraz mocniej
+    uzasadniony.
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
@@ -157,6 +345,27 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   ogóle ustawień CRI, daje fałszywe potwierdzenia. Testować przez realny `kubectl delete pod` + obserwację.
 - Dopisanie starego inline `[registry.mirrors]`/`[registry.configs]` OBOK `config_path` zabija cały plugin CRI
   (`"mirrors" cannot be set when "config_path" is provided`) — nie mieszać obu stylów configu.
+- **Po power-cyklu całego klastra static pody control-plane na masterze (`etcd`, `kube-apiserver`,
+  `kube-controller-manager`, `kube-scheduler`) mogą wisieć w Headlamp/`kubectl get pods` jako
+  `CreateContainerError` z `"failed to reserve container name ... is reserved for <id>"`, mimo że realne procesy
+  za `<id>` **już działają** (żywy PID w `ctr -n k8s.io tasks list`, `kubectl` normalnie odpowiada). To fałszywy
+  status, nie realna awaria: kubelet po restarcie gubi synchronizację z containerd i w kółko próbuje utworzyć
+  nowy kontener pod tą samą nazwą/numerem próby, za każdym razem obijając się o rezerwację trzymaną przez
+  kontener, który już poprawnie wystartował. **`crictl` nie jest zainstalowany na tych node'ach — używać `ctr`
+  bezpośrednio** (`sudo ctr -n k8s.io containers list` / `tasks list`). Samo `systemctl restart kubelet` NIE
+  rozwiązuje problemu. Fix: dla każdego z 4 ID z komunikatu błędu — `sudo ctr -n k8s.io tasks kill -s SIGKILL <id>`
+  → `sudo ctr -n k8s.io tasks rm <id>` → `sudo ctr -n k8s.io containers delete <id>` — zwalnia rezerwację nazwy,
+  kubelet od razu tworzy czysty kontener (parosekundowa przerwa w apiserverze, akceptowalna na single-masterowym
+  klastrze bez HA). **Powtórzyło się identycznie przy KOLEJNYM power-cyklu tego samego dnia (2026-09-21,
+  ~1h później)** — to nie jednorazowy fluk, trzeba to robić po każdym power-cyklu całego klastra, dopóki nie
+  znajdzie się trwały fix (nieznaleziony jeszcze; podejrzenie: coś w kolejności/timingu boot-time między
+  containerd a kubelet na tym sprzęcie/OS). Fix identyczny za drugim razem (nowe ID kontenerów, sama procedura).
+  **Efekt uboczny do sprawdzenia przy każdym takim incydencie**: `cilium-operator` może wpaść w
+  `CrashLoopBackOff` przez utratę leader election w oknie, gdy apiserver był niedostępny (`"Leader election
+  lost, shutting down"` w jego logach, `dial tcp <master>:6443: connect: connection refused`) — samo się nie
+  naprawia od razu przez rosnący backoff kubeleta; `kubectl delete pod` na nim (Deployment go odtworzy) jest
+  szybsze niż czekanie na kolejny backoff. Sprawdzać `kubectl get pods -A | grep -v Running` całościowo po
+  naprawie control-plane, nie tylko 4 static pody na masterze.
 
 ### MetalLB / Gateway / sieć
 - MetalLB w trybie L2 jest **active-passive per IP** — tylko jeden node ogłasza dany adres ARP-em na raz, drugi
@@ -174,6 +383,15 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   to appka/Cilium/apiserver.
 
 ### Observability / Tempo / dane
+- **Grafana "Running Pods" (`kubernetes-cluster-dashboard`) i Headlamp mogą się rozjeżdżać dla poda w
+  CrashLoopBackOff — to nie bug dashboardu, tylko inna metryka.** Panel liczy
+  `count(kube_pod_status_phase{phase="Running"} == 1)` — **faza poda**, nie gotowość kontenera. Pod w
+  CrashLoopBackOff zostaje w fazie `Running` między restartami (kubelet go faktycznie odpala, tylko kontener zaraz
+  pada), więc licznik go nie odejmuje. Headlamp czyta `containerStatuses[].ready` (per-kontener), co poprawnie
+  pokazuje `false`. Znalezione 2026-09-22: `tempo-block-builder-0` crash-looping, Headlamp poprawnie pokazywał
+  "1 down", Grafana dalej liczyła "111 up" (zgadza się z realną liczbą podów w klastrze — tylko "Running" nie
+  znaczy "zdrowy"). Do poprawy kiedyś: `kube_pod_container_status_ready` zamiast `kube_pod_status_phase` złapałby
+  ten przypadek, ale nie zrobione teraz (poza zakresem sesji).
 - **Tempo 3.x w trybie mikroserwisowym (`tempo-distributed`) wymaga Kafki** — to twardy wymóg architektury, nie
   opcja do wyłączenia. Monolityczny single-binary chart Tempo utknął na appVersion 2.10.8 i nigdy nie dostanie
   configu pod schemat Tempo 3.x (`app.Config` przebudowany od zera) — jedyna droga do Tempo 3.x to `tempo-distributed`.
@@ -240,6 +458,19 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   (świadomie wyłączona w tym repo jako "extras not needed for home-lab"). Zmierzony efekt: powtórzone zapytanie na
   nakładający się zakres 6s→0.13s. Limit pamięci Loki podniesiony `1Gi→1280Mi` przy okazji, żeby zachować ten sam
   margines na burst testy co przed dodaniem cache'u.
+
+### JVM / OTel javaagent
+- **`OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap
+  classpath has been appended` w logach `app-candidates`/`app-job-offers` przy starcie jest nieszkodliwy, spodziewany
+  szum, nie błąd.** Standardowy efekt uboczny tego, jak działa `-javaagent:./opentelemetry-javaagent.jar` —
+  agenty Javy wstrzykujące instrumentację na poziomie bootstrap classloadera używają
+  `Instrumentation.appendToBootstrapClassLoaderSearch()`, co wyłącza korzyści CDS (Class Data Sharing) dla
+  wszystkiego poza klasami samego boot loadera (wolniejszy start JVM o ułamki sekundy, nic więcej — nie dotyczy
+  poprawności działania appki ani jakości eksportowanych metryk/traców/logów). Pojawia się na każdym starcie, na
+  wszystkich środowiskach (Compose, k8s, minikube) — nie mylić z realnym problemem przy przeglądaniu logów pod
+  kątem `warn`/`error` (dokładnie to zdarzyło się w tej sesji: złapane przez grep po "warn" przy skanowaniu logów
+  `app-job-offers` w poszukiwaniu prawdziwej przyczyny innego problemu). Nic do zrobienia — nie próbować "naprawiać"
+  przez usuwanie klas z bootstrap classpath, bo to zepsułoby samą instrumentację OTel.
 
 ### Load-testing / metodologia wydajności
 - **Testować jedną zmienną na raz pod realnym współbieżnym obciążeniem** — bundlowana zmiana dwóch rzeczy naraz

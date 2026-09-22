@@ -19,6 +19,16 @@
 # Cilium (installed by minikube-bootstrap.sh) can be the real CNI, same as
 # the RPi cluster — "containerd" runtime refuses to start without a CNI
 # already present, "docker" runtime doesn't have that restriction.
+#
+# --ports=30080:30080: docker-driver-only flag that publishes that container
+# port straight to 127.0.0.1 on the host, permanently, at container-creation
+# time - no sudo, no `minikube tunnel`, no foreground terminal to leave open.
+# Paired with the fixed NodePort Service app-candidates-lb (nodePort: 30080,
+# k8s-cluster/manifests/overlays/minikube/nodeport-candidates.yaml) - real
+# Kubernetes load balancing across all app-candidates replicas (unlike
+# `kubectl port-forward`, which locks onto one pod). Only takes effect at
+# container creation, so changing it needs `minikube delete` first - can't be
+# applied to an already-running minikube.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,10 +48,22 @@ minikube start \
   --container-runtime=docker \
   --cni=false \
   --cpus="$MINIKUBE_CPUS" \
-  --memory="$MINIKUBE_MEMORY"
+  --memory="$MINIKUBE_MEMORY" \
+  --ports=30080:30080
 
 echo "==> Removing kube-proxy — Cilium's kube-proxy-replacement takes over (matches the RPi cluster)"
 kubectl -n kube-system delete daemonset kube-proxy --ignore-not-found
 kubectl -n kube-system delete configmap kube-proxy --ignore-not-found
 
-echo "==> minikube is up. Next: make minikube-bootstrap"
+echo "==> minikube is up"
+
+# Harmless on a fresh cluster: minikube-forward.sh skips any service that
+# doesn't exist yet ("not deployed yet?") instead of erroring. On a cluster
+# that was `minikube-stop`'d (not deleted) and already has everything
+# deployed, this is what actually restores access - no separate "resume"
+# command needed, and minikube-rebuild-all/minikube-deploy still re-run it
+# for real once bootstrap/deploy have created the services.
+"$ROOT_DIR/k8s-cluster/scripts/minikube-forward.sh"
+
+echo "==> If this is a fresh cluster (forwards above were skipped): make minikube-bootstrap"
+echo "==> Real load-balanced access to app-candidates (all replicas, not just one pod): http://localhost:30080"

@@ -59,7 +59,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-job-offers
-          image: 192.168.10.190:5000/app-job-offers:aeb84de
+          image: 192.168.10.190:5000/app-job-offers:9310d0a
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request).
@@ -78,10 +78,15 @@ spec:
               value: "1000"
             - name: OTEL_BSP_SCHEDULE_DELAY
               value: "1000"
+            # See k8s-cluster/manifests/candidates/app.yaml for why this is true
+            # (with the extension jar), not false
+            # (opentelemetry-java-instrumentation#11122).
             - name: OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED
               value: "true"
             - name: OTEL_INSTRUMENTATION_MICROMETER_ENABLED
-              value: "true"
+              value: "false"
+            - name: OTEL_JAVAAGENT_EXTENSIONS
+              value: "./otel-metrics-filter.jar"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
             # Logs now go through Alloy (reads stdout directly, see

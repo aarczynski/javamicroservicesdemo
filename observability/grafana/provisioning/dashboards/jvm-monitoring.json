@@ -434,8 +434,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Heap Max"
+              "id": "byRegexp",
+              "options": "/^Heap Max/"
             },
             "properties": [
               {
@@ -463,8 +463,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Heap Committed"
+              "id": "byRegexp",
+              "options": "/^Heap Committed/"
             },
             "properties": [
               {
@@ -478,8 +478,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Heap Used"
+              "id": "byRegexp",
+              "options": "/^Heap Used/"
             },
             "properties": [
               {
@@ -526,9 +526,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(jvm_memory_used_bytes{job=\"$service\", jvm_memory_type=\"heap\"})",
+          "expr": "jvm_memory_used_bytes{job=\"$service\", jvm_memory_type=\"heap\"}",
           "instant": false,
-          "legendFormat": "Heap Used",
+          "legendFormat": "Heap Used — {{instance}}",
           "range": true,
           "refId": "A"
         },
@@ -538,9 +538,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(jvm_memory_committed_bytes{job=\"$service\", jvm_memory_type=\"heap\"})",
+          "expr": "jvm_memory_committed_bytes{job=\"$service\", jvm_memory_type=\"heap\"}",
           "instant": false,
-          "legendFormat": "Heap Committed",
+          "legendFormat": "Heap Committed — {{instance}}",
           "range": true,
           "refId": "B"
         },
@@ -550,9 +550,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(jvm_memory_limit_bytes{job=\"$service\", jvm_memory_type=\"heap\"})",
+          "expr": "jvm_memory_limit_bytes{job=\"$service\", jvm_memory_type=\"heap\"}",
           "instant": false,
-          "legendFormat": "Heap Max",
+          "legendFormat": "Heap Max — {{instance}}",
           "range": true,
           "refId": "C"
         }
@@ -619,8 +619,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Non-Heap Committed"
+              "id": "byRegexp",
+              "options": "/^Non-Heap Committed/"
             },
             "properties": [
               {
@@ -634,8 +634,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Non-Heap Used"
+              "id": "byRegexp",
+              "options": "/^Non-Heap Used/"
             },
             "properties": [
               {
@@ -682,9 +682,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(jvm_memory_used_bytes{job=\"$service\", jvm_memory_type=\"non_heap\"})",
+          "expr": "jvm_memory_used_bytes{job=\"$service\", jvm_memory_type=\"non_heap\"}",
           "instant": false,
-          "legendFormat": "Non-Heap Used",
+          "legendFormat": "Non-Heap Used — {{instance}}",
           "range": true,
           "refId": "A"
         },
@@ -694,9 +694,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(jvm_memory_committed_bytes{job=\"$service\", jvm_memory_type=\"non_heap\"})",
+          "expr": "jvm_memory_committed_bytes{job=\"$service\", jvm_memory_type=\"non_heap\"}",
           "instant": false,
-          "legendFormat": "Non-Heap Committed",
+          "legendFormat": "Non-Heap Committed — {{instance}}",
           "range": true,
           "refId": "B"
         }

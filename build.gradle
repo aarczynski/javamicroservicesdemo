@@ -12,9 +12,20 @@ subprojects { subproject ->
             into layout.buildDirectory.dir("otel-agent")
         }
 
+        // otel-metrics-filter is a javaagent extension (loaded via OTEL_JAVAAGENT_EXTENSIONS),
+        // not a library dependency of the app - copied alongside the agent jar itself, same as
+        // copyOtelAgent above, for the Dockerfile to pick up.
+        tasks.register('copyOtelMetricsFilter', Copy) {
+            dependsOn ':otel-metrics-filter:jar'
+            from project(':otel-metrics-filter').layout.buildDirectory.dir("libs")
+            include '*.jar'
+            rename '.*\\.jar', 'otel-metrics-filter.jar'
+            into layout.buildDirectory.dir("otel-agent")
+        }
+
         pluginManager.withPlugin('org.springframework.boot') {
             tasks.named('bootJar') {
-                dependsOn 'copyOtelAgent'
+                dependsOn 'copyOtelAgent', 'copyOtelMetricsFilter'
             }
             tasks.named('jar') {
                 enabled = false

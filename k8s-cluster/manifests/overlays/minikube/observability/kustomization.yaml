@@ -18,6 +18,21 @@ patches:
         path: /spec/template/pod/affinity
       - op: remove
         path: /spec/template/pod/tolerations
+  # The Kafka CR's entityOperator isn't part of the KafkaNodePool above -
+  # Strimzi schedules it as its own Deployment with its own separate
+  # affinity/tolerations (spec.entityOperator.template.pod), so it needs the
+  # same strip on top of the KafkaNodePool patch, not instead of it. Found
+  # live 2026-09-21: tempo-kafka-entity-operator stuck Pending
+  # ("didn't match Pod's node affinity/selector") even after the
+  # KafkaNodePool patch above, since this is a different object entirely.
+  - target:
+      kind: Kafka
+      name: tempo-kafka
+    patch: |-
+      - op: remove
+        path: /spec/entityOperator/template/pod/affinity
+      - op: remove
+        path: /spec/entityOperator/template/pod/tolerations
   - target:
       kind: Deployment
       name: minio

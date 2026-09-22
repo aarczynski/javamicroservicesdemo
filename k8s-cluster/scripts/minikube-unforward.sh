@@ -15,6 +15,11 @@ for pidfile in "$FORWARD_DIR"/*.pid; do
   [[ -e "$pidfile" ]] || continue
   pid="$(cat "$pidfile")"
   if kill -0 "$pid" 2>/dev/null; then
+    # The pid is minikube-forward.sh's self-restarting retry loop, not
+    # `kubectl port-forward` directly (see there for why) - killing just the
+    # loop leaves its current `kubectl port-forward` child running, orphaned,
+    # still holding the port. Kill children first, then the loop itself.
+    pkill -P "$pid" 2>/dev/null
     kill "$pid" 2>/dev/null
     echo "==> Stopped forward $(basename "$pidfile" .pid) (pid $pid)"
   fi

@@ -46,14 +46,24 @@ FORWARDS=(
 
 "$ROOT_DIR/k8s-cluster/scripts/minikube-unforward.sh"
 
-echo "==> Starting forwards"
+# `kubectl port-forward service/X` resolves to a backing pod once, at the
+# moment it starts and exits if none is Ready - right after `minikube start`
+# resumes a stopped cluster (or, worse, does a full VM restart - "Pulling
+# base image" in its output instead of "Restarting existing docker
+# container" - which cascades into most of the observability stack
+# crashlooping too, not just these 4 services), how long that takes to
+# settle is genuinely variable (found live 2026-09-21: ~2min one time,
+# >3min the next for the exact same services) - no fixed timeout picked
+# here would reliably cover it without either failing early or making a fast
+# resume wait needlessly. So don't wait/time out at all: each forward is a
+# small self-restarting loop, backgrounded once and left alone - it keeps
+# retrying every 2s forever, however long the cluster actually takes, no
+# second `make minikube-forward` needed. A service that's genuinely never
+# deployed just retries forever too (rare/harmless - `make minikube-stop`/
+# `minikube-delete` clean it up via minikube-unforward.sh regardless).
+echo "==> Starting forwards (self-restarting until each connects, however long that takes)"
 for entry in "${FORWARDS[@]}"; do
   IFS=: read -r name namespace service localPort remotePort <<<"$entry"
-
-  if ! kubectl get service "$service" -n "$namespace" >/dev/null 2>&1; then
-    echo "    skipping $name — service $namespace/$service not found (not deployed yet?)"
-    continue
-  fi
 
   # Belt-and-suspenders beyond minikube-unforward.sh above: a forward left
   # running from before this script existed (or from a crashed prior run
@@ -65,21 +75,40 @@ for entry in "${FORWARDS[@]}"; do
     sleep 1
   fi
 
-  nohup kubectl port-forward -n "$namespace" "service/$service" "$localPort:$remotePort" \
+  nohup bash -c '
+    while true; do
+      kubectl port-forward -n "$1" "service/$2" "$3:$4"
+      sleep 2
+    done
+  ' _ "$namespace" "$service" "$localPort" "$remotePort" \
     >"$FORWARD_DIR/$name.log" 2>&1 &
   disown
   echo $! >"$FORWARD_DIR/$name.pid"
 done
 
-echo "==> Verifying"
-sleep 2
+echo "==> Verifying (up to 30s total, checked in parallel; a service still settling keeps retrying in the background after this)"
 for entry in "${FORWARDS[@]}"; do
   IFS=: read -r name _ _ localPort _ <<<"$entry"
+  varname="wait_pid_${name//-/_}"
+  (
+    for _ in $(seq 1 15); do
+      if [[ -n "$(lsof -ti tcp:"$localPort" -sTCP:LISTEN 2>/dev/null || true)" ]]; then
+        exit 0
+      fi
+      sleep 2
+    done
+    exit 1
+  ) &
+  eval "$varname=$!"
+done
+for entry in "${FORWARDS[@]}"; do
+  IFS=: read -r name _ _ localPort _ <<<"$entry"
+  wait_pid_var="wait_pid_${name//-/_}"
   pidfile="$FORWARD_DIR/$name.pid"
-  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+  if wait "${!wait_pid_var}"; then
     echo "    http://localhost:$localPort  ($name, pid $(cat "$pidfile"))"
   else
-    echo "    $name FAILED to start — see $FORWARD_DIR/$name.log"
+    echo "    $name still connecting — see $FORWARD_DIR/$name.log (will keep retrying in the background)"
   fi
 done
 echo "==> Running in the background. 'make minikube-forward' to restart, 'make minikube-stop'/'minikube-delete' to stop."
