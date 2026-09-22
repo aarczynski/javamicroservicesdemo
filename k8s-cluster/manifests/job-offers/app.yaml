@@ -59,7 +59,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-job-offers
-          image: 192.168.10.190:5000/app-job-offers:5792c42
+          image: 192.168.10.190:5000/app-job-offers:9310d0a
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request).
