@@ -303,7 +303,29 @@ that's already gone by the time this is noticed) — mitigated by deleting the a
 0 under otherwise-real load — cross-check against `container_cpu_usage_seconds_total` for that specific pod before
 concluding it's actually idle.**
 
+### 12. Recurring ~40 s latency spikes at ~1500rps — pre-existing, cluster-side, cause unknown (2026-09-24)
+
+At ~1500rps p99 jumps by 150-450 ms (sometimes ~2 s on the ramp) on **all** replicas of both services in the same
+second, every ~40 s, in bursts of a few episodes. RPS on the server dips briefly (~1325-1430 vs ~1500) and catches up.
+Nothing changes at ≤1200rps (p99 flat ~24 ms). **Not a regression** and **not new**: the same 40 s cadence is in
+Prometheus for the 2026-09-22 04:55 UTC run (gaps 40,40,40,40,40,40 s, peak 642 ms) and earlier ones (peaks ~2200 ms).
+Gatling reports (`load-test/build/reports/gatling/`): 2026-09-21 23:13 p99 1547 ms, 2026-09-22 04:15 p99 536 ms,
+2026-09-22 04:55 p99 438 ms, 2026-09-23 22:09 p99 89 ms (0 KO) — today is not worse. See
+`.claude/handoff-k8s-rpi-cluster.md` item 00 for what was ruled out (client, network, CPU, GC — Serial and G1,
+Postgres, thermals/power) and the in-cluster probe plan. Side finding: the JVMs run **Serial GC with a 384 MB heap**
+(container limit 1536Mi is under the ~1.8 GB "server class" threshold, `MaxRAMPercentage` defaults to 25%); trying G1
+with a 922 MB heap on `app-job-offers` changed nothing measurable client-side and was reverted.
+
 ## Methodology lessons (apply to future rounds)
+
+- **Do not profile a live pod under load with `jcmd JFR.start settings=profile`.** At 1500rps on a 3-core limit the
+  recording itself pushed p99 to ~2.2 s on every replica for the whole recording. Use `settings=default`, short, or
+  sample from outside the pod.
+- **Distinguish a client-side stall from a cluster-side one with an in-cluster probe**, not by reasoning: a pod that
+  loops `wget` against the Service and the Gateway and logs `epoch latency rc` sees the same slow seconds as the
+  server iff the cause is not the load generator.
+- **A "clean 1800rps" memory is not evidence** — compare the Gatling report tables (`Total/p95/p99/max/KO`) of both
+  runs before concluding something regressed.
 
 - **Test one variable at a time under real concurrent load.** A bundled test of two changes can make a working fix
   look like a failure (see #5). A clean `EXPLAIN ANALYZE` or single-request benchmark does not predict behavior

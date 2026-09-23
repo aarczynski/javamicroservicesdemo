@@ -25,6 +25,62 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps
 
+00. **[OTWARTE, 2026-09-24 — wrócić na następnej sesji] Skoki opóźnień co dokładnie ~40 s przy ~1500rps, po stronie
+    klastra, przyczyna nieznana.** Branch `investigate/loadtest-failure-20260923`. Fakty (wszystko zmierzone):
+    - Wzorzec: p99 skacze o 150-450 ms (czasem 2 s na rampie) na **wszystkich replikach naraz** (`app-candidates` x3,
+      `app-job-offers` x2, na różnych node'ach), co 40 s, w grupach po kilka epizodów; RPS na serwerze przy skoku robi
+      krótki zapad (~1325-1430 vs ~1500) i nadrabia (~1600). Występuje tylko przy ~1500rps; przy ≤1200rps p99 płasko ~24 ms.
+    - **To NIE regresja z merge'a `498b86a` i NIE jest nowe**: ten sam cykl 40 s widać w Prometheusie w poniedziałkowym
+      teście (22.09 04:55 UTC, odstępy 40,40,40,40,40,40 s, pik 642 ms) i w niedzielnym/poniedziałkowym, z gorszymi pikami
+      (do ~2200 ms). Gatling z tych dni (`load-test/build/reports/gatling/`): 21.09 23:13 p99 1547 ms/max 3498/604 KO;
+      22.09 04:15 p99 536/max 2159; 22.09 04:55 p99 438/max 926; 23.09 22:09 (dziś) p99 89/max 619, 0 KO — dziś jest
+      *lepiej*. Pamięć "1800rps było idealnie" nie jest poparta danymi. Jedyne realne zmiany kodu w merge'u to
+      `MeterFilter.deny` (rejestracja metryki, nie hot path).
+    - **Wykluczone** (każde sprawdzone danymi): klient/Mac (sonda w klastrze, która omija Maca i Gatlinga, widzi te same
+      spowolnienia w tych samych sekundach — także przez Gateway; Wi-Fi/Tailscale wyłączone nic nie zmieniło w tym
+      sensie), sieć (zero retransmisji/RTO, ping jitter 0,1 ms, kabel `en8` 1 Gbps bez błędów), CPU (płaskie w skoku,
+      throttling ≤1%), GC (pauzy G1 ≤43 ms, brak full GC), zimny cache Postgresa (zero odczytów z dysku), Postgres
+      (logi puste, brak checkpointów), sprzęt (58-68°C, zegar do 2,4 GHz, zero alarmów undervolt), Hikari (pending
+      rośnie dopiero jako skutek).
+    - **Eksperyment G1 (cofnięty)**: `-XX:+UseG1GC -XX:MaxRAMPercentage=60` na `app-job-offers` — bez mierzalnej
+      poprawy client-side (Gatling p99 57 vs 44 ms, max 364 vs 290). Cofnięte (manifest = repo).
+    - **Znalezisko przy okazji, niezmienione**: JVM-y chodzą na **Serial GC z heapem 384 MB** (ergonomia: limit pamięci
+      1536Mi < ~1,8 GB progu "server class" → Serial; `MaxRAMPercentage` domyślne 25%). Młodych GC ~2,4/s na replikę,
+      3-5% czasu w GC. Nie jest przyczyną skoków (G1 nie pomógł), ale warto o tym pamiętać.
+    - **Pułapka metodologiczna**: `jcmd JFR.start settings=profile` na żywym podzie przy 1500rps **sam zawiesza appkę**
+      (p99 ~2,2 s na wszystkich replikach przez całe nagranie, wraca zaraz po jego końcu) — dane z takiego nagrania
+      nie nadają się do diagnozy. Jeśli JFR, to `settings=default` i krótko. Osobno: mój skrypt scalał kolejne
+      próbki 5 s w jeden "epizod" i błędnie uznał to za "brak skoków" — sprawdzać liczbę próbek, nie tylko liczbę epizodów.
+    - **Plan na następną sesję (sonda w klastrze, zrobić od nowa — pod został usunięty)**: pod `busybox:1.36` na
+      `observability-3` (toleration `role=observability`), pętle `wget` co ~50 ms z logiem `epoch_s latency_ms rc` do
+      `/tmp/*.log`, po teście `kubectl exec ... cat`. Pułapki: `busybox date` **nie ma `%N`** (dzielenie przez zero) —
+      mierzyć z `/proc/uptime` (rozdzielczość 10 ms); użyć ID kandydata z żywej bazy (`select id from candidate order by
+      random() limit 1` w `postgres-candidates`), nie z lokalnego pliku. Ścieżki do sprawdzenia równolegle:
+      (a) `matching-offers` na serwisie `app-candidates` (10.104.144.77:8080 — ClusterIP), (b) to samo przez Gateway
+      `192.168.10.100`, **(c) `/actuator/health` na porcie 8081 candidates (ten sam proces JVM, bez bazy i Feign)**,
+      **(d) `app-job-offers` bezpośrednio**. Interpretacja: jeśli (c) też staje w skokach → zatrzymuje się cała
+      JVM/node; jeśli (c) czysty, a (a) stoi → ścieżka do bazy albo Feign. Kandydaci wciąż nieprzebadani: okresowy
+      proces na node'ach/hoście (Cilium, kubelet, Alloy, node-exporter), Envoy/Gateway, Hikari `housekeeper`/keepalive,
+      `ondemand` governor (`performance` na node'ach aplikacji jako tani test — wymaga SSH).
+0a. **[OTWARTE, 2026-09-23] `k8s-rpi-worker-2` padł sieciowo w trakcie load testu (18:13:50 UTC), przyczyna nie zbadana.**
+    Kubelet przestał raportować, potem node całkowicie nieosiągalny (100% packet loss); wrócił dopiero po pełnym power
+    cyclu wywołanym ręcznie. To **znany outlier**: Ubuntu 25.10 / kernel 6.17.0-1021-raspi, reszta floty Ubuntu 24.04.4 /
+    6.8.0-1064-raspi — kandydat na przyczynę, nie potwierdzony. Do zrobienia: `journalctl -b -1` z tego node'a
+    (SSH `aarczynski@192.168.10.11`), rozważyć reinstalację na 24.04 jak reszta. Skutek uboczny (już zniknął po
+    powrocie node'a): twardy anti-affinity zostawił zastępczy pod `app-job-offers` w `Pending` (brak wolnego node'a) i
+    ten sam los spotkał `registry` — patrz "Kluczowe pułapki".
+0b. **[ZROBIONE 2026-09-23/24, na branchu `investigate/loadtest-failure-20260923`]** (1) CoreDNS: twardy anti-affinity
+    między 2 replikami (`k8s-cluster/manifests/coredns/anti-affinity-patch.yaml`, krok w `bootstrap.sh`) — oba pody
+    siedziały na `worker-4` obok repliki appki i ~17:17 UTC krótki, ogólnoklastrowy błąd DNS (`UnknownHostException` na
+    nazwach serwisów) zrestartował obie appki; teraz na `worker-1`/`worker-3`. (2) `deploy.sh` nie wrzuca już
+    `postgres-monitoring.json` (dashboard tylko dla Compose, wymaga `postgres_exporter`) do configmapy Grafany na k8s
+    (`COMPOSE_ONLY_DASHBOARDS`) — wyciekł przez regenerację z `9310d0a`. (3) Dashboard JVM: zmienna `Instance` (nazwy
+    podów z `target_info.host_name`, wartości = UUID `instance`) + powtarzane panele per instancja (Threads, Heap,
+    Non-Heap, Memory Used by Pool, GC Collections, GC Pause); CPU z legendą po nazwie poda; przy okazji naprawiony
+    panel Heap, który po `9310d0a` rysował 3 linie o tej samej nazwie (metryka jest per pula, brakowało `sum()`).
+    Compose: `host.name` nie jest tam ustawione, więc zmienna może dostać hash kontenera albo wyjść pusta —
+    **niezweryfikowane bez uruchomionego Compose**.
+
 0. **[ZROBIONE i zweryfikowane na k8s, 2026-09-21] Fix OTel Micrometer bridge — poprzednia wersja (2026-09-20)
    wyłączyła złą flagę.** `jvm_cpu_recent_utilization_ratio` zamulało się na sztywne 0 dla pojedynczych instancji
    JVM zaraz po pierwszej realnej próbce (gorzej po pełnym restarcie klastra). Sesja 2026-09-20 wyłączyła
@@ -338,6 +394,25 @@ przed każdą kolejną pracą nad skalowaniem, nie duplikować tutaj.
   wyjściem po utracie rejestru.
 
 ### containerd / Ansible
+- **`failed to reserve container name` po power cyklu dotyka też zwykłych DaemonSetów, nie tylko statycznych podów
+  control-plane (2026-09-23).** Po dwóch power cyklach w jeden wieczór 11 podów (`cilium-envoy` x3, `cilium-operator`,
+  `kube-proxy` x3, `node-exporter` x4) utknęło w `CreateContainerError` na `worker-3`, `worker-5`, `observability-1`,
+  `observability-2`. Rozpoznanie: `kubectl get pods -A -o json` + filtr po `state.waiting.reason=="CreateContainerError"`
+  i wyciągnięcie ID z `reserved for "<id>"`. Fix ten sam co dla control-plane (`ctr -n k8s.io tasks kill/rm` +
+  `containers delete <id>`), tu wystarczyło samo `containers delete` (kontenery były tylko zarezerwowane, bez taska —
+  "task not found" jest oczekiwane). SSH: user `aarczynski` (nie `adamarczynski`!), IP z `inventory.ini`. Kubelet potrafi
+  zarezerwować nowe ID przy kolejnej próbie — po czyszczeniu sprawdzić jeszcze raz. Auto-mode classifier zablokował
+  pierwszą próbę (SSH + `sudo ctr ... delete`), zadziałało po ponownej, jawnej zgodzie użytkownika w rozmowie.
+- **Twardy `podAntiAffinity` (1 replika appki na node) + padnięty node = zastępczy pod `Pending` bez wyjścia** — brak
+  wolnego node'a, więc `app-job-offers` pracuje na 1/2 replik do powrotu node'a. Ta sama pułapka dotknęła `registry`
+  (PV `local-path` przypięty do node'a, który padł). Znane i akceptowane, ale pamiętać przy diagnozie "dlaczego
+  pod nie startuje".
+- **Po awarii node'a w trakcie load testu Gatling potrafi żyć dalej godzinami bez wysyłania niczego realnie do klastra**
+  (2026-09-23: ruch do appek zamarł o 18:36 UTC, proces Gatlinga pisał log do 20:26 UTC — 89 MB — z klientowymi
+  timeoutami 60 s na Gateway; ręczny curl w tym czasie odpowiadał w 8 ms). Hipoteza (niezweryfikowana):
+  `.shareConnections()` trzyma martwe połączenia. Po awarii node'a w trakcie testu zabijać test i puszczać od nowa.
+- **Zdarzenia Kubernetes (`kubectl get events`) wygasają po ~1 h** — po awarii szybko zapisać, co jest potrzebne;
+  potem zostają tylko logi (Loki) i Prometheus.
 - **`config_path` w containerd z dwiema ścieżkami rozdzielonymi dwukropkiem cicho psuje pull przez CRI/kubelet**,
   mimo że config wygląda poprawnie w `containerd config dump`. Kubelet i tak leci po HTTPS, ignorując
   `hosts.toml`, bez żadnego logu o próbie odczytu. Fix: `config_path` jako pojedyncza ścieżka
