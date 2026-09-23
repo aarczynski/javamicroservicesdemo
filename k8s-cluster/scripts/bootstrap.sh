@@ -37,6 +37,10 @@ done
 echo "==> Cilium GatewayClass (not auto-created by the Cilium chart, see gatewayclass.yaml)"
 kubectl apply -f "$MANIFESTS/cilium/gatewayclass.yaml"
 
+echo "==> CoreDNS: hard anti-affinity between its 2 replicas (kubeadm default is soft-only)"
+kubectl patch deployment coredns -n kube-system --type=strategic \
+  --patch-file "$MANIFESTS/coredns/anti-affinity-patch.yaml"
+
 echo "==> MetalLB"
 helm upgrade --install metallb metallb/metallb -n metallb-system --create-namespace \
   -f "$MANIFESTS/metallb/values-metallb.yaml"
