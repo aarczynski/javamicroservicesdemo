@@ -221,7 +221,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 10
       },
@@ -251,9 +251,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\"}",
+          "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\", instance=~\"$instance\"} * on (instance) group_left (host_name) target_info{job=\"$service\"}",
           "instant": false,
-          "legendFormat": "{{job}} — {{instance}}",
+          "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
         }
@@ -322,9 +322,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 10
+        "w": 24,
+        "x": 0,
+        "y": 18
       },
       "id": 102,
       "options": {
@@ -352,15 +352,18 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (jvm_thread_state) (jvm_thread_count{job=\"$service\"})",
+          "expr": "sum by (jvm_thread_state) (jvm_thread_count{job=\"$service\", instance=\"$instance\"})",
           "instant": false,
           "legendFormat": "{{jvm_thread_state}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "JVM Thread Count",
-      "type": "timeseries"
+      "title": "Threads — ${instance:text}",
+      "type": "timeseries",
+      "repeat": "instance",
+      "repeatDirection": "h",
+      "maxPerRow": 3
     },
     {
       "collapsed": false,
@@ -368,7 +371,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "id": 110,
       "panels": [],
@@ -495,9 +498,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 19
+        "y": 27
       },
       "id": 111,
       "options": {
@@ -526,9 +529,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "jvm_memory_used_bytes{job=\"$service\", jvm_memory_type=\"heap\"}",
+          "expr": "sum(jvm_memory_used_bytes{job=\"$service\", instance=\"$instance\", jvm_memory_type=\"heap\"})",
           "instant": false,
-          "legendFormat": "Heap Used — {{instance}}",
+          "legendFormat": "Heap Used",
           "range": true,
           "refId": "A"
         },
@@ -538,9 +541,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "jvm_memory_committed_bytes{job=\"$service\", jvm_memory_type=\"heap\"}",
+          "expr": "sum(jvm_memory_committed_bytes{job=\"$service\", instance=\"$instance\", jvm_memory_type=\"heap\"})",
           "instant": false,
-          "legendFormat": "Heap Committed — {{instance}}",
+          "legendFormat": "Heap Committed",
           "range": true,
           "refId": "B"
         },
@@ -550,15 +553,18 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "jvm_memory_limit_bytes{job=\"$service\", jvm_memory_type=\"heap\"}",
+          "expr": "sum(jvm_memory_limit_bytes{job=\"$service\", instance=\"$instance\", jvm_memory_type=\"heap\"})",
           "instant": false,
-          "legendFormat": "Heap Max — {{instance}}",
+          "legendFormat": "Heap Max",
           "range": true,
           "refId": "C"
         }
       ],
-      "title": "Heap Memory",
-      "type": "timeseries"
+      "title": "Heap Memory — ${instance:text}",
+      "type": "timeseries",
+      "repeat": "instance",
+      "repeatDirection": "h",
+      "maxPerRow": 3
     },
     {
       "datasource": {
@@ -651,9 +657,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 19
+        "w": 24,
+        "x": 0,
+        "y": 35
       },
       "id": 112,
       "options": {
@@ -682,9 +688,9 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "jvm_memory_used_bytes{job=\"$service\", jvm_memory_type=\"non_heap\"}",
+          "expr": "sum(jvm_memory_used_bytes{job=\"$service\", instance=\"$instance\", jvm_memory_type=\"non_heap\"})",
           "instant": false,
-          "legendFormat": "Non-Heap Used — {{instance}}",
+          "legendFormat": "Non-Heap Used",
           "range": true,
           "refId": "A"
         },
@@ -694,15 +700,18 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "jvm_memory_committed_bytes{job=\"$service\", jvm_memory_type=\"non_heap\"}",
+          "expr": "sum(jvm_memory_committed_bytes{job=\"$service\", instance=\"$instance\", jvm_memory_type=\"non_heap\"})",
           "instant": false,
-          "legendFormat": "Non-Heap Committed — {{instance}}",
+          "legendFormat": "Non-Heap Committed",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Non-Heap Memory (Metaspace / Code Cache)",
-      "type": "timeseries"
+      "title": "Non-Heap Memory (Metaspace / Code Cache) — ${instance:text}",
+      "type": "timeseries",
+      "repeat": "instance",
+      "repeatDirection": "h",
+      "maxPerRow": 3
     },
     {
       "datasource": {
@@ -766,7 +775,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 43
       },
       "id": 113,
       "options": {
@@ -795,15 +804,18 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (jvm_memory_pool_name) (jvm_memory_used_bytes{job=\"$service\"})",
+          "expr": "sum by (jvm_memory_pool_name) (jvm_memory_used_bytes{job=\"$service\", instance=\"$instance\"})",
           "instant": false,
           "legendFormat": "{{jvm_memory_pool_name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Memory Used by Pool",
-      "type": "timeseries"
+      "title": "Memory Used by Pool — ${instance:text}",
+      "type": "timeseries",
+      "repeat": "instance",
+      "repeatDirection": "h",
+      "maxPerRow": 3
     },
     {
       "collapsed": false,
@@ -811,7 +823,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 51
       },
       "id": 120,
       "panels": [],
@@ -879,9 +891,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 36
+        "y": 52
       },
       "id": 121,
       "options": {
@@ -907,15 +919,18 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (jvm_gc_name) (rate(jvm_gc_duration_seconds_count{job=\"$service\"}[$__rate_interval]))",
+          "expr": "sum by (jvm_gc_name) (rate(jvm_gc_duration_seconds_count{job=\"$service\", instance=\"$instance\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "{{jvm_gc_name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "GC Collections per Second",
-      "type": "timeseries"
+      "title": "GC Collections per Second — ${instance:text}",
+      "type": "timeseries",
+      "repeat": "instance",
+      "repeatDirection": "h",
+      "maxPerRow": 3
     },
     {
       "datasource": {
@@ -978,9 +993,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 36
+        "w": 24,
+        "x": 0,
+        "y": 60
       },
       "id": 122,
       "options": {
@@ -1008,7 +1023,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, jvm_gc_name) (rate(jvm_gc_duration_seconds_bucket{job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, jvm_gc_name) (rate(jvm_gc_duration_seconds_bucket{job=\"$service\", instance=\"$instance\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{jvm_gc_name}} p99",
           "range": true,
@@ -1020,15 +1035,18 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le, jvm_gc_name) (rate(jvm_gc_duration_seconds_bucket{job=\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le, jvm_gc_name) (rate(jvm_gc_duration_seconds_bucket{job=\"$service\", instance=\"$instance\"}[$__rate_interval])))",
           "instant": false,
           "legendFormat": "{{jvm_gc_name}} p50",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "GC Pause Duration (p50 / p99)",
-      "type": "timeseries"
+      "title": "GC Pause Duration (p50 / p99) — ${instance:text}",
+      "type": "timeseries",
+      "repeat": "instance",
+      "repeatDirection": "h",
+      "maxPerRow": 3
     },
     {
       "datasource": {
@@ -1093,7 +1111,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 68
       },
       "id": 123,
       "options": {
@@ -1127,7 +1145,7 @@
           "refId": "A"
         }
       ],
-      "title": "Total GC Time per Interval",
+      "title": "Total GC Time per Interval ($service, all instances)",
       "type": "timeseries"
     }
   ],
@@ -1159,6 +1177,36 @@
         },
         "refresh": 2,
         "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "query_result(target_info{job=\"$service\"})",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Instance",
+        "multi": true,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "query_result(target_info{job=\"$service\"})",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/host_name=\"(?<text>[^\"]+)\".*?instance=\"(?<value>[^\"]+)\"/",
         "sort": 1,
         "type": "query"
       }

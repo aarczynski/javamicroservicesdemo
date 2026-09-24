@@ -24,7 +24,7 @@ cd "$ROOT_DIR"
 
 SHA="$(git rev-parse --short HEAD)"
 echo "==> Building images for sha $SHA"
-./gradlew clean :app-job-offers:build :app-candidates:build
+./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 
 docker build -t "$REGISTRY/app-candidates:$SHA" -f app-candidates/docker/Dockerfile app-candidates
 docker push "$REGISTRY/app-candidates:$SHA"
@@ -36,9 +36,19 @@ echo "==> Pinning manifests to sha $SHA"
 sed -i '' -E "s|($REGISTRY_RE/app-candidates):[^\"[:space:]]+|\1:$SHA|" "$MANIFESTS/candidates/app.yaml"
 sed -i '' -E "s|($REGISTRY_RE/app-job-offers):[^\"[:space:]]+|\1:$SHA|" "$MANIFESTS/job-offers/app.yaml"
 
+COMPOSE_ONLY_DASHBOARDS="postgres-monitoring.json"
+
+shared_dashboard_args() {
+  for dashboard in "$ROOT_DIR"/observability/grafana/provisioning/dashboards/*; do
+    if [[ " $COMPOSE_ONLY_DASHBOARDS " != *" $(basename "$dashboard") "* ]]; then
+      echo "--from-file=$dashboard"
+    fi
+  done
+}
+
 echo "==> Regenerating dashboards ConfigMap"
 kubectl create configmap grafana-dashboards --namespace=observability \
-  --from-file="$ROOT_DIR/observability/grafana/provisioning/dashboards/" \
+  $(shared_dashboard_args) \
   --from-file="$MANIFESTS/observability/dashboards/" \
   --dry-run=client -o yaml \
   | kubectl label -f - --local -o yaml grafana_dashboard=1 \

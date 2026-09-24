@@ -8,7 +8,7 @@ jobOffers ?=
 companies ?=
 
 generate-data:
-	./gradlew clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar $(candidates) $(jobOffers) $(companies)
+	./gradlew :data-generator:clean :data-generator:build && java -jar data-generator/build/libs/data-generator-1.0.0.jar $(candidates) $(jobOffers) $(companies)
 
 start: ensure-insecure-registry clean_build
 	-TARGET_HOST=$(targetHost) CANDIDATES_DATA_FILE=$(candidatesDataFile) docker compose up --build
@@ -23,7 +23,7 @@ reload-data:
 	./scripts/load-data.sh --force
 
 clean_build:
-	./gradlew clean :app-job-offers:build :app-candidates:build
+	./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 
 candidateSimulation:
 	-./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation $(if $(targetHost),-DtargetHost=$(targetHost)) -DcandidatesDataFile=$(candidatesDataFile) $(if $(maxRps),-DmaxRps=$(maxRps)) $(if $(stepDuration),-DstepDuration=$(stepDuration)) $(if $(ramps),-Dramps=$(ramps))

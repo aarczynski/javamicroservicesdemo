@@ -45,10 +45,13 @@ public class JobOfferService {
         Set<String> skillNames = request.candidateSkills().stream()
                 .map(CandidateSkillRequest::skillName)
                 .collect(Collectors.toSet());
+        List<String> employmentTypes = request.preferredEmploymentTypes().stream()
+                .map(EmploymentType::name)
+                .toList();
         List<UUID> matchedIds = jobOfferRepository.findCandidateMatchIds(
                 bbox[0], bbox[1], bbox[2], bbox[3],
                 request.expectedSalary(),
-                request.preferredEmploymentTypes(),
+                employmentTypes,
                 skillNames
         );
         if (matchedIds.isEmpty()) {

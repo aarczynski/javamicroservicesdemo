@@ -1,0 +1,25 @@
+# kubeadm's default CoreDNS Deployment only sets a *preferred* (soft) anti-affinity
+# between its own 2 replicas. Soft anti-affinity can still let both replicas land on
+# the same node (e.g. after node cordon/drain during cluster reorg) and never self-heal
+# back apart once scheduled — found live 2026-09-23: both coredns pods sat on
+# worker-4, alongside an app-candidates replica, and a ~1-minute cluster-wide DNS
+# outage (UnknownHostException resolving Service names) hit during a load test.
+# This patch upgrades it to a hard requirement so the 2 replicas can never share a
+# node again, guaranteeing DNS survives the loss of any single node.
+#
+# Applied via: kubectl patch deployment coredns -n kube-system --type=strategic \
+#   --patch-file k8s-cluster/manifests/coredns/anti-affinity-patch.yaml
+# (also run from bootstrap.sh, after kubeadm init has created the Deployment)
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: k8s-app
+                    operator: In
+                    values:
+                      - kube-dns
+              topologyKey: kubernetes.io/hostname
