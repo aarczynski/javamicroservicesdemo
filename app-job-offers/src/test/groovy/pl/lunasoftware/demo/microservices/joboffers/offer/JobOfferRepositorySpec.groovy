@@ -108,7 +108,7 @@ class JobOfferRepositorySpec extends Specification {
                                               Collection<EmploymentType> employmentTypes,
                                               Collection<String> skillNames) {
         def ids = jobOfferRepository.findCandidateMatchIds(
-                box[0], box[1], box[2], box[3], expectedSalary, employmentTypes, skillNames
+                box[0], box[1], box[2], box[3], expectedSalary, employmentTypes*.name(), skillNames
         )
         ids.isEmpty() ? [] : jobOfferRepository.findByIdIn(ids)
     }

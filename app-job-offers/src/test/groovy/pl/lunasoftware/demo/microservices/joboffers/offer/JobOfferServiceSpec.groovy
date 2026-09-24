@@ -31,6 +31,17 @@ class JobOfferServiceSpec extends Specification {
         result.isEmpty()
     }
 
+    def "should query matches with preferred employment types as their names"() {
+        given:
+        def request = searchRequest(['Java': SeniorityLevel.MID], 5)
+
+        when:
+        service.search(request)
+
+        then:
+        1 * jobOfferRepository.findCandidateMatchIds(_, _, _, _, _, ['B2B'], ['Java'] as Set) >> []
+    }
+
     def "should return matched offers sorted by score descending"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)

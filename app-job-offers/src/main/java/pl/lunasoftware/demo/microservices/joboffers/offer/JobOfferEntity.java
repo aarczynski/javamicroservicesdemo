@@ -2,6 +2,7 @@ package pl.lunasoftware.demo.microservices.joboffers.offer;
 
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ColumnResult;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,6 +17,7 @@ import jakarta.persistence.NamedAttributeNode;
 import jakarta.persistence.NamedEntityGraph;
 import jakarta.persistence.NamedSubgraph;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.SqlResultSetMapping;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -41,11 +43,15 @@ import java.util.UUID;
                 name = "skills-subgraph",
                 attributeNodes = @NamedAttributeNode("skill")
         ))
+@SqlResultSetMapping(name = JobOfferEntity.ID_RESULT_MAPPING,
+        columns = @ColumnResult(name = "id", type = UUID.class))
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @Entity(name = "JobOffer")
 @Table(name = "job_offer")
 public class JobOfferEntity {
+
+    static final String ID_RESULT_MAPPING = "JobOffer.id";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
