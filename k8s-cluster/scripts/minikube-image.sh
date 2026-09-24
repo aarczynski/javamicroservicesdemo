@@ -29,7 +29,7 @@ export MINIKUBE_HOME="$ROOT_DIR/k8s-cluster/.minikube"
 cd "$ROOT_DIR"
 
 echo "==> Building images"
-./gradlew clean :app-job-offers:build :app-candidates:build
+./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 docker build -t app-candidates:local -f app-candidates/docker/Dockerfile app-candidates
 docker build -t app-job-offers:local -f app-job-offers/docker/Dockerfile app-job-offers
 docker build -t load-background:local -f load-background/Dockerfile.k8s .

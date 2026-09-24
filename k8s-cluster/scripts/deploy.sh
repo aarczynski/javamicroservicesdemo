@@ -24,7 +24,7 @@ cd "$ROOT_DIR"
 
 SHA="$(git rev-parse --short HEAD)"
 echo "==> Building images for sha $SHA"
-./gradlew clean :app-job-offers:build :app-candidates:build
+./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 
 docker build -t "$REGISTRY/app-candidates:$SHA" -f app-candidates/docker/Dockerfile app-candidates
 docker push "$REGISTRY/app-candidates:$SHA"
