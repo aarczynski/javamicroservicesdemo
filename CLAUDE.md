@@ -67,6 +67,7 @@ Within each feature package:
 - Service contains business logic.
 - Repository handles persistence.
 - Prefer `FetchType.LAZY` and handle `LazyInitializationExceptions` by `NamedEntityGraph`s. 
+- On request hot paths, do not use JPQL/HQL queries with collection-valued parameters (`IN :list`) — Hibernate never caches the query plan for them and re-translates HQL→SQL on every call (measured at ~15% of `app-job-offers` CPU, see `k8s-cluster/RPS-SCALING.md` #13). Use a native query instead (`@NativeQuery`, typed via `@SqlResultSetMapping` when needed). An applied entity graph has the same effect — acceptable on a query that doesn't run on every request.
 - DTOs are separate from entities.
 - Exceptions should stay close to the feature when possible.
 

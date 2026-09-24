@@ -430,7 +430,7 @@ Current state:
 | `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
 | `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md) |
 | `platform-1` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, local NTP server (see below). Down to a single platform node since 2026-09-20 — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; repurposed to `worker-5` instead of keeping a dedicated (and mostly idle) failover node (see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
-| `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)). `worker-5` (added 2026-09-20, repurposed from `platform-2`) is spare capacity, not a 5th standing app replica — see the `app-candidates` HPA below |
+| `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)). `worker-5` added 2026-09-20 (repurposed from `platform-2`); with `app-candidates` pinned to 3 replicas (see the HPA below) plus 2 `app-job-offers`, all 5 workers are permanently occupied |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
@@ -479,16 +479,16 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-20): 1900 RPS sustained, 0% KO**, ~9 minutes held (1,140,000 requests,
-p50=14ms/p95=90ms/p99=556ms/mean=23ms/max=1033ms, 99.998% of requests under 800ms). This is with `app-candidates`
-pinned to a static 3 replicas (see [Autoscaling](#autoscaling)) — the 3rd replica (`worker-5`) is what raised the
-ceiling from the prior 1500rps (2 replicas). **2200rps is past it**: `app-job-offers` (still 2 replicas, no free
-worker for a 3rd) hits its own 3-core CPU limit and gets measurably throttled, which degrades `app-candidates`'
-latency through the synchronous Feign call between them — not a candidates-side problem. Full detail, including the
-1500rps result and everything that got the cluster there (CPU limit `3` on both apps, one dedicated worker node per
-replica via hard `podAntiAffinity`, see [Node taints](#node-taints--what-runs-where)), plus a same-day regression to
-5-40% KO from a node-topology change that was root-caused and fixed the same session, is in
-[`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
+**Current state (2026-09-24): 2000 RPS sustained, 0% KO** — ~10 minutes held (1,320,000 requests,
+p50=12ms/p95=47ms/p99=202ms/max=321ms). At that rate nothing is at its limit yet (`app-job-offers` ~2.2 of its 3
+cores per replica with ≤3% CPU throttling, `app-candidates` ~1.8 of 3, `postgres-job-offers` ~1.6 of 3), so the
+real ceiling is higher and not measured yet. What moved it from the previous 1900rps (2026-09-20, p99=556ms — which
+turned out to be a run right on the queueing knee, not a stable ceiling) was a single query fix in `app-job-offers`:
+the search query used JPQL with `IN :list` parameters, and Hibernate never caches the HQL→SQL translation of such a
+query, so it recompiled it on every request (~15% of the service's CPU); it's now native SQL. Full detail, including
+everything that got the cluster here (CPU limit `3` on both apps, `app-candidates` pinned to 3 replicas — see
+[Autoscaling](#autoscaling), one dedicated worker node per replica via hard `podAntiAffinity` — see
+[Node taints](#node-taints--what-runs-where)), is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
 
 ### Row counts on the home k8s cluster
 
@@ -608,7 +608,10 @@ end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/
   rolls the dice on every trace, including those). Added 2026-09-20 after sustained 1200-1500rps load tests pushed
   enough trace volume through Kafka/Tempo's write path to crash `observability-1`'s kubelet, twice — see
   [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md). **Docker Compose has no volume problem to sample
-  away** — a single Docker daemon under Gatling never approached that kind of trace throughput.
+  away** — a single Docker daemon under Gatling never approached that kind of trace throughput. Note that this is sampling **at the
+  collector**: the apps still create and export 100% of spans (no `OTEL_TRACES_SAMPLER` set), and 99% of them are
+  dropped only after crossing the network — ~5% of `app-job-offers`' CPU, measured 2026-09-24. See
+  [Future plans](#future-plans).
 * **Clock sync: a local NTP server, in k8s only.** Multiple physical nodes need clocks that agree closely with
   *each other*, not just with UTC — public-pool jitter (13-48ms over WAN, measured) was enough to produce
   out-of-order-looking span timestamps in Tempo once `podAntiAffinity` forced `app-candidates`/`app-job-offers`
@@ -742,6 +745,9 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   up. Low priority, no timeline yet — see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the
   architecture notes and the capacity risk (a single Keycloak instance handling introspection at ~1500rps needs to
   be measured in isolation first).
+* **Next step**: stop exporting 100% of spans from the apps only for the OTEL Collector to drop 99% of them (see
+  [Differences from Docker Compose](#differences-from-docker-compose)). Plain head sampling would break the
+  tail-sampling guarantee (every slow/error trace kept whole), so this needs a design, not a flag flip.
 * **Next session candidate #1**: bigger Postgres dataset (currently 100k candidates / 50k job offers via
   `data-generator`) — no target scale decided yet.
 * **Next session candidate #2 (alternative to #1, not both)**: the percentile-metrics estimation gap — see
