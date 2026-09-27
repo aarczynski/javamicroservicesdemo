@@ -405,7 +405,39 @@ per request goes; (4) reading Hibernate's bytecode to confirm why the plan wasn'
 config flags. Things that looked plausible and weren't it: the OTel agent (~5%), GC (Serial GC, heap not under
 pressure), the OTel Micrometer changes of 2026-09-21/22, node kernel, Postgres.
 
+### 14. "2000rps got worse after a break" — the load generator was on battery (2026-09-27)
+
+After a few days off and a full power cycle, the same 2000rps shape gave p99 930 ms / max 1834 ms (5 min run) and
+p99 459 ms / max 892 ms (3 min run), against 147-202 ms on 2026-09-24. **Nothing in the cluster had changed**: the
+running image was byte-for-byte the 2026-09-24 build (same JAR timestamp, same JDK 25.0.4+7, same pod spec), CPU per
+request and the Hikari connection-use distribution were identical (p50 3.3 / p99 ~25 ms), Postgres was warm (100%
+cache hit), and there was no throttling, no TCP retransmits, no Cilium drops, no disk I/O and no thermal issue.
+
+What was different was the **arrival pattern**: per-second completions at `app-candidates` had a stdev of ~324 req/s
+(vs ~40 on 2026-09-24), with all 3 replicas losing ~10% of their traffic in the same second and getting ~20% extra
+the next — a client pause followed by Gatling's open-model catch-up. Client-side spikes came **every ~30 s**, with a
+phase that shifted between runs (so tied to the Gatling process, not to any cluster timer). The Mac running Gatling
+was on battery (`pmset -g batt` → "Battery Power"). Plugged into AC (a 90 W monitor was enough): p99 174 ms, max
+274 ms, arrival stdev ~37 req/s, max pool queue 35.
+
+**Why a small client burst hurts this much:** `JobOfferService.search()` is `@Transactional` end to end, so each
+request holds one of only 10 Hikari connections through scoring (pure JVM CPU work). A burst pushes the JVM to ~97%
+CPU, connections are held longer, and the pool queue snowballed to 140-190 for several seconds — while
+`pg_stat_activity` showed those connections as `idle` / `idle in transaction` (Postgres waiting on the app, not the
+other way round). The same mechanism was already visible on 2026-09-24 as 1-2 s queue blips (≤85); a steady
+arrival rate just never let it snowball. Narrowing the transaction to the two queries (not done yet) is the
+structural fix if real, bursty traffic ever matters.
+
+#12's unexplained ~40 s cadence — same symptom (all replicas at once, server RPS dips then catches up), and the
+in-cluster probe saw none of it — is very likely the same cause. Not verified retroactively.
+
 ## Methodology lessons (apply to future rounds)
+
+- **Run Gatling from a Mac on AC power only** — check `pmset -g batt` before every test. On battery the generator
+  sends in periodic bursts (#14), which looks exactly like a cluster-side regression. To tell them apart, look at
+  arrival smoothness with 1 s resolution:
+  `sum(irate(http_server_request_duration_seconds_count{job="app-candidates",http_route=~"/api.*"}[3s]))` — a
+  synchronized dip-then-overshoot on all replicas is the client, not the cluster.
 
 - **Do not profile a live pod under load with `jcmd JFR.start settings=profile`.** At 1500rps on a 3-core limit the
   recording itself pushed p99 to ~2.2 s on every replica for the whole recording. Use `settings=default`, short, or

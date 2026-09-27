@@ -1,6 +1,6 @@
 # Handoff: klaster k8s na RPi5
 
-Skondensowany handoff — stan na 2026-09-24. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
+Skondensowany handoff — stan na 2026-09-27. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
 żyje w historii gita tego pliku (`git log -p -- .claude/handoff-k8s-rpi-cluster.md`) — zakończone punkty są
 stąd usuwane, nie archiwizowane w treści.
 
@@ -65,13 +65,16 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    [cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532) lub odpowiednik). Ten sam mechanizm zimnego
    startu dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem (`RPS-SCALING.md` #13).
 
-5. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — nie odtworzyły się.** Sonda w klastrze przy
-   czystym 1500rps 2026-09-24 nie złapała ani jednego skoku; wszystko, co było wtedy wykluczone (klient, sieć, CPU,
-   GC, Postgres, termika), jest w `RPS-SCALING.md` #12. Jeśli wróci: postawić sondę jeszcze raz — pod `busybox:1.36`
-   na `observability-3` (toleration `role=observability`), pętle `wget` co ~50 ms na Service candidates, Gateway,
-   `/actuator/health` candidates (port 8081, IP poda) i `app-job-offers` bezpośrednio, log `epoch uptime ms rc`
-   (`busybox date` nie ma `%N` — mierzyć z `/proc/uptime`), ID kandydata z żywej bazy i z niepustym wynikiem.
-   Interpretacja: health też staje → cała JVM/node; tylko ścieżki biznesowe → baza/Feign/downstream.
+5. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
+   w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
+   i nadrabia, cykl ~30 s z fazą zależną od startu Gatlinga) okazał się pracą generatora na baterii — po podłączeniu
+   zasilania zniknął (`RPS-SCALING.md` #14). Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
+   w git history tego pliku (2026-09-24).
+
+5a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
+   `@Transactional(readOnly = true)` na całej metodzie. Krótka paczka ruchu nakręca kilkusekundową kolejkę do puli
+   (do 190 oczekujących, 2026-09-27). Na równym ruchu z Gatlinga nie przeszkadza; poprawka strukturalna (zawężenie
+   transakcji do dwóch zapytań, scoring poza nią) — do zrobienia, gdy ruch ma być realistycznie nierówny.
 
 6. **Następny kandydat funkcjonalny (do wyboru z użytkownikiem, nie oba naraz)**: zwiększenie wolumenu danych w
    Postgresach (skala do ustalenia — nie zgadywać liczb) **albo** niedokładne p99 w Grafanie (`histogram_quantile()`
@@ -295,5 +298,12 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
 - Gatling: `.shareConnections()` w `httpProtocolBuilder()` jest wymagane powyżej ~300rps — bez tego klient (Mac)
   wyczerpuje własną pulę portów efemerycznych szybciej niż zwalniają się z `TIME_WAIT`, dając fałszywe błędy po
   stronie klienta, zanim klaster w ogóle zbliży się do własnego limitu.
+- **Gatling tylko z Maca na zasilaniu (`pmset -g batt` → "AC Power") (2026-09-27).** Na baterii generator wysyła ruch
+  paczkami co ~30 s i daje p99 ~900 ms przy 2000rps, co wygląda jak regresja klastra (godzina diagnozy po złej stronie).
+  Rozpoznanie: równość napływu `irate(http_server_request_duration_seconds_count{job="app-candidates"}[3s])` z krokiem
+  1 s — zsynchronizowany spadek i przestrzał na wszystkich replikach = klient. 90 W z monitora wystarcza.
+- **Po power cyclu 2026-09-27**: unattended-upgrades podniosły kernel na `6.8.0-1065` na 9 node'ach (`worker-1`/`-4`
+  zostały na 1064, `worker-2` na 6.17), a nieczyste zamknięcie wyzerowało `pg_stat_user_tables` (statystyki planera w
+  `pg_class`/`pg_stats` przetrwały). Na wyniki nie wpłynęło — ale kernel dryfuje sam, warto rozważyć przypięcie.
 - Masowy restart całego klastra zawsze daje kilkanaście-kilkadziesiąt minut degradacji (JIT warmup appek + Cilium/
   CNI reconciliation) — nie traktować pierwszego load testu po restarcie jako miarodajnego pomiaru capacity.
