@@ -23,20 +23,6 @@ receivers:
           static_configs:
             - targets: ["postgres-exporter-job-offers:9187"]
 
-connectors:
-  span_metrics:
-    namespace: db
-    metrics_flush_interval: 1s
-    histogram:
-      explicit:
-        buckets: ["5ms", "10ms", "25ms", "50ms", "75ms", "100ms", "250ms", "500ms", "750ms", "1s", "2500ms", "5s", "7500ms", "10s"]
-    dimensions:
-      - name: db.system
-      - name: db.system.name
-      - name: db.operation.name
-    exemplars:
-      enabled: true
-
 processors:
   batch:
     send_batch_max_size: 1000
@@ -46,11 +32,6 @@ processors:
     send_batch_max_size: 1000
     send_batch_size: 100
     timeout: 5s
-  filter/db_spans:
-    error_mode: ignore
-    traces:
-      span:
-        - 'attributes["db.system"] == nil and attributes["db.system.name"] == nil'
 
 exporters:
   prometheusremotewrite:
@@ -68,17 +49,15 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [otlp, span_metrics, prometheus/postgres_exporters]
+      receivers: [otlp, prometheus/postgres_exporters]
       processors: [batch/metrics]
       exporters: [prometheusremotewrite]
+    # Traces arrive already sampled by the apps (otel-metrics-filter's
+    # LocalTailSamplingSpanExporter) - everything that reaches this pipeline is kept.
     traces:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp_grpc/tempo]
-    traces/db_spans:
-      receivers: [otlp]
-      processors: [filter/db_spans]
-      exporters: [span_metrics]
     logs:
       receivers: [otlp]
       processors: [batch]

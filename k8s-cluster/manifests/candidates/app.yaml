@@ -159,6 +159,12 @@ spec:
               value: "./otel-metrics-filter.jar"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
+            # Emits the db.client.operation.duration histogram behind the DB panels
+            # (buckets and labels set in otel-metrics-filter's DbClientDurationViewCustomizer).
+            # Spans are sampled in the app now, so DB timings can't be derived from
+            # them in the collector any more.
+            - name: OTEL_SEMCONV_STABILITY_OPT_IN
+              value: database
             # Logs now go through Alloy (reads stdout directly, see
             # k8s-cluster/manifests/alloy/values-alloy.yaml) instead of the
             # agent's own OTLP log export — traces/metrics OTLP unaffected.

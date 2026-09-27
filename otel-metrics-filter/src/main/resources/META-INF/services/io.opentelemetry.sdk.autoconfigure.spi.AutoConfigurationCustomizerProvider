@@ -1,1 +1,3 @@
 pl.lunasoftware.demo.microservices.otelext.MicrometerJvmMetricFilterCustomizer
+pl.lunasoftware.demo.microservices.otelext.LocalTailSamplingCustomizer
+pl.lunasoftware.demo.microservices.otelext.DbClientDurationViewCustomizer

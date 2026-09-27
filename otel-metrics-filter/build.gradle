@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'groovy'
 }
 
 group = 'pl.luna-software.demo.microservices'
@@ -18,5 +19,18 @@ repositories {
 dependencies {
     compileOnly "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:$otelSdkVer"
     compileOnly "io.opentelemetry:opentelemetry-sdk-metrics:$otelSdkVer"
+    compileOnly "io.opentelemetry:opentelemetry-sdk-trace:$otelSdkVer"
     compileOnly "io.opentelemetry:opentelemetry-sdk-common:$otelSdkVer"
+
+    testImplementation "io.opentelemetry:opentelemetry-sdk-trace:$otelSdkVer"
+    testImplementation "io.opentelemetry:opentelemetry-sdk-testing:$otelSdkVer"
+    testImplementation 'org.spockframework:spock-core:2.4-groovy-5.0'
+}
+
+testing {
+    suites {
+        test {
+            useJUnitJupiter()
+        }
+    }
 }

@@ -363,6 +363,19 @@ Above dashboard has links to traces in Tempo. This allows to view detailed infor
 when handling a particular HTTP request.
 ![](./readme-assets/img/grafana-traces.png)
 
+Traces are **sampled in the apps**, the same way in Compose and k8s: a trace is kept when its trace id falls into a
+1% ratio, when any of its spans has a 4xx/5xx HTTP status, or when its local root span took 500 ms or more
+(`LocalTailSamplingSpanExporter` in [`otel-metrics-filter`](otel-metrics-filter), a javaagent extension). Plain head
+sampling (`OTEL_TRACES_SAMPLER=traceidratio`) can't do that — it decides before the request runs — so spans are still
+recorded for every request, buffered per trace until its local root span ends, and only the kept ones are
+serialized and sent. The OTEL Collector no longer samples at all (a second pass would keep 1% of the 1%).
+Trade-offs: the decision is per service, so a trace that is slow or failing only in `app-candidates` keeps just
+`app-candidates`' spans (the 1% part is derived from the trace id alone, so those traces are always complete). The
+ratio and threshold are the `otel.demo.traces.sampling.ratio` / `otel.demo.traces.sampling.slow-threshold`
+properties (`OTEL_DEMO_TRACES_SAMPLING_RATIO` / `OTEL_DEMO_TRACES_SAMPLING_SLOW_THRESHOLD`). DB query timings on the
+Performance dashboard come from the agent's `db.client.operation.duration` histogram
+(`OTEL_SEMCONV_STABILITY_OPT_IN=database`) rather than from spans, so they still cover 100% of queries.
+
 # Home Kubernetes cluster
 
 Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster running on 12× Raspberry Pi 5
@@ -600,18 +613,6 @@ end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/
   package — see the handoff's 2026-08-27 entry) before landing on a plain `registry:3.1.1` pod
   ([`k8s-cluster/manifests/registry/`](k8s-cluster/manifests/registry)) on the platform nodes instead. **Docker
   Compose needs no registry at all** — there's nothing to push to or pull from on a single Docker daemon.
-* **Trace sampling: tail-based, in k8s only.** Compose's OTEL Collector forwards 100% of traces to Tempo
-  unconditionally — fine at Compose's traffic levels. k8s adds a `tail_sampling` processor
-  (`values-otel-collector.yaml`) that keeps **100% of traces with a 4xx/5xx response, 100% of traces slower than
-  500ms end-to-end, and an independent 1% random sample of everything else** (the 1% is not on top of the other
-  two — an error or a slow trace already always matches its own policy; `sample-rest` just also independently
-  rolls the dice on every trace, including those). Added 2026-09-20 after sustained 1200-1500rps load tests pushed
-  enough trace volume through Kafka/Tempo's write path to crash `observability-1`'s kubelet, twice — see
-  [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md). **Docker Compose has no volume problem to sample
-  away** — a single Docker daemon under Gatling never approached that kind of trace throughput. Note that this is sampling **at the
-  collector**: the apps still create and export 100% of spans (no `OTEL_TRACES_SAMPLER` set), and 99% of them are
-  dropped only after crossing the network — ~5% of `app-job-offers`' CPU, measured 2026-09-24. See
-  [Future plans](#future-plans).
 * **Clock sync: a local NTP server, in k8s only.** Multiple physical nodes need clocks that agree closely with
   *each other*, not just with UTC — public-pool jitter (13-48ms over WAN, measured) was enough to produce
   out-of-order-looking span timestamps in Tempo once `podAntiAffinity` forced `app-candidates`/`app-job-offers`
@@ -737,7 +738,8 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   again** (currently pinned to a static 3 replicas, see [Autoscaling](#autoscaling)) — real slow-start is the fix
   that addresses the cold-pod problem at its source rather than working around it.
 * ~~Third observability node~~ — done 2026-09-20 (`observability-3`, see [Node taints](#node-taints--what-runs-where)).
-  ~~Tail-based trace sampling~~ — done 2026-09-20 too, see [Differences from Docker Compose](#differences-from-docker-compose).
+  ~~Tail-based trace sampling~~ — done 2026-09-20 too, moved from the collector into the apps 2026-09-27, see
+  [Traces](#traces).
 * Keycloak/SSO: real introspection-based auth (not local JWT validation) between `app-candidates` and
   `app-job-offers`. No node earmarked for it anymore — the `sso-1` plan (repurposing `platform-2`) was reconsidered
   2026-09-20 in favor of keeping that Pi as generic spare capacity (`worker-5`, see
@@ -745,9 +747,6 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   up. Low priority, no timeline yet — see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the
   architecture notes and the capacity risk (a single Keycloak instance handling introspection at ~1500rps needs to
   be measured in isolation first).
-* **Next step**: stop exporting 100% of spans from the apps only for the OTEL Collector to drop 99% of them (see
-  [Differences from Docker Compose](#differences-from-docker-compose)). Plain head sampling would break the
-  tail-sampling guarantee (every slow/error trace kept whole), so this needs a design, not a flag flip.
 * **Next session candidate #1**: bigger Postgres dataset (currently 100k candidates / 50k job offers via
   `data-generator`) — no target scale decided yet.
 * **Next session candidate #2 (alternative to #1, not both)**: the percentile-metrics estimation gap — see
