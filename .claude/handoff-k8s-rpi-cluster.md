@@ -25,8 +25,12 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    Rozszerzenie agenta decyduje po zakończeniu lokalnego roota (1% po traceId + 4xx/5xx + >=500 ms), collector
    nie sampluje (brak 1% z 1%), metryki DB z `db.client.operation.duration` zamiast `span_metrics`. Na klastrze
    działa (`2a2d63c`): collector -91% CPU / -93% RAM, candidates -15% CPU/request, job-offers -4%, ale GC w appkach
-   +50-60% (`RPS-SCALING.md` #15). Do zrobienia: skrócić trzymanie zdecydowanych trace'ów (dziś 10 s) i zmierzyć
-   GC jeszcze raz; potem merge. Trace'y liczyć licznikiem spanów Tempo, nie wyszukiwarką (niekompletna).
+   +50-60% (`RPS-SCALING.md` #15). **Decyzja 2026-09-28: rezygnujemy z pamiętania decyzji keep/drop po zakończeniu
+   lokalnego roota** (było 10 s na obsługę spanów kończących się po roocie). Obie appki są synchroniczne, więc takich
+   spanów nie ma; bez pamiętania każdy lokalny root decyduje sam (np. drugie, wolne wywołanie job-offers w tym samym
+   trace nie dziedziczy "drop" po pierwszym). Uzasadnienie i warunek powrotu (async/messaging) w `CLAUDE.md` →
+   "Trace sampling". Do zrobienia: wdrożyć, zmierzyć alokacje (JFR `settings=default`) i GC jeszcze raz; potem merge.
+   Trace'y liczyć licznikiem spanów Tempo, nie wyszukiwarką (niekompletna).
 
 2. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`

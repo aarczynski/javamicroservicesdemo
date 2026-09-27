@@ -422,6 +422,20 @@ Rules:
 
 Logging is mandatory for every new service and major operation.
 
+## Trace sampling
+
+Traces are sampled in the apps, not in the OTEL Collector — `LocalTailSamplingSpanExporter` in `otel-metrics-filter`
+keeps 1% by trace id, any HTTP 4xx/5xx and any local root >= 500 ms; the collector keeps everything it receives.
+Do not add a sampling step to the collector (it would keep 1% of the 1%), and do not use plain head sampling
+(`OTEL_TRACES_SAMPLER=traceidratio`) — it decides before the request runs and loses slow/failing traces.
+
+Decision made 2026-09-28: the exporter does **not** remember a trace's keep/drop decision after its local root span
+ends. A span that ends after its local root (fire-and-forget `@Async`, messaging callbacks, work continuing after
+the response) is therefore lost from a kept trace. That's acceptable because both services are fully synchronous —
+every span ends before its request's root. Forgetting also lets each local root in a trace decide on its own (e.g.
+two calls to `app-job-offers` in one request — a slow second call is kept even if the first was dropped). If async
+work or messaging is ever added, revisit this decision.
+
 ## Groovy / Spock Style
 
 - Use double quotes `"..."` for Spock feature method names (`def "should do something"()`).
