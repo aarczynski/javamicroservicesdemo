@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
+import java.util.stream.Stream;
 
 /**
  * Keeps a trace if its trace id falls into {@code ratio}, if any of its spans carries an HTTP 4xx/5xx
@@ -22,17 +23,20 @@ import java.util.function.LongSupplier;
  * or sent. Spans are buffered per trace until the local root span (no parent, or a remote one) ends.
  * The decision is per service: a trace slow only in app-candidates keeps just app-candidates' spans.
  * The ratio part is derived from the trace id alone, so every service keeps the same traces for it.
+ * <p>
+ * The decision is not remembered once made (see CLAUDE.md, "Trace sampling"): a span ending after its local
+ * root waits for a root that never comes and is evicted after {@link #PENDING_TRACE_TTL}.
  */
 final class LocalTailSamplingSpanExporter implements SpanExporter {
 
     private static final AttributeKey<Long> HTTP_STATUS_CODE = AttributeKey.longKey("http.response.status_code");
-    private static final Duration TRACE_STATE_TTL = Duration.ofSeconds(10);
+    private static final Duration PENDING_TRACE_TTL = Duration.ofSeconds(30);
 
     private final SpanExporter delegate;
     private final long ratioUpperBound;
     private final long slowThresholdNanos;
     private final LongSupplier nanoClock;
-    private final Map<String, TraceState> traces = new LinkedHashMap<>();
+    private final Map<String, PendingTrace> pendingTraces = new LinkedHashMap<>();
 
     LocalTailSamplingSpanExporter(SpanExporter delegate, double ratio, Duration slowThreshold, LongSupplier nanoClock) {
         this.delegate = delegate;
@@ -69,33 +73,35 @@ final class LocalTailSamplingSpanExporter implements SpanExporter {
         long now = nanoClock.getAsLong();
         evictExpired(now);
         return spans.stream()
-                .flatMap(span -> accept(span, now).stream())
+                .flatMap(span -> accept(span, now))
                 .toList();
     }
 
-    private List<SpanData> accept(SpanData span, long now) {
-        TraceState trace = traces.computeIfAbsent(span.getTraceId(), traceId -> new TraceState(now));
-        if (trace.isDecided()) {
-            return trace.keep ? List.of(span) : List.of();
-        }
-        trace.pending.add(span);
+    private Stream<SpanData> accept(SpanData span, long now) {
         if (!isLocalRoot(span)) {
-            return List.of();
+            pendingTraces.computeIfAbsent(span.getTraceId(), traceId -> new PendingTrace(now)).spans.add(span);
+            return Stream.empty();
         }
-        return trace.decide(shouldKeep(trace.pending, span));
+        PendingTrace pending = pendingTraces.remove(span.getTraceId());
+        List<SpanData> children = pending == null ? List.of() : pending.spans;
+        if (!shouldKeep(children, span)) {
+            return Stream.empty();
+        }
+        return Stream.concat(children.stream(), Stream.of(span));
     }
 
     private void evictExpired(long now) {
-        long expiredBefore = now - TRACE_STATE_TTL.toNanos();
-        Iterator<TraceState> oldestFirst = traces.values().iterator();
+        long expiredBefore = now - PENDING_TRACE_TTL.toNanos();
+        Iterator<PendingTrace> oldestFirst = pendingTraces.values().iterator();
         while (oldestFirst.hasNext() && oldestFirst.next().createdAtNanos < expiredBefore) {
             oldestFirst.remove();
         }
     }
 
-    private boolean shouldKeep(List<SpanData> traceSpans, SpanData localRoot) {
+    private boolean shouldKeep(List<SpanData> children, SpanData localRoot) {
         return isInRatio(localRoot.getTraceId())
-                || traceSpans.stream().anyMatch(LocalTailSamplingSpanExporter::hasHttpErrorStatus)
+                || hasHttpErrorStatus(localRoot)
+                || children.stream().anyMatch(LocalTailSamplingSpanExporter::hasHttpErrorStatus)
                 || isSlow(localRoot);
     }
 
@@ -118,25 +124,13 @@ final class LocalTailSamplingSpanExporter implements SpanExporter {
         return !parent.isValid() || parent.isRemote();
     }
 
-    private static final class TraceState {
+    private static final class PendingTrace {
 
         private final long createdAtNanos;
-        private final List<SpanData> pending = new ArrayList<>();
-        private Boolean keep;
+        private final List<SpanData> spans = new ArrayList<>();
 
-        private TraceState(long createdAtNanos) {
+        private PendingTrace(long createdAtNanos) {
             this.createdAtNanos = createdAtNanos;
-        }
-
-        private boolean isDecided() {
-            return keep != null;
-        }
-
-        private List<SpanData> decide(boolean keep) {
-            this.keep = keep;
-            List<SpanData> decided = keep ? List.copyOf(pending) : List.of();
-            pending.clear();
-            return decided;
         }
     }
 }

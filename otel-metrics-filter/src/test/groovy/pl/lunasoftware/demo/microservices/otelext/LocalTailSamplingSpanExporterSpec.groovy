@@ -92,7 +92,7 @@ class LocalTailSamplingSpanExporterSpec extends Specification {
         delegate.finishedSpanItems*.spanId == [ROOT_SPAN_ID]
     }
 
-    def "should export a span ending after its kept local root"() {
+    def "should not export a span ending after its kept local root"() {
         given:
         exporter.export([root(SAMPLED_OUT_TRACE_ID, SLOW_NANOS, 200)])
 
@@ -100,7 +100,30 @@ class LocalTailSamplingSpanExporterSpec extends Specification {
         exporter.export([child(SAMPLED_OUT_TRACE_ID, 200)])
 
         then:
-        delegate.finishedSpanItems*.spanId == [ROOT_SPAN_ID, CHILD_SPAN_ID]
+        delegate.finishedSpanItems*.spanId == [ROOT_SPAN_ID]
+    }
+
+    def "should decide each local root of a trace on its own"() {
+        given:
+        exporter.export([root(SAMPLED_OUT_TRACE_ID, FAST_NANOS, 200)])
+
+        when:
+        exporter.export([root(SAMPLED_OUT_TRACE_ID, SLOW_NANOS, 200)])
+
+        then:
+        delegate.finishedSpanItems*.endEpochNanos == [SLOW_NANOS]
+    }
+
+    def "should keep children of a request still running long after they ended"() {
+        given:
+        exporter.export([child(SAMPLED_OUT_TRACE_ID, 200)])
+        nowNanos += TimeUnit.SECONDS.toNanos(20)
+
+        when:
+        exporter.export([root(SAMPLED_OUT_TRACE_ID, SLOW_NANOS, 200)])
+
+        then:
+        delegate.finishedSpanItems*.spanId == [CHILD_SPAN_ID, ROOT_SPAN_ID]
     }
 
     def "should drop a span ending after its dropped local root"() {
@@ -117,7 +140,7 @@ class LocalTailSamplingSpanExporterSpec extends Specification {
     def "should forget buffered spans whose local root never arrived within the TTL"() {
         given:
         exporter.export([child(SAMPLED_OUT_TRACE_ID, 500)])
-        nowNanos += TimeUnit.SECONDS.toNanos(11)
+        nowNanos += TimeUnit.SECONDS.toNanos(31)
 
         when:
         exporter.export([root(SAMPLED_OUT_TRACE_ID, FAST_NANOS, 200)])
