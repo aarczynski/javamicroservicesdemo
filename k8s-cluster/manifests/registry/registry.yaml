@@ -52,6 +52,14 @@ spec:
       labels:
         app: registry
     spec:
+      nodeSelector:
+        # The toleration alone only permits platform-1, it never attracted the
+        # pod there: on 2026-09-20 the recreated PVC (local-path,
+        # WaitForFirstConsumer) was bound wherever the scheduler put the first
+        # pod — the freshly joined, empty worker-2 — and the node-pinned PV
+        # kept it there next to an app-candidates replica. A node move needs
+        # the PVC deleted and recreated, then images re-pushed (deploy.sh).
+        kubernetes.io/hostname: k8s-rpi-platform-1
       tolerations:
         - key: role
           operator: Equal

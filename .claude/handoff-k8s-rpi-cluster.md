@@ -80,10 +80,12 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    Postgresach (skala do ustalenia — nie zgadywać liczb) **albo** niedokładne p99 w Grafanie (`histogram_quantile()`
    na rzadkim ogonie vs. Gatling, `README.md` Known issues). Keycloak/SSO świadomie za nimi, bez node'a.
 
-7. **`registry`/`local-path-provisioner`/`metallb-controller` mogą dryfować na generyczne workery** —
-   `registry.yaml` ma tolerancję `role=platform`, ale brak `nodeSelector`; pozostałe dwa nie mają nawet tolerancji.
-   Przy wszystkich 5 workerach zajętych przez appki to współdzielenie node'a, które `RPS-SCALING.md` #9 nazwał
-   błędem. Dopiąć `nodeSelector` na `platform-1`.
+7. **`local-path-provisioner`/`metallb-controller` mogą dryfować na generyczne workery** — nie mają nawet
+   tolerancji `role=platform`. Przy wszystkich 5 workerach zajętych przez appki to współdzielenie node'a, które
+   `RPS-SCALING.md` #9 nazwał błędem. Dopiąć `nodeSelector` na `platform-1`. `registry` faktycznie zdryfował
+   (2026-09-28: pod + PV na `worker-2`, obok repliki `app-candidates`) — tego samego dnia przypięty
+   `nodeSelector`em do `platform-1` i przeniesiony (nowe PVC, przypięte tagi zbackupowane na Maca i wypchnięte
+   ponownie; starsze tagi przepadły razem ze starym PV).
 
 8. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — `load-data.sh` synchronizuje
    `load-background`, ale nie plik do `make candidateSimulation`. Do rozważenia: krok w symulacji weryfikujący
