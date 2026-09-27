@@ -431,7 +431,40 @@ structural fix if real, bursty traffic ever matters.
 #12's unexplained ~40 s cadence — same symptom (all replicas at once, server RPS dips then catches up), and the
 in-cluster probe saw none of it — is very likely the same cause. Not verified retroactively.
 
+### 15. Trace sampling moved from the collector into the apps (2026-09-27)
+
+The apps used to export 100% of spans and the collector's `tail_sampling` dropped ~99%. Now a javaagent extension
+(`LocalTailSamplingSpanExporter` in `otel-metrics-filter`) buffers spans per trace until the local root ends and
+keeps the same policies (1% by trace id, any HTTP 4xx/5xx, local root >= 500 ms); the collector keeps everything it
+gets. DB timings moved from the `span_metrics` connector to the agent's `db.client.operation.duration`. Same
+2000rps / `stepDuration=2m` run, warm JVMs, Mac on AC:
+
+| | Before (22:36 UTC) | After (23:33 UTC) |
+|---|---|---|
+| `app-candidates` CPU per request | 2.74 ms | 2.32 ms (**-15%**) |
+| `app-job-offers` CPU per request | 1.88 ms | 1.81 ms (-4%) |
+| JVM GC time, candidates / job-offers | 0.044 / 0.041 s/s | 0.070 / 0.060 s/s (+50-60%) |
+| `otel-collector` CPU / memory / ingress | 0.70 cores / 956 MB / 14 MB/s | 0.06 / 66 MB / 0.38 MB/s |
+| `observability-3` node CPU | 24% | 6% |
+| Gatling p99 / max | 174 / 274 ms | 213 / 346 ms |
+
+The big win is the observability side (collector -91% CPU, -93% memory); the apps gain less, because spans are
+still created for every request (the keep/drop decision needs the finished request) and only serialization/export
+is saved. GC time went **up**: spans now wait in the exporter's per-trace buffer, and decided trace states are kept
+for 10 s to route late spans, so more objects survive young collections. Shortening how long decided states are
+kept is the obvious next knob. **The first run right after the rollout was misleading** (p99 799 ms, one 313 ms
+full GC in `app-candidates`): JVMs ~8 min old vs the 3.5-day-old baseline — warm up and re-run before comparing.
+
 ## Methodology lessons (apply to future rounds)
+
+- **Don't count sampled traces with Tempo's search API** — it silently returns incomplete results (even with
+  `limit=1000`), which twice made working sampling look broken (#15). Count spans with
+  `tempo_distributor_spans_received_total` (Compose: `docker exec prometheus wget -qO- http://tempo:3200/metrics`)
+  over a controlled burst instead.
+- **`OTEL_SEMCONV_STABILITY_OPT_IN=database` renames the agent's JDBC pool metrics** (#15):
+  `db_client_connections_pending_requests` / `..._use_time_milliseconds_*` became
+  `db_client_connection_pending_requests` / `..._use_time_seconds_*` (seconds, not ms). Dashboards use `hikaricp_*`
+  and are unaffected; ad-hoc queries like the ones in #14 need the new names.
 
 - **Run Gatling from a Mac on AC power only** — check `pmset -g batt` before every test. On battery the generator
   sends in periodic bursts (#14), which looks exactly like a cluster-side regression. To tell them apart, look at

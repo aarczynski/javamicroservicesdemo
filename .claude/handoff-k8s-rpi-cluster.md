@@ -21,18 +21,12 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **[NASTĘPNY KROK] Appki eksportują 100% spanów, odrzuca dopiero `otel-collector`.** Tail sampling (1% +
-   >500 ms + 4xx/5xx, `k8s-cluster/manifests/observability/values-otel-collector.yaml`) działa w collectorze, ale
-   `OTEL_TRACES_SAMPLER` nie jest ustawiony w appkach (domyślnie `parentbased_always_on`) — agent w każdym JVM
-   tworzy, serializuje i wysyła po gRPC każdy span każdego requestu (kontroler, JDBC, Feign), a 99% z nich
-   collector wyrzuca. Zmierzone JFR-em 2026-09-24 przy 1200rps: agent + eksport spanów (`BatchSpanProcessor`,
-   okhttp) to **~5% CPU** `app-job-offers`; do tego ruch sieciowy i CPU/RAM samego collectora (limit 1 CPU,
-   throttlowany do ~34% okresów przy 1800rps) oraz presja na `observability-1`/`-3` przy długich testach.
-   **Pułapka**: zwykły head sampling (`traceidratio`) zepsuje tail sampling — wolne i błędne trace'y trzeba mieć w
-   całości, a o tym, czy trace jest wolny/błędny, wiadomo dopiero na końcu. Do przemyślenia: co realnie zyskujemy
-   (ile CPU w appkach vs. w collectorze), czy jest kompromis (np. head sampling z wyjątkami po stronie SDK, mniej
-   spanów per trace — wyłączenie spanów kontrolera/JDBC tam, gdzie nic nie wnoszą), i jak to zmierzyć przed/po
-   (CPU per request, patrz metodologia w `RPS-SCALING.md`).
+1. **Sampling trace'ów w appkach — wdrożone na branchu `feat/app-side-trace-sampling` (2026-09-27), bez merge'a.**
+   Rozszerzenie agenta decyduje po zakończeniu lokalnego roota (1% po traceId + 4xx/5xx + >=500 ms), collector
+   nie sampluje (brak 1% z 1%), metryki DB z `db.client.operation.duration` zamiast `span_metrics`. Na klastrze
+   działa (`2a2d63c`): collector -91% CPU / -93% RAM, candidates -15% CPU/request, job-offers -4%, ale GC w appkach
+   +50-60% (`RPS-SCALING.md` #15). Do zrobienia: skrócić trzymanie zdecydowanych trace'ów (dziś 10 s) i zmierzyć
+   GC jeszcze raz; potem merge. Trace'y liczyć licznikiem spanów Tempo, nie wyszukiwarką (niekompletna).
 
 2. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`
