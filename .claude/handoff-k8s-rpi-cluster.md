@@ -8,36 +8,21 @@ stąd usuwane, nie archiwizowane w treści.
 
 12/12 node'ów fizycznych w klastrze, `kubeadm` (nie k3s), Cilium (CNI + Gateway API, bez kube-proxy), MetalLB (L2),
 `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2, jedna replika na node) +
-ich Postgresy wdrożone, dane załadowane (100k candidates / 50k job offers, `data-generator`). Stack observability:
+ich Postgresy wdrożone, dane załadowane (100k candidates / **150k job offers / 10k companies** od 2026-09-28,
+`data-generator`). Stack observability:
 Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+MinIO). Ambient load
 (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj).
 
-**Zmierzony sufit RPS: 2000rps czyste przez ~10 min** (2026-09-24: 1,32M requestów, 0 KO, p99 202 ms), po
-przepisaniu `findCandidateMatchIds` w `app-job-offers` na natywne SQL — Hibernate nie cache'uje tłumaczenia
-HQL→SQL dla zapytań z `IN :lista` i robił je przy każdym requeście (~15% CPU job-offers). Przy 2000rps nic nie
-jest na limicie (job-offers 2,16/3 rdzenie, candidates 1,8/3, Postgres job-offers 1,6/3), więc następny sufit
-jest niezmierzony. Pełna historia i tabele: `k8s-cluster/RPS-SCALING.md` (#13 i "Current state") — czytać przed
-każdą pracą nad skalowaniem, nie duplikować tutaj.
+**Zmierzony sufit (2026-09-28): 2000rps czyste na 150k ofert / 10k firm** (p99 211 ms, 0 KO). Wolumen ofert
+dobrany właśnie pod 2000rps: **sufitem jest teraz CPU `postgres-job-offers`** (2,45/3 rdzenia; 175k ofert przechodzi,
+ale p99 ~0,5-1 s, 200k już nie). Po drodze: `join fetch` zamiast entity graphu w `app-candidates` (-22% CPU/request,
+-42% CPU Postgresa candidates) i `shared_buffers=1GB` na `postgres-job-offers` (domyślne 128 MB → odczyty jako
+syscalle z page cache). Pełna historia i tabele: `k8s-cluster/RPS-SCALING.md` ("Current state", #17, #18) — czytać
+przed każdą pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Sampling trace'ów w appkach — wdrożone na branchu `feat/app-side-trace-sampling` (2026-09-27), bez merge'a.**
-   Rozszerzenie agenta decyduje po zakończeniu lokalnego roota (1% po traceId + 4xx/5xx + >=500 ms), collector
-   nie sampluje (brak 1% z 1%), metryki DB z `db.client.operation.duration` zamiast `span_metrics`. Na klastrze
-   działa (`2a2d63c`): collector -91% CPU / -93% RAM, candidates -15% CPU/request, job-offers -4%, ale GC w appkach
-   +50-60% (`RPS-SCALING.md` #15). **Decyzja 2026-09-28: rezygnujemy z pamiętania decyzji keep/drop po zakończeniu
-   lokalnego roota** (było 10 s na obsługę spanów kończących się po roocie). Obie appki są synchroniczne, więc takich
-   spanów nie ma; bez pamiętania każdy lokalny root decyduje sam (np. drugie, wolne wywołanie job-offers w tym samym
-   trace nie dziedziczy "drop" po pierwszym). Uzasadnienie i warunek powrotu (async/messaging) w `CLAUDE.md` →
-   "Trace sampling". Wdrożone (`9f5d28b`) i zmierzone: JFR przypisuje eksporterowi ~1% alokacji, a "wzrost GC"
-   to wiek JVM / leniwe powiększanie heapu przez Serial GC (stary pod miał Eden 107 MB vs ~40 MB na świeżych), nie
-   zmiana (`RPS-SCALING.md` #15). Heap przypięty 2026-09-28 (`-Xms384m -Xmx384m`, `2c6810d`): GC -60-70%, 2000rps
-   p99 114/124 ms, max 198/188 ms w dwóch przebiegach — najlepsze dotąd (`RPS-SCALING.md` #16). Sprawdzony też heap
-   1 GB (limit 2Gi, jawny Serial GC): GC jeszcze -45-60%, ale p99 bez poprawy (111/161 ms) — wycofany, zostaje
-   384 MB. Ogon p99 przy 2000rps to teraz kolejka do puli job-offers (5a), nie GC. Zmergowane do `main` 2026-09-28. Trace'y liczyć licznikiem spanów Tempo,
-   nie wyszukiwarką (niekompletna).
-
-2. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
+1. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`
      (`60cdd0b`) działa, wszystkie 5 instancji raportuje poprawnie po restarcie; CoreDNS obie repliki na jednym
      node'zie (`257dbc8`, twardy anti-affinity).
@@ -55,43 +40,50 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać, że pierwsze kilkanaście minut to
      rozgrzewka (JIT, Cilium) — nie mierzyć wtedy capacity.
 
-3. **`k8s-rpi-worker-2` padł sieciowo w trakcie load testu (2026-09-23 18:13:50 UTC), przyczyna niezbadana.**
+2. **`k8s-rpi-worker-2` padł sieciowo w trakcie load testu (2026-09-23 18:13:50 UTC), przyczyna niezbadana.**
    Kubelet przestał raportować, node nieosiągalny (100% packet loss), wrócił dopiero po ręcznym power cyclu. To
    **znany outlier**: Ubuntu 25.10 / kernel 6.17.0-1021-raspi, reszta floty Ubuntu 24.04.4 / 6.8.0-1064-raspi —
    kandydat na przyczynę, niepotwierdzony. Do zrobienia: `journalctl -b -1` z tego node'a (SSH
    `aarczynski@192.168.10.11`), rozważyć reinstalację na 24.04.
 
-4. **`app-candidates` HPA przypięty na sztywno 3 repliki — blokowane na Cilium.** Świeży pod po scale-upie dostaje
+3. **`app-candidates` HPA przypięty na sztywno 3 repliki — blokowane na Cilium.** Świeży pod po scale-upie dostaje
    pełny udział ruchu od razu (brak LB slow-startu w Gateway API Cilium) i zimny JVM zapycha pulę Hikari / wybija
    circuit breaker Envoya. `prometheus-adapter` + metryka RPS zostają żywe, odblokowanie to zmiana jednej linijki
    w `k8s-cluster/manifests/candidates/hpa.yaml`, gdy Cilium dostanie `slow_start_config` (śledzić
    [cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532) lub odpowiednik). Ten sam mechanizm zimnego
    startu dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem (`RPS-SCALING.md` #13).
 
-5. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
+4. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
    w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
    i nadrabia, cykl ~30 s z fazą zależną od startu Gatlinga) okazał się pracą generatora na baterii — po podłączeniu
    zasilania zniknął (`RPS-SCALING.md` #14). Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
    w git history tego pliku (2026-09-24).
 
-5a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
+4a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
    `@Transactional(readOnly = true)` na całej metodzie. Krótka paczka ruchu nakręca kilkusekundową kolejkę do puli
    (do 190 oczekujących, 2026-09-27). Na równym ruchu z Gatlinga nie przeszkadza; poprawka strukturalna (zawężenie
    transakcji do dwóch zapytań, scoring poza nią) — do zrobienia, gdy ruch ma być realistycznie nierówny.
 
-6. **Następny kandydat funkcjonalny (do wyboru z użytkownikiem, nie oba naraz)**: zwiększenie wolumenu danych w
-   Postgresach (skala do ustalenia — nie zgadywać liczb) **albo** niedokładne p99 w Grafanie (`histogram_quantile()`
-   na rzadkim ogonie vs. Gatling, `README.md` Known issues). Keycloak/SSO świadomie za nimi, bez node'a.
+5. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
+   wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
+   (listy `IN` o zmiennej długości → różny tekst SQL) faktycznie omijają planowanie. `pg_stat_statements` da realny
+   koszt i liczbę wywołań każdego zapytania zamiast próbkowania `pg_stat_activity` (RPS-SCALING #18). Kandydaci do
+   odciążenia: `findByIdIn` (entity graph + `IN`, ~26% próbek aktywnych), doładowania employment types (~6%).
+   Niedokładne p99 w Grafanie (`README.md` Known issues) nadal otwarte; Keycloak/SSO świadomie za nimi, bez node'a.
 
-7. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — `load-data.sh` synchronizuje
+6. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — `load-data.sh` synchronizuje
    `load-background`, ale nie plik do `make candidateSimulation`. Do rozważenia: krok w symulacji weryfikujący
    próbkę ID przed testem.
 
-8. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
+6a. **`CandidateGeneratorSpec` jest niestabilny** — nazwisko z apostrofem (np. `O'Hara`) generator zapisuje w mailu
+   bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-reload-data`
+   (2026-09-28, jedno z pięciu przeładowań). Ponowne uruchomienie przechodzi.
+
+7. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
    i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
    albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
 
-9. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
+8. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
    (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
 
@@ -121,6 +113,12 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
 - **Eksperymentalne tagi obrazów budowane ręcznie (`docker build`/`push` z palca) nie przetrwają rebuildu
   rejestru** — commitować kod ZANIM się go długo testuje na klastrze, żeby `make k8s-deploy` zawsze był awaryjnym
   wyjściem po utracie rejestru.
+
+- **`make k8s-reload-data` sam generuje dane (`make generate-data`)** — bez `candidates=/jobOffers=/companies=`
+  wraca do domyślnych 100k/50k/10k i cicho zmienia rozmiar zbioru na klastrze. Parametry przechodzą do
+  zagnieżdżonego `make` przez `MAKEFLAGS`. Po przeładowaniu: `VACUUM ANALYZE` (osobnym `psql -c`, nie w jednym
+  `-c` z innymi poleceniami — wtedy leci w transakcji i Postgres odmawia), i nowy plik ID do Gatlinga, bo
+  kandydaci też dostają nowe UUID.
 
 ### minikube
 - **`make minikube-start` wznawia klaster na starych obrazach** — niczego nie przebudowuje. 2026-09-28 minikube
