@@ -112,12 +112,15 @@ spec:
           # instead of each retrying independently — observed as a cascade of
           # ~26 sub-10ms error traces following one genuine resolution
           # failure. Set to 1s so a transient loss doesn't compound.
-          # -Xms = -Xmx: Serial GC otherwise starts at a 24 MB heap and grows it lazily
-          # up to the default 384 MB (25% of the 1536Mi limit), so young-gen size - and
-          # with it GC frequency and CPU per request - depended on how long a pod had
-          # been running, making before/after comparisons across pods of different age
-          # meaningless (k8s-cluster/RPS-SCALING.md #15). Same 384 MB ceiling as before.
-          command: ["java", "-Xms384m", "-Xmx384m", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          # -Xms = -Xmx: Serial GC otherwise starts at a tiny heap (1/64 of the limit)
+          # and grows it lazily, so young-gen size - and with it GC frequency and CPU
+          # per request - depended on how long a pod had been running, making
+          # before/after comparisons across pods of different age meaningless
+          # (k8s-cluster/RPS-SCALING.md #15/#16). 1 GB instead of the 384 MB default
+          # (25% of the old 1536Mi limit) for a larger Eden; live data is only
+          # ~70 MB. -XX:+UseSerialGC is explicit because a limit of >= ~1792 MB
+          # makes the JVM switch to G1 on its own - this changes the heap size only.
+          command: ["java", "-XX:+UseSerialGC", "-Xms1g", "-Xmx1g", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080
             - containerPort: 8081
@@ -208,13 +211,17 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 5
+          # Memory sized for the 1 GB heap reserved at startup (-Xms1g) plus
+          # ~200 MB non-heap (classes, JIT, OTel agent) and thread stacks. The
+          # request matches real usage so the kubelet doesn't pick this pod
+          # first when a node runs short on memory.
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
+              memory: 1536Mi
             limits:
               cpu: "3"
-              memory: 1536Mi
+              memory: 2Gi
       volumes:
         - name: config
           configMap:
