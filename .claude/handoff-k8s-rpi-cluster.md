@@ -87,18 +87,13 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    `load-background`, ale nie plik do `make candidateSimulation`. Do rozważenia: krok w symulacji weryfikujący
    próbkę ID przed testem.
 
-8. **minikube: `app-candidates-lb` (NodePort 30080) rozkłada ruch nierówno** — to L4 (połączenie przypięte do poda)
-   vs. L7 Gateway (per request) plus `.shareConnections()` w Gatlingu. Opcje: zostawić, albo przypiąć 30080 do
-   Service'u Gateway'a (generowany dynamicznie przez Cilium, losowy nodePort — wymaga `kubectl patch` po utworzeniu,
-   nieprzetestowane czy przetrwa reconciliację).
-
-9. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
+8. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
    i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
    albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
 
-10. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
-    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
-    (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
+9. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
+   GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
+   (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
@@ -126,6 +121,17 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
 - **Eksperymentalne tagi obrazów budowane ręcznie (`docker build`/`push` z palca) nie przetrwają rebuildu
   rejestru** — commitować kod ZANIM się go długo testuje na klastrze, żeby `make k8s-deploy` zawsze był awaryjnym
   wyjściem po utracie rejestru.
+
+### minikube
+- **`make minikube-start` wznawia klaster na starych obrazach** — niczego nie przebudowuje. 2026-09-28 minikube
+  chodził na obrazach z 2026-09-21 (sprzed fixu JVM CPU `60cdd0b`, natywnego SQL, samplingu trace'ów): dwie z pięciu
+  instancji raportowały `jvm_cpu_recent_utilization_ratio` = 0, co na dashboardzie wyglądało jak "pracują 2 z 3 i 1
+  z 2". Po zmianach w kodzie zawsze `make minikube-image` + `make minikube-deploy`.
+- **Ruch na minikube przez `localhost:30080` rozkłada się równo** (zmierzone 2026-09-28 przy ~900rps: candidates
+  290/318/288, job-offers 432/469 rps). NodePort to L4 per połączenie, ale przy takim ruchu to się uśrednia.
+  Nierówny obraz obciążenia najpierw sprawdzać per-instancja RPS w Prometheusie, zanim się obwini load balancing.
+  `--ports=30080:30080` istnieje, bo `kubectl port-forward` przypina cały ruch do jednego poda.
+- Zmian w kodzie/konfigu appek pod ograniczenia minikube nie robimy — tylko overlay/skrypty minikube.
 
 ### containerd / Ansible
 - **`failed to reserve container name` po power cyklu dotyka też zwykłych DaemonSetów, nie tylko statycznych podów
