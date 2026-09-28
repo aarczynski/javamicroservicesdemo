@@ -41,10 +41,11 @@ for crd in gatewayclasses gateways httproutes referencegrants grpcroutes; do
   kubectl apply -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
 done
 
-echo "==> MetalLB"
+echo "==> MetalLB 0.16.1"
 kubectl create namespace metallb-system --dry-run=client -o yaml | kubectl apply -f -
-helm upgrade --install metallb metallb/metallb -n metallb-system \
-  -f "$MANIFESTS/metallb/values-metallb.yaml"
+helm upgrade --install metallb metallb/metallb -n metallb-system --version 0.16.1 \
+  -f "$MANIFESTS/metallb/values-metallb.yaml" \
+  -f "$OVERLAY/values-metallb.yaml"
 echo "==> Waiting for MetalLB's validating webhook to be ready (IPAddressPool/L2Advertisement need it)"
 # Retries, not a single kubectl wait: the Cilium upgrade above restarts
 # cilium-agent and briefly disrupts ALL pod networking cluster-wide (same

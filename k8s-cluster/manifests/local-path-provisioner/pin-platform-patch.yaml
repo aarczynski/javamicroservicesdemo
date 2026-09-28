@@ -1,0 +1,19 @@
+# local-path-provisioner is installed from its upstream manifest (bootstrap.sh),
+# which has no nodeSelector/tolerations — it drifted onto worker-5, sharing it
+# with an app replica, while every worker is reserved for exactly one app JVM
+# (see RPS-SCALING.md #9). Pinned 2026-09-28. Only the provisioner itself moves:
+# the per-volume helper pods still run on whichever node the PV lives on.
+#
+# Applied via: kubectl patch deployment local-path-provisioner -n local-path-storage \
+#   --type=strategic --patch-file k8s-cluster/manifests/local-path-provisioner/pin-platform-patch.yaml
+# (also run from bootstrap.sh, right after the upstream manifest)
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-platform-1
+      tolerations:
+        - key: role
+          operator: Equal
+          value: platform
+          effect: NoSchedule

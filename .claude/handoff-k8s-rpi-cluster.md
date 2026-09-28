@@ -1,6 +1,6 @@
 # Handoff: klaster k8s na RPi5
 
-Skondensowany handoff — stan na 2026-09-27. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
+Skondensowany handoff — stan na 2026-09-28. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
 żyje w historii gita tego pliku (`git log -p -- .claude/handoff-k8s-rpi-cluster.md`) — zakończone punkty są
 stąd usuwane, nie archiwizowane w treści.
 
@@ -83,27 +83,20 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    Postgresach (skala do ustalenia — nie zgadywać liczb) **albo** niedokładne p99 w Grafanie (`histogram_quantile()`
    na rzadkim ogonie vs. Gatling, `README.md` Known issues). Keycloak/SSO świadomie za nimi, bez node'a.
 
-7. **`local-path-provisioner`/`metallb-controller` mogą dryfować na generyczne workery** — nie mają nawet
-   tolerancji `role=platform`. Przy wszystkich 5 workerach zajętych przez appki to współdzielenie node'a, które
-   `RPS-SCALING.md` #9 nazwał błędem. Dopiąć `nodeSelector` na `platform-1`. `registry` faktycznie zdryfował
-   (2026-09-28: pod + PV na `worker-2`, obok repliki `app-candidates`) — tego samego dnia przypięty
-   `nodeSelector`em do `platform-1` i przeniesiony (nowe PVC, przypięte tagi zbackupowane na Maca i wypchnięte
-   ponownie; starsze tagi przepadły razem ze starym PV).
-
-8. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — `load-data.sh` synchronizuje
+7. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — `load-data.sh` synchronizuje
    `load-background`, ale nie plik do `make candidateSimulation`. Do rozważenia: krok w symulacji weryfikujący
    próbkę ID przed testem.
 
-9. **minikube: `app-candidates-lb` (NodePort 30080) rozkłada ruch nierówno** — to L4 (połączenie przypięte do poda)
+8. **minikube: `app-candidates-lb` (NodePort 30080) rozkłada ruch nierówno** — to L4 (połączenie przypięte do poda)
    vs. L7 Gateway (per request) plus `.shareConnections()` w Gatlingu. Opcje: zostawić, albo przypiąć 30080 do
    Service'u Gateway'a (generowany dynamicznie przez Cilium, losowy nodePort — wymaga `kubectl patch` po utworzeniu,
    nieprzetestowane czy przetrwa reconciliację).
 
-10. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
-    i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
-    albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
+9. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
+   i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
+   albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
 
-11. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
+10. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
     GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
     (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
 

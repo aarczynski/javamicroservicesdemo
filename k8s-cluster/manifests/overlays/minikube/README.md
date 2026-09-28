@@ -27,8 +27,10 @@ touching the production files.
 | `kustomization.yaml` | Assembles `candidates` + `job-offers` + `load-background` namespace/postgres/app manifests (referenced directly from `../../candidates/`, `../../job-offers/`, `../../load-background/`, unmodified) with this overlay's `gateway.yaml`, and JSON6902-patches `nodeSelector`/`tolerations` off both Postgres Deployments and `load-background` — minikube's single node carries none of the RPi cluster's taints. Also remaps the three app images from `192.168.10.101:5000/...` (the RPi cluster's self-hosted registry, unreachable from here) to plain `:local` tags with no registry at all, via kustomize's `images:` transformer — `make minikube-image` (`k8s-cluster/scripts/minikube-image.sh`) builds them and loads them straight into minikube's own image cache. Deliberately not ghcr.io either (that's what production used before its own switch to the local registry) — minikube is meant to work regardless of network, home LAN or not, even offline. `load-background`'s `/data` PVC starts empty by default (`minikube-deploy`/`minikube-rebuild-all` don't run data-generator, deliberately — it's slow) — it runs fine and generates real ambient RPS, just against candidate UUIDs that mostly 404, same graceful-degradation behavior documented in `load-background/app.yaml` for when the RPi cluster hasn't run `load-data.sh` yet. Run `make minikube-load-data` (or `minikube-reload-data` to force) when you actually want real data — `k8s-cluster/scripts/minikube-load-data.sh` mirrors `load-data.sh` exactly, just pointed at minikube. |
 
 `manifests/metallb/values-metallb.yaml` (the MetalLB Helm chart values) is
-used as-is: `speaker.tolerations` for `role=database/observability/platform`
-are harmless no-ops on a node with no matching taints.
+layered with this overlay's `values-metallb.yaml`, which drops the
+controller's `k8s-rpi-platform-1` pinning. `speaker.tolerations` for
+`role=database/observability/platform` stay — harmless no-ops on a node with
+no matching taints.
 
 ## Observability stack, Headlamp, metrics-server
 

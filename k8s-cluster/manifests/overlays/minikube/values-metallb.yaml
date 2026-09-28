@@ -1,0 +1,5 @@
+# Layered on ../../metallb/values-metallb.yaml — drops the controller's RPi
+# hostname pinning, single minikube node has none of that taint.
+controller:
+  nodeSelector: null
+  tolerations: []
