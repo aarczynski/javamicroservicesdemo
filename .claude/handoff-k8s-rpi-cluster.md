@@ -32,8 +32,9 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    "Trace sampling". Wdrożone (`9f5d28b`) i zmierzone: JFR przypisuje eksporterowi ~1% alokacji, a "wzrost GC"
    to wiek JVM / leniwe powiększanie heapu przez Serial GC (stary pod miał Eden 107 MB vs ~40 MB na świeżych), nie
    zmiana (`RPS-SCALING.md` #15). Heap przypięty 2026-09-28 (`-Xms384m -Xmx384m`, `2c6810d`): GC -60-70%, 2000rps
-   p99 114/124 ms, max 198/188 ms w dwóch przebiegach — najlepsze dotąd (`RPS-SCALING.md` #16). Branch gotowy do
-   merge'a (czeka na decyzję użytkownika). Trace'y liczyć licznikiem spanów Tempo,
+   p99 114/124 ms, max 198/188 ms w dwóch przebiegach — najlepsze dotąd (`RPS-SCALING.md` #16). Sprawdzony też heap
+   1 GB (limit 2Gi, jawny Serial GC): GC jeszcze -45-60%, ale p99 bez poprawy (111/161 ms) — wycofany, zostaje
+   384 MB. Ogon p99 przy 2000rps to teraz kolejka do puli job-offers (5a), nie GC. Zmergowane do `main` 2026-09-28. Trace'y liczyć licznikiem spanów Tempo,
    nie wyszukiwarką (niekompletna).
 
 2. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:

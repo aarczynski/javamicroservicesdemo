@@ -484,6 +484,14 @@ Even the post-rollout warm-up runs were calmer than before (1000rps max 289 ms v
 pod no longer spends its first minutes collecting a tiny young generation. CPU per request is within run-to-run
 noise; the p99 gain comes from far fewer GC pauses feeding the pool-queue amplifier (#14).
 
+**Follow-up, same day: a 1 GB pinned heap was tried and reverted.** `-XX:+UseSerialGC -Xms1g -Xmx1g`, limit
+1536Mi → 2Gi (Serial made explicit because a limit above ~1792 MB makes the JVM pick G1 by itself). Eden grew to
+286 MB and minor GCs dropped ~2.7x (candidates ~180 → ~66/min, job-offers ~118 → ~42/min); pause length stayed the
+same (6-9 ms), so GC time fell to 0.007-0.009 / 0.005-0.007 s/s. **Latency didn't follow**: p99 111 / 161 ms and
+max 180 / 485 ms over two runs, vs 114 / 124 ms and 198 / 188 ms with 384 MB — the worse run was one
+`app-job-offers` replica queuing on its 10-connection pool (88 waiting), not GC. With GC already at ~1-2% of a
+core, it's no longer what drives the tail; the pool-held-through-scoring amplifier (#14) is. Reverted to 384 MB.
+
 ## Methodology lessons (apply to future rounds)
 
 - **Don't count sampled traces with Tempo's search API** — it silently returns incomplete results (even with
