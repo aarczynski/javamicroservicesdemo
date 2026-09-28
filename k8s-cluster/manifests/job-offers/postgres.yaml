@@ -59,7 +59,12 @@ spec:
           # disabling this alone (single-query findCandidateMatches, no other
           # change) at 600rps — see README for the result before deciding
           # whether this stays.
-          args: ["-c", "max_parallel_workers_per_gather=0"]
+          # shared_buffers: the 128MB default was far below the dataset (359MB at
+          # 250k offers) — most reads became syscall copies from the OS page
+          # cache, measured 2026-09-28 at >50% of active query samples waiting
+          # on IO with zero disk reads. 1GB keeps the whole dataset in buffers
+          # with ~1GB of the 2Gi limit left for backends.
+          args: ["-c", "max_parallel_workers_per_gather=0", "-c", "shared_buffers=1GB"]
           ports:
             - containerPort: 5432
           env:

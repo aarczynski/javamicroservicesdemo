@@ -7,6 +7,12 @@ change measurably moves the ceiling, don't let it rot into a second handoff.
 
 ## Current state
 
+**2000 RPS clean on a 3x bigger dataset: 150k job offers / 10k companies, p99 211 ms, 0% KO** — 2026-09-28, after
+#17 (`app-candidates` loads the candidate with `JOIN FETCH`) and #18 (`shared_buffers=1GB` on `postgres-job-offers`).
+**`postgres-job-offers` CPU is now the ceiling** (2.45 of 3 cores at 2000rps): 175k offers still passes with 0% KO
+but p99 jumps to ~0.5-1 s, 200k fails. Everything below that line was measured on the old 50k offers / 10k companies
+dataset.
+
 **2000 RPS sustained for ~10 minutes, 0% KO, p99 202 ms** — confirmed 2026-09-24 after fix #13 (native
 `findCandidateMatchIds`). Two runs, same day:
 
@@ -22,7 +28,7 @@ Before #13 the same hardware was already on the queueing knee at 1900rps (see #1
 was a lucky run, not a stable ceiling.
 
 **1900 RPS sustained, 0% KO** — confirmed 2026-09-20, after fix #11's `app-candidates` HPA got pinned to a static 3
-replicas (see `k8s-cluster/manifests/candidates/hpa.yaml` and `.claude/handoff-k8s-rpi-cluster.md` item 1).
+replicas (see `k8s-cluster/manifests/candidates/hpa.yaml` and the HPA item in `.claude/handoff-k8s-rpi-cluster.md`).
 Genuinely sustained, not a short burst: ramped to ~1900-2000rps over ~65s, held there (oscillating 1800-2000) for
 ~9 minutes straight, ~1min cooldown — 1,140,000 requests total, 0% KO, p50=14ms/p95=90ms/p99=556ms/mean=23ms/
 max=1033ms. Response time distribution: 99.998% under 800ms, only 25 requests (0.002%) in the 800-1200ms band, zero
@@ -491,6 +497,52 @@ same (6-9 ms), so GC time fell to 0.007-0.009 / 0.005-0.007 s/s. **Latency didn'
 max 180 / 485 ms over two runs, vs 114 / 124 ms and 198 / 188 ms with 384 MB — the worse run was one
 `app-job-offers` replica queuing on its 10-connection pool (88 waiting), not GC. With GC already at ~1-2% of a
 core, it's no longer what drives the tail; the pool-held-through-scoring amplifier (#14) is. Reverted to 384 MB.
+
+### 17. `app-candidates` loads the candidate with `JOIN FETCH` instead of an entity graph (2026-09-28)
+
+A 60 s JFR at 1200rps (all 5 pods, `settings=profile`) put ~10% of `app-candidates` CPU in
+`LoaderSelectBuilder`/`SingleIdEntityLoaderStandardImpl.createLoadPlan`: `findById` carried
+`@EntityGraph("Candidate.withSkillsAndEmploymentTypes")`, and Hibernate never caches a load plan with an applied
+entity graph — the same mechanism as #13, via the other trigger. Replaced by a JPQL
+`findWithSkillsAndEmploymentTypesById` with `LEFT JOIN FETCH` on both collections (a single scalar parameter, so its
+plan is cached); `skills` became a `Set` so fetching it alongside `preferredEmploymentTypes` can't duplicate rows.
+The same profile refuted "candidates burns CPU in Jackson": Jackson is ~6% in both apps, because 75% of responses
+carry 0 offers (0.6 on average — 50k offers spread over the globe, ~90 km search radius). The rest is framework
+overhead: Tomcat + Spring MVC ~30%, OTel agent ~19%, Feign ~22%. 2000rps/2m after warm-up:
+
+| | Before | After |
+|---|---|---|
+| Gatling p99 / max | 113 / 420 ms | 89 / 201 ms |
+| `app-candidates` CPU per request | 2.45 ms | 1.92 ms (**-22%**) |
+| `postgres-candidates` CPU | 0.89 cores | 0.51 (**-42%**) |
+
+More than the profile's 10%: the entity graph also loaded one of the collections with a separate query
+(`CollectionLoaderSingleKey`, ~7%), which `JOIN FETCH` folds into the single statement.
+
+### 18. Bigger dataset — `postgres-job-offers` becomes the ceiling; `shared_buffers` 128MB → 1GB (2026-09-28)
+
+Goal: load Postgres, not the JVMs. Data scaled with `make k8s-reload-data` (100k candidates throughout; candidate
+count barely matters — one PK lookup per request). At 250k offers / 20k companies (359 MB) 2000rps collapsed to
+~810rps with 47% fast 503s and `postgres-job-offers` at 3.0/3 cores. Sampling `pg_stat_activity` at 700rps showed
+>50% of active samples on an `IO` wait with zero disk reads: the 128MB default `shared_buffers` made most page reads
+syscall copies from the OS page cache (~0.6 core of system CPU on `db-2`). `shared_buffers=1GB` (the pod has a 2Gi
+limit) lifted 250k to ~1700rps — better, still not 2000. Bisecting the offer count at 2000rps (warm-up, then
+2000rps/2m):
+
+| Offers / companies | DB size | Offers per response | Result | p99 | `postgres-job-offers` CPU |
+|---|---|---|---|---|---|
+| 50k / 10k (before, 128MB buffers) | ~75 MB | 0.6 | 0% KO | 89 ms | 1.47 / 3 |
+| **150k / 10k** | 217 MB | 2.6 | 0% KO | **211 ms** | 2.45 / 3 |
+| 175k / 10k | 251 MB | 2.3 | 0% KO | 960 ms | 2.66 / 3 |
+| 200k / 16k | 289 MB | 3.1 | 2.5% KO, ~1890rps | 2773 ms | 2.97 / 3 |
+| 250k / 20k | 359 MB | 4.0 | 8.5% KO, ~1700rps | 3174 ms | 2.98 / 3 |
+
+Why cost grows with data here: the search filters a geographic bounding box, so offers examined per request scale
+with offer *density*, not `log(N)` — a typical request at 150k walks ~30 offers and ~75 skill probes for 4 matches.
+On a warm DB that query plans in ~0.95 ms and executes in ~0.58 ms, so planning is comparable to execution; whether
+the prepared statements actually skip planning under load is not verified yet (next step: `pg_stat_statements`).
+`app-job-offers` follows closely: CPU per request rises 1.7 → ~2.3-2.5 ms with bigger responses (2.2-2.5 of 3 cores
+per pod at 150-175k).
 
 ## Methodology lessons (apply to future rounds)
 

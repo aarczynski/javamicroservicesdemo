@@ -481,7 +481,7 @@ targets.
 |---|---|
 | `make k8s-rebuild-all` | Bare metal → running cluster |
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
-| `make k8s-load-data` | Load real generated data (`make k8s-reload-data` to force a reload) |
+| `make k8s-load-data` | Load real generated data (`make k8s-reload-data` to force a reload). Both regenerate the data with `make generate-data`, so pass the cluster's dataset size explicitly or they fall back to the generator defaults — currently `make k8s-reload-data candidates=100000 jobOffers=150000 companies=10000` |
 | `make k8s-deploy-load-background` | Rare: rebuild+redeploy `load-background` after changing its own source (JS script, entrypoint, Dockerfile) |
 
 ![Physical cluster](readme-assets/img/k8s-cluster.gif)

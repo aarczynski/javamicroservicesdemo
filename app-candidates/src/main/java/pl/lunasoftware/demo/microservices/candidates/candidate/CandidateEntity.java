@@ -9,17 +9,10 @@ import pl.lunasoftware.demo.microservices.candidates.skill.CandidateSkillEntity;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-@NamedEntityGraph(name = "Candidate.withSkillsAndEmploymentTypes",
-        attributeNodes = {
-                @NamedAttributeNode("skills"),
-                @NamedAttributeNode("preferredEmploymentTypes")
-        })
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @Entity(name = "Candidate")
@@ -49,7 +42,7 @@ public class CandidateEntity {
     private Set<EmploymentType> preferredEmploymentTypes = new HashSet<>();
 
     @OneToMany(mappedBy = "candidate", fetch = FetchType.LAZY)
-    private List<CandidateSkillEntity> skills = new ArrayList<>();
+    private Set<CandidateSkillEntity> skills = new HashSet<>();
 
     @CreationTimestamp
     @Column(updatable = false)
