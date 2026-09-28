@@ -112,7 +112,12 @@ spec:
           # instead of each retrying independently — observed as a cascade of
           # ~26 sub-10ms error traces following one genuine resolution
           # failure. Set to 1s so a transient loss doesn't compound.
-          command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          # -Xms = -Xmx: Serial GC otherwise starts at a 24 MB heap and grows it lazily
+          # up to the default 384 MB (25% of the 1536Mi limit), so young-gen size - and
+          # with it GC frequency and CPU per request - depended on how long a pod had
+          # been running, making before/after comparisons across pods of different age
+          # meaningless (k8s-cluster/RPS-SCALING.md #15). Same 384 MB ceiling as before.
+          command: ["java", "-Xms384m", "-Xmx384m", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080
             - containerPort: 8081
