@@ -64,7 +64,7 @@ spec:
           # (JDK's 10s negative DNS cache turns one transient lookup failure
           # into a ~10s cascade of hard errors for every request; -Xms = -Xmx
           # keeps GC behavior independent of pod age).
-          command: ["java", "-XX:+UseSerialGC", "-Xms1g", "-Xmx1g", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
+          command: ["java", "-Xms384m", "-Xmx384m", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
           ports:
             - containerPort: 8080
             - containerPort: 8081
@@ -118,14 +118,13 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 5
-          # Sized for the 1 GB heap - see k8s-cluster/manifests/candidates/app.yaml.
           resources:
             requests:
               cpu: 250m
-              memory: 1536Mi
+              memory: 512Mi
             limits:
               cpu: "3"
-              memory: 2Gi
+              memory: 1536Mi
 
 ---
 apiVersion: v1
