@@ -32,20 +32,6 @@ alternateConfig:
         grpc:
           endpoint: 0.0.0.0:4317
 
-  connectors:
-    span_metrics:
-      namespace: db
-      metrics_flush_interval: 1s
-      histogram:
-        explicit:
-          buckets: ["5ms", "10ms", "25ms", "50ms", "75ms", "100ms", "250ms", "500ms", "750ms", "1s", "2500ms", "5s", "7500ms", "10s"]
-      dimensions:
-        - name: db.system
-        - name: db.system.name
-        - name: db.operation.name
-      exemplars:
-        enabled: true
-
   processors:
     batch:
       send_batch_max_size: 1000
@@ -55,44 +41,6 @@ alternateConfig:
       send_batch_max_size: 1000
       send_batch_size: 100
       timeout: 5s
-    filter/db_spans:
-      error_mode: ignore
-      traces:
-        span:
-          - 'attributes["db.system"] == nil and attributes["db.system.name"] == nil'
-    # Tail sampling for the traces actually stored in Tempo (NOT applied to the
-    # traces/db_spans pipeline below, which feeds span_metrics — that stays on
-    # 100% of spans so DB duration histograms/dashboards keep full accuracy).
-    # Added 2026-09-20: sustained 1200-1500rps load tests were pushing enough
-    # trace volume through Kafka/Tempo's write path to crash observability-1's
-    # kubelet, twice — see k8s-cluster/RPS-SCALING.md. Multiple top-level
-    # policies are OR'd by this processor: a trace is kept if ANY policy says
-    # so, so this is "100% of 4xx/5xx + 100% of traces slower than 500ms +
-    # independently ~1% of everything else" (the ~1% is not additional on top
-    # of the other two — errors/slow traces already always match their own
-    # policy, sample-rest just also independently rolls the dice on every
-    # trace including those).
-    # sample-slow added 2026-09-20 on request: `latency` looks at total trace
-    # duration (max span end - min span start across the whole trace), not
-    # any single span, so a fast root handler with one slow downstream call
-    # still gets caught.
-    tail_sampling:
-      decision_wait: 5s
-      policies:
-        - name: sample-errors
-          type: numeric_attribute
-          numeric_attribute:
-            key: http.response.status_code
-            min_value: 400
-            max_value: 599
-        - name: sample-slow
-          type: latency
-          latency:
-            threshold_ms: 500
-        - name: sample-rest
-          type: probabilistic
-          probabilistic:
-            sampling_percentage: 1
 
   exporters:
     prometheusremotewrite:
@@ -110,17 +58,19 @@ alternateConfig:
     extensions: [health_check]
     pipelines:
       metrics:
-        receivers: [otlp, span_metrics]
+        receivers: [otlp]
         processors: [batch/metrics]
         exporters: [prometheusremotewrite]
+      # No tail_sampling here any more (2026-09-27): the apps decide what to keep
+      # (otel-metrics-filter's LocalTailSamplingSpanExporter - 1% + 4xx/5xx + >500ms,
+      # the same policies this collector used to apply) and only send those, so a
+      # second sampling pass here would keep 1% of the 1%. DB timing histograms come
+      # from the agent's db.client.operation.duration metric instead of a span_metrics
+      # connector over 100% of JDBC spans.
       traces:
         receivers: [otlp]
-        processors: [tail_sampling, batch]
+        processors: [batch]
         exporters: [otlp_grpc/tempo]
-      traces/db_spans:
-        receivers: [otlp]
-        processors: [filter/db_spans]
-        exporters: [span_metrics]
       # No logs pipeline here (unlike observability/otel-collector/otel-collector.yml
       # for Compose): k8s apps set OTEL_LOGS_EXPORTER=none and ship logs via the
       # Alloy DaemonSet instead (k8s-cluster/manifests/alloy/values-alloy.yaml) —
@@ -135,6 +85,8 @@ alternateConfig:
 # keep it, instead of streaming straight through — at 1200-1500rps that's thousands
 # of buffered traces at any given moment, not the near-stateless pass-through this
 # was originally sized for.
+# tail_sampling was removed on 2026-09-27 (sampling moved into the apps, see the traces
+# pipeline above) - the limits are left as-is until measured under load.
 resources:
   requests:
     cpu: 200m

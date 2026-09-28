@@ -104,7 +104,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-candidates
-          image: 192.168.10.190:5000/app-candidates:c874941
+          image: 192.168.10.190:5000/app-candidates:665af15
           # sun.net.inetaddr.negative.ttl: JDK defaults to caching a FAILED DNS
           # lookup for 10s. A single transient packet loss (ndots:1 still hits
           # this occasionally, root-caused 2026-08-28) then poisons every
@@ -112,7 +112,12 @@ spec:
           # instead of each retrying independently — observed as a cascade of
           # ~26 sub-10ms error traces following one genuine resolution
           # failure. Set to 1s so a transient loss doesn't compound.
-          command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
+          # -Xms = -Xmx: Serial GC otherwise starts at a 24 MB heap and grows it lazily
+          # up to the default 384 MB (25% of the 1536Mi limit), so young-gen size - and
+          # with it GC frequency and CPU per request - depended on how long a pod had
+          # been running, making before/after comparisons across pods of different age
+          # meaningless (k8s-cluster/RPS-SCALING.md #15). Same 384 MB ceiling as before.
+          command: ["java", "-Xms384m", "-Xmx384m", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080
             - containerPort: 8081
@@ -159,6 +164,12 @@ spec:
               value: "./otel-metrics-filter.jar"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
+            # Emits the db.client.operation.duration histogram behind the DB panels
+            # (buckets and labels set in otel-metrics-filter's DbClientDurationViewCustomizer).
+            # Spans are sampled in the app now, so DB timings can't be derived from
+            # them in the collector any more.
+            - name: OTEL_SEMCONV_STABILITY_OPT_IN
+              value: database
             # Logs now go through Alloy (reads stdout directly, see
             # k8s-cluster/manifests/alloy/values-alloy.yaml) instead of the
             # agent's own OTLP log export — traces/metrics OTLP unaffected.

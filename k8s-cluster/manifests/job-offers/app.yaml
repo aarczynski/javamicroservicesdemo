@@ -59,11 +59,12 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: app-job-offers
-          image: 192.168.10.190:5000/app-job-offers:c874941
+          image: 192.168.10.190:5000/app-job-offers:665af15
           # See k8s-cluster/manifests/candidates/app.yaml for the rationale
           # (JDK's 10s negative DNS cache turns one transient lookup failure
-          # into a ~10s cascade of hard errors for every request).
-          command: ["java", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
+          # into a ~10s cascade of hard errors for every request; -Xms = -Xmx
+          # keeps GC behavior independent of pod age).
+          command: ["java", "-Xms384m", "-Xmx384m", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-job-offers.jar"]
           ports:
             - containerPort: 8080
             - containerPort: 8081
@@ -89,6 +90,12 @@ spec:
               value: "./otel-metrics-filter.jar"
             - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
+            # Emits the db.client.operation.duration histogram behind the DB panels
+            # (buckets and labels set in otel-metrics-filter's DbClientDurationViewCustomizer).
+            # Spans are sampled in the app now, so DB timings can't be derived from
+            # them in the collector any more.
+            - name: OTEL_SEMCONV_STABILITY_OPT_IN
+              value: database
             # Logs now go through Alloy (reads stdout directly, see
             # k8s-cluster/manifests/alloy/values-alloy.yaml) instead of the
             # agent's own OTLP log export — traces/metrics OTLP unaffected.

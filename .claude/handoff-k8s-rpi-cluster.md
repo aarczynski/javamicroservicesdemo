@@ -21,18 +21,21 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **[NASTĘPNY KROK] Appki eksportują 100% spanów, odrzuca dopiero `otel-collector`.** Tail sampling (1% +
-   >500 ms + 4xx/5xx, `k8s-cluster/manifests/observability/values-otel-collector.yaml`) działa w collectorze, ale
-   `OTEL_TRACES_SAMPLER` nie jest ustawiony w appkach (domyślnie `parentbased_always_on`) — agent w każdym JVM
-   tworzy, serializuje i wysyła po gRPC każdy span każdego requestu (kontroler, JDBC, Feign), a 99% z nich
-   collector wyrzuca. Zmierzone JFR-em 2026-09-24 przy 1200rps: agent + eksport spanów (`BatchSpanProcessor`,
-   okhttp) to **~5% CPU** `app-job-offers`; do tego ruch sieciowy i CPU/RAM samego collectora (limit 1 CPU,
-   throttlowany do ~34% okresów przy 1800rps) oraz presja na `observability-1`/`-3` przy długich testach.
-   **Pułapka**: zwykły head sampling (`traceidratio`) zepsuje tail sampling — wolne i błędne trace'y trzeba mieć w
-   całości, a o tym, czy trace jest wolny/błędny, wiadomo dopiero na końcu. Do przemyślenia: co realnie zyskujemy
-   (ile CPU w appkach vs. w collectorze), czy jest kompromis (np. head sampling z wyjątkami po stronie SDK, mniej
-   spanów per trace — wyłączenie spanów kontrolera/JDBC tam, gdzie nic nie wnoszą), i jak to zmierzyć przed/po
-   (CPU per request, patrz metodologia w `RPS-SCALING.md`).
+1. **Sampling trace'ów w appkach — wdrożone na branchu `feat/app-side-trace-sampling` (2026-09-27), bez merge'a.**
+   Rozszerzenie agenta decyduje po zakończeniu lokalnego roota (1% po traceId + 4xx/5xx + >=500 ms), collector
+   nie sampluje (brak 1% z 1%), metryki DB z `db.client.operation.duration` zamiast `span_metrics`. Na klastrze
+   działa (`2a2d63c`): collector -91% CPU / -93% RAM, candidates -15% CPU/request, job-offers -4%, ale GC w appkach
+   +50-60% (`RPS-SCALING.md` #15). **Decyzja 2026-09-28: rezygnujemy z pamiętania decyzji keep/drop po zakończeniu
+   lokalnego roota** (było 10 s na obsługę spanów kończących się po roocie). Obie appki są synchroniczne, więc takich
+   spanów nie ma; bez pamiętania każdy lokalny root decyduje sam (np. drugie, wolne wywołanie job-offers w tym samym
+   trace nie dziedziczy "drop" po pierwszym). Uzasadnienie i warunek powrotu (async/messaging) w `CLAUDE.md` →
+   "Trace sampling". Wdrożone (`9f5d28b`) i zmierzone: JFR przypisuje eksporterowi ~1% alokacji, a "wzrost GC"
+   to wiek JVM / leniwe powiększanie heapu przez Serial GC (stary pod miał Eden 107 MB vs ~40 MB na świeżych), nie
+   zmiana (`RPS-SCALING.md` #15). Heap przypięty 2026-09-28 (`-Xms384m -Xmx384m`, `2c6810d`): GC -60-70%, 2000rps
+   p99 114/124 ms, max 198/188 ms w dwóch przebiegach — najlepsze dotąd (`RPS-SCALING.md` #16). Sprawdzony też heap
+   1 GB (limit 2Gi, jawny Serial GC): GC jeszcze -45-60%, ale p99 bez poprawy (111/161 ms) — wycofany, zostaje
+   384 MB. Ogon p99 przy 2000rps to teraz kolejka do puli job-offers (5a), nie GC. Zmergowane do `main` 2026-09-28. Trace'y liczyć licznikiem spanów Tempo,
+   nie wyszukiwarką (niekompletna).
 
 2. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`

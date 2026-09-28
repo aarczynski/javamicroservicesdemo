@@ -431,7 +431,77 @@ structural fix if real, bursty traffic ever matters.
 #12's unexplained ~40 s cadence — same symptom (all replicas at once, server RPS dips then catches up), and the
 in-cluster probe saw none of it — is very likely the same cause. Not verified retroactively.
 
+### 15. Trace sampling moved from the collector into the apps (2026-09-27)
+
+The apps used to export 100% of spans and the collector's `tail_sampling` dropped ~99%. Now a javaagent extension
+(`LocalTailSamplingSpanExporter` in `otel-metrics-filter`) buffers spans per trace until the local root ends and
+keeps the same policies (1% by trace id, any HTTP 4xx/5xx, local root >= 500 ms); the collector keeps everything it
+gets. DB timings moved from the `span_metrics` connector to the agent's `db.client.operation.duration`. Same
+2000rps / `stepDuration=2m` run, warm JVMs, Mac on AC:
+
+| | Before (22:36 UTC) | After (23:33 UTC) |
+|---|---|---|
+| `app-candidates` CPU per request | 2.74 ms | 2.32 ms (**-15%**) |
+| `app-job-offers` CPU per request | 1.88 ms | 1.81 ms (-4%) |
+| JVM GC time, candidates / job-offers | 0.044 / 0.041 s/s | 0.070 / 0.060 s/s (+50-60%) |
+| `otel-collector` CPU / memory / ingress | 0.70 cores / 956 MB / 14 MB/s | 0.06 / 66 MB / 0.38 MB/s |
+| `observability-3` node CPU | 24% | 6% |
+| Gatling p99 / max | 174 / 274 ms | 213 / 346 ms |
+
+The big win is the observability side (collector -91% CPU, -93% memory); the apps gain less, because spans are
+still created for every request (the keep/drop decision needs the finished request) and only serialization/export
+is saved. **The first run right after the rollout was misleading** (p99 799 ms, one 313 ms full GC in
+`app-candidates`): JVMs ~8 min old vs the 3.5-day-old baseline — warm up and re-run before comparing.
+
+**GC time looked +50-60% worse, but that's JVM age, not the exporter.** Dropping the 10 s decision memory
+(`9f5d28b`, see CLAUDE.md "Trace sampling") didn't bring it down (candidates 0.070 → 0.100 s/s, and a 2000rps run
+right after got p99 878 ms from one `app-job-offers` replica spiralling on its pool queue — the other replica had
+p99 48 ms; the run-to-run spread at 2000rps today was 174-878 ms p99 on the same setup). A 60 s JFR allocation
+profile (`settings=default`, `app-candidates` at 1200rps) attributes only **~1.0%** of allocations to
+`LocalTailSamplingSpanExporter` and ~1.4% to the `database` semconv opt-in (DB metrics + query summary); span
+creation by the agent is ~14% and unchanged. What actually differed was heap sizing: Serial GC grows the heap
+lazily, and the baseline's longest-lived candidates pod had grown Eden to 107 MB (vs ~37-46 MB on every fresh pod),
+so it ran ~3x fewer minor GCs and pulled the baseline average down. GC comparisons across pods of different age
+aren't meaningful until the heap is pinned (`-Xms` = `-Xmx`, not done).
+
+### 16. Heap pinned (`-Xms384m -Xmx384m`) — GC -60-70%, best 2000rps runs so far (2026-09-28)
+
+Serial GC used to start at a 24 MB heap and grow it lazily to the 384 MB default max, so Eden sat at ~37-46 MB on
+every pod younger than a few days (#15). Pinning `-Xms` = `-Xmx` (same 384 MB ceiling) gives every pod the full
+107 MB Eden from startup. Same sequence as #15 (warm-up 1000rps/1m + 2000rps/2m, then measured 2000rps/2m, twice,
+arrival stdev 33-41 req/s):
+
+| | Baseline (#15, 3.5-day-old pods) | Run 1 | Run 2 |
+|---|---|---|---|
+| Gatling p50 / p95 / p99 / max | 10 / 42 / 174 / 274 ms | 10 / 31 / **114** / 198 ms | 9 / 35 / **124** / 188 ms |
+| `app-candidates` CPU per request | 2.74 ms | 2.14 ms | 2.47 ms |
+| `app-job-offers` CPU per request | 1.88 ms | 1.94 ms | 1.96 ms |
+| GC time, candidates / job-offers | 0.044 / 0.041 s/s | 0.017 / 0.012 | 0.016 / 0.012 |
+| Minor GCs per minute, candidates / job-offers | 406 / 376 | 181 / 118 | 178 / 117 |
+| `otel-collector` CPU / memory | 0.70 cores / 956 MB | 0.05 / 67 MB | 0.06 / 67 MB |
+
+Even the post-rollout warm-up runs were calmer than before (1000rps max 289 ms vs 1067 ms in #15), because a fresh
+pod no longer spends its first minutes collecting a tiny young generation. CPU per request is within run-to-run
+noise; the p99 gain comes from far fewer GC pauses feeding the pool-queue amplifier (#14).
+
+**Follow-up, same day: a 1 GB pinned heap was tried and reverted.** `-XX:+UseSerialGC -Xms1g -Xmx1g`, limit
+1536Mi → 2Gi (Serial made explicit because a limit above ~1792 MB makes the JVM pick G1 by itself). Eden grew to
+286 MB and minor GCs dropped ~2.7x (candidates ~180 → ~66/min, job-offers ~118 → ~42/min); pause length stayed the
+same (6-9 ms), so GC time fell to 0.007-0.009 / 0.005-0.007 s/s. **Latency didn't follow**: p99 111 / 161 ms and
+max 180 / 485 ms over two runs, vs 114 / 124 ms and 198 / 188 ms with 384 MB — the worse run was one
+`app-job-offers` replica queuing on its 10-connection pool (88 waiting), not GC. With GC already at ~1-2% of a
+core, it's no longer what drives the tail; the pool-held-through-scoring amplifier (#14) is. Reverted to 384 MB.
+
 ## Methodology lessons (apply to future rounds)
+
+- **Don't count sampled traces with Tempo's search API** — it silently returns incomplete results (even with
+  `limit=1000`), which twice made working sampling look broken (#15). Count spans with
+  `tempo_distributor_spans_received_total` (Compose: `docker exec prometheus wget -qO- http://tempo:3200/metrics`)
+  over a controlled burst instead.
+- **`OTEL_SEMCONV_STABILITY_OPT_IN=database` renames the agent's JDBC pool metrics** (#15):
+  `db_client_connections_pending_requests` / `..._use_time_milliseconds_*` became
+  `db_client_connection_pending_requests` / `..._use_time_seconds_*` (seconds, not ms). Dashboards use `hikaricp_*`
+  and are unaffected; ad-hoc queries like the ones in #14 need the new names.
 
 - **Run Gatling from a Mac on AC power only** — check `pmset -g batt` before every test. On battery the generator
   sends in periodic bursts (#14), which looks exactly like a cluster-side regression. To tell them apart, look at
