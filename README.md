@@ -538,7 +538,7 @@ pushing to the RPi cluster:
 | `make minikube-start` | Cluster was `minikube-stop`'d (not deleted) and already has everything deployed — starts it and restores port-forwarding, nothing to rebuild. Also the first step of `minikube-rebuild-all` |
 | `make minikube-image` | Rebuild app-candidates/app-job-offers/load-background and load them straight into minikube's image cache (no registry, not even ghcr.io — see [`k8s-cluster/manifests/overlays/minikube/README.md`](k8s-cluster/manifests/overlays/minikube/README.md)). Chained into `minikube-rebuild-all`; run standalone after changing app source, then `minikube-deploy` |
 | `make minikube-deploy` | Day-to-day: redeploy the apps after a manifest change |
-| `make minikube-load-data` | Load real generated data (`make minikube-reload-data` to force a reload) — skipped by the two above since it's slow |
+| `make minikube-load-data` | Replace all data with a freshly generated dataset (truncates, restores Flyway's demo seed, imports, syncs `load-background`) — skipped by the two above since it's slow. Use `data-generator/output/candidates/01-candidates.sql` as the load test's `candidatesDataFile` |
 | `make minikube-tunnel` | Real Gateway/MetalLB IP on the host, with actual load balancing across replicas (needs sudo, blocks the terminal — run it in its own terminal window and leave it open, same as `minikube tunnel` itself recommends) |
 | `make minikube-stop` | Stop the cluster — data stays |
 | `make minikube-delete` | Delete the cluster — data goes too |

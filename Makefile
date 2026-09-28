@@ -104,9 +104,6 @@ minikube-deploy-only:
 minikube-load-data:
 	./k8s-cluster/scripts/minikube-load-data.sh
 
-minikube-reload-data:
-	./k8s-cluster/scripts/minikube-load-data.sh --force
-
 minikube-forward:
 	./k8s-cluster/scripts/minikube-forward.sh
 
