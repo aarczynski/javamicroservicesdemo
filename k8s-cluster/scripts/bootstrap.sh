@@ -41,8 +41,8 @@ echo "==> CoreDNS: hard anti-affinity between its 2 replicas (kubeadm default is
 kubectl patch deployment coredns -n kube-system --type=strategic \
   --patch-file "$MANIFESTS/coredns/anti-affinity-patch.yaml"
 
-echo "==> MetalLB"
-helm upgrade --install metallb metallb/metallb -n metallb-system --create-namespace \
+echo "==> MetalLB 0.16.1"
+helm upgrade --install metallb metallb/metallb -n metallb-system --create-namespace --version 0.16.1 \
   -f "$MANIFESTS/metallb/values-metallb.yaml"
 echo "==> Waiting for MetalLB's validating webhook to be ready (IPAddressPool/L2Advertisement need it)"
 kubectl wait --for=condition=Available deployment/metallb-controller -n metallb-system --timeout=120s
@@ -63,6 +63,8 @@ done
 
 echo "==> local-path-provisioner v0.0.37 (default StorageClass)"
 kubectl apply -f "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.37/deploy/local-path-storage.yaml"
+kubectl patch deployment local-path-provisioner -n local-path-storage --type=strategic \
+  --patch-file "$MANIFESTS/local-path-provisioner/pin-platform-patch.yaml"
 
 echo "==> Image registry (self-hosted, replaces ghcr.io — see registry.yaml)"
 kubectl apply -f "$MANIFESTS/registry/namespace.yaml"
