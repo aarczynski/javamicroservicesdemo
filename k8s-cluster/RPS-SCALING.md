@@ -464,6 +464,26 @@ lazily, and the baseline's longest-lived candidates pod had grown Eden to 107 MB
 so it ran ~3x fewer minor GCs and pulled the baseline average down. GC comparisons across pods of different age
 aren't meaningful until the heap is pinned (`-Xms` = `-Xmx`, not done).
 
+### 16. Heap pinned (`-Xms384m -Xmx384m`) — GC -60-70%, best 2000rps runs so far (2026-09-28)
+
+Serial GC used to start at a 24 MB heap and grow it lazily to the 384 MB default max, so Eden sat at ~37-46 MB on
+every pod younger than a few days (#15). Pinning `-Xms` = `-Xmx` (same 384 MB ceiling) gives every pod the full
+107 MB Eden from startup. Same sequence as #15 (warm-up 1000rps/1m + 2000rps/2m, then measured 2000rps/2m, twice,
+arrival stdev 33-41 req/s):
+
+| | Baseline (#15, 3.5-day-old pods) | Run 1 | Run 2 |
+|---|---|---|---|
+| Gatling p50 / p95 / p99 / max | 10 / 42 / 174 / 274 ms | 10 / 31 / **114** / 198 ms | 9 / 35 / **124** / 188 ms |
+| `app-candidates` CPU per request | 2.74 ms | 2.14 ms | 2.47 ms |
+| `app-job-offers` CPU per request | 1.88 ms | 1.94 ms | 1.96 ms |
+| GC time, candidates / job-offers | 0.044 / 0.041 s/s | 0.017 / 0.012 | 0.016 / 0.012 |
+| Minor GCs per minute, candidates / job-offers | 406 / 376 | 181 / 118 | 178 / 117 |
+| `otel-collector` CPU / memory | 0.70 cores / 956 MB | 0.05 / 67 MB | 0.06 / 67 MB |
+
+Even the post-rollout warm-up runs were calmer than before (1000rps max 289 ms vs 1067 ms in #15), because a fresh
+pod no longer spends its first minutes collecting a tiny young generation. CPU per request is within run-to-run
+noise; the p99 gain comes from far fewer GC pauses feeding the pool-queue amplifier (#14).
+
 ## Methodology lessons (apply to future rounds)
 
 - **Don't count sampled traces with Tempo's search API** — it silently returns incomplete results (even with
