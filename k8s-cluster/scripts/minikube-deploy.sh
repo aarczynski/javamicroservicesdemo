@@ -23,7 +23,9 @@ kubectl apply -k "$OVERLAY"
 echo "==> Waiting for rollout"
 kubectl rollout status deployment/postgres-candidates -n candidates --timeout=180s
 kubectl rollout status deployment/postgres-job-offers -n job-offers --timeout=180s
-kubectl rollout status deployment/app-candidates -n candidates --timeout=180s
+# 300s, not 180s: maxSurge=0 (see candidates/app.yaml) replaces the 3 replicas
+# one at a time, ~1 min each on minikube — 180s timed out mid-rollout.
+kubectl rollout status deployment/app-candidates -n candidates --timeout=300s
 kubectl rollout status deployment/app-job-offers -n job-offers --timeout=180s
 kubectl rollout status deployment/load-background -n load-background --timeout=180s
 
