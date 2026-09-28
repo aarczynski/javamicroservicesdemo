@@ -450,10 +450,19 @@ gets. DB timings moved from the `span_metrics` connector to the agent's `db.clie
 
 The big win is the observability side (collector -91% CPU, -93% memory); the apps gain less, because spans are
 still created for every request (the keep/drop decision needs the finished request) and only serialization/export
-is saved. GC time went **up**: spans now wait in the exporter's per-trace buffer, and decided trace states are kept
-for 10 s to route late spans, so more objects survive young collections. Shortening how long decided states are
-kept is the obvious next knob. **The first run right after the rollout was misleading** (p99 799 ms, one 313 ms
-full GC in `app-candidates`): JVMs ~8 min old vs the 3.5-day-old baseline — warm up and re-run before comparing.
+is saved. **The first run right after the rollout was misleading** (p99 799 ms, one 313 ms full GC in
+`app-candidates`): JVMs ~8 min old vs the 3.5-day-old baseline — warm up and re-run before comparing.
+
+**GC time looked +50-60% worse, but that's JVM age, not the exporter.** Dropping the 10 s decision memory
+(`9f5d28b`, see CLAUDE.md "Trace sampling") didn't bring it down (candidates 0.070 → 0.100 s/s, and a 2000rps run
+right after got p99 878 ms from one `app-job-offers` replica spiralling on its pool queue — the other replica had
+p99 48 ms; the run-to-run spread at 2000rps today was 174-878 ms p99 on the same setup). A 60 s JFR allocation
+profile (`settings=default`, `app-candidates` at 1200rps) attributes only **~1.0%** of allocations to
+`LocalTailSamplingSpanExporter` and ~1.4% to the `database` semconv opt-in (DB metrics + query summary); span
+creation by the agent is ~14% and unchanged. What actually differed was heap sizing: Serial GC grows the heap
+lazily, and the baseline's longest-lived candidates pod had grown Eden to 107 MB (vs ~37-46 MB on every fresh pod),
+so it ran ~3x fewer minor GCs and pulled the baseline average down. GC comparisons across pods of different age
+aren't meaningful until the heap is pinned (`-Xms` = `-Xmx`, not done).
 
 ## Methodology lessons (apply to future rounds)
 

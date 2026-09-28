@@ -29,8 +29,12 @@ każdą pracą nad skalowaniem, nie duplikować tutaj.
    lokalnego roota** (było 10 s na obsługę spanów kończących się po roocie). Obie appki są synchroniczne, więc takich
    spanów nie ma; bez pamiętania każdy lokalny root decyduje sam (np. drugie, wolne wywołanie job-offers w tym samym
    trace nie dziedziczy "drop" po pierwszym). Uzasadnienie i warunek powrotu (async/messaging) w `CLAUDE.md` →
-   "Trace sampling". Do zrobienia: wdrożyć, zmierzyć alokacje (JFR `settings=default`) i GC jeszcze raz; potem merge.
-   Trace'y liczyć licznikiem spanów Tempo, nie wyszukiwarką (niekompletna).
+   "Trace sampling". Wdrożone (`9f5d28b`) i zmierzone: JFR przypisuje eksporterowi ~1% alokacji, a "wzrost GC"
+   to wiek JVM / leniwe powiększanie heapu przez Serial GC (stary pod miał Eden 107 MB vs ~40 MB na świeżych), nie
+   zmiana (`RPS-SCALING.md` #15). Gotowe do merge'a. Otwarte obok: przypiąć heap (`-Xms`=`-Xmx`), żeby pomiary GC/CPU
+   między podami w różnym wieku były porównywalne; rozrzut p99 przy 2000rps to 174-878 ms na tym samym setupie
+   (jedna replika job-offers wpada w spiralę kolejki do puli — patrz 5a). Trace'y liczyć licznikiem spanów Tempo,
+   nie wyszukiwarką (niekompletna).
 
 2. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`
