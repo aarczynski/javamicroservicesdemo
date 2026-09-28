@@ -31,10 +31,10 @@ public class CandidateService {
 
     @WithSpan
     public List<JobOfferMatchDto> findMatchingOffers(UUID candidateId) {
-        CandidateEntity candidate = candidateRepository.findById(candidateId)
+        CandidateEntity candidate = candidateRepository.findWithSkillsAndEmploymentTypesById(candidateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate " + candidateId + " not found"));
 
-        List<CandidateSkillEntity> skills = candidate.getSkills();
+        Set<CandidateSkillEntity> skills = candidate.getSkills();
         if (skills.isEmpty()) {
             log.info("Candidate {} has no skills, returning empty results", candidateId);
             return List.of();

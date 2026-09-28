@@ -22,7 +22,7 @@ class CandidateServiceSpec extends Specification {
     def "should throw ResourceNotFoundException when candidate not found"() {
         given:
         def id = UUID.randomUUID()
-        candidateRepository.findById(id) >> Optional.empty()
+        candidateRepository.findWithSkillsAndEmploymentTypesById(id) >> Optional.empty()
 
         when:
         service.findMatchingOffers(id)
@@ -36,9 +36,9 @@ class CandidateServiceSpec extends Specification {
         def id = UUID.randomUUID()
         def entity = Instancio.of(CandidateEntity)
                 .set(field(CandidateEntity, 'id'), id)
-                .set(field(CandidateEntity, 'skills'), [])
+                .set(field(CandidateEntity, 'skills'), [] as Set)
                 .create()
-        candidateRepository.findById(id) >> Optional.of(entity)
+        candidateRepository.findWithSkillsAndEmploymentTypesById(id) >> Optional.of(entity)
 
         when:
         def result = service.findMatchingOffers(id)
@@ -57,10 +57,10 @@ class CandidateServiceSpec extends Specification {
                 .create()
         def entity = Instancio.of(CandidateEntity)
                 .set(field(CandidateEntity, 'id'), id)
-                .set(field(CandidateEntity, 'skills'), [skill])
+                .set(field(CandidateEntity, 'skills'), [skill] as Set)
                 .set(field(CandidateEntity, 'preferredEmploymentTypes'), [EmploymentType.B2B] as Set)
                 .create()
-        candidateRepository.findById(id) >> Optional.of(entity)
+        candidateRepository.findWithSkillsAndEmploymentTypesById(id) >> Optional.of(entity)
         def feignRequest = Request.create(Request.HttpMethod.POST, 'http://job-offers', [:], Request.Body.empty(), null)
         jobOffersClient.searchOffers(_) >> { throw new RetryableException(-1, 'Connection refused', Request.HttpMethod.POST, (Date) null, feignRequest) }
 
@@ -81,11 +81,11 @@ class CandidateServiceSpec extends Specification {
                 .create()
         def entity = Instancio.of(CandidateEntity)
                 .set(field(CandidateEntity, 'id'), id)
-                .set(field(CandidateEntity, 'skills'), [skill])
+                .set(field(CandidateEntity, 'skills'), [skill] as Set)
                 .set(field(CandidateEntity, 'preferredEmploymentTypes'), [EmploymentType.B2B] as Set)
                 .create()
         def match = Instancio.of(JobOfferMatchDto).create()
-        candidateRepository.findById(id) >> Optional.of(entity)
+        candidateRepository.findWithSkillsAndEmploymentTypesById(id) >> Optional.of(entity)
 
         when:
         def result = service.findMatchingOffers(id)
