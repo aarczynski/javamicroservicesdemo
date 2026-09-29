@@ -104,7 +104,7 @@ Example generating 200 000 candidates, 100 000 job offers and 20 000 companies:
 make generate-data candidates=200000 jobOffers=100000 companies=20000
 ```
 
-This generates SQL scripts that insert companies, skills (52 predefined technology names), job offers with their
+This generates SQL scripts that insert companies, skills (53 predefined technology names), job offers with their
 required skills, employment types and offered salaries, and candidates with their preferred skills, employment types and
 expected salaries. Both Job offers and candidates have unique geographical locations (latitude and longitude).
 
@@ -492,22 +492,31 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-24): 2000 RPS sustained, 0% KO** — ~10 minutes held (1,320,000 requests,
-p50=12ms/p95=47ms/p99=202ms/max=321ms). At that rate nothing is at its limit yet (`app-job-offers` ~2.2 of its 3
-cores per replica with ≤3% CPU throttling, `app-candidates` ~1.8 of 3, `postgres-job-offers` ~1.6 of 3), so the
-real ceiling is higher and not measured yet. What moved it from the previous 1900rps (2026-09-20, p99=556ms — which
-turned out to be a run right on the queueing knee, not a stable ceiling) was a single query fix in `app-job-offers`:
-the search query used JPQL with `IN :list` parameters, and Hibernate never caches the HQL→SQL translation of such a
-query, so it recompiled it on every request (~15% of the service's CPU); it's now native SQL. Full detail, including
+**Current state (2026-09-28): 2000 RPS, 0% KO, p99=211ms on 150k job offers / 10k companies** (3x the previous
+50k-offer dataset, see [Row counts](#row-counts-on-the-home-k8s-cluster)). **`postgres-job-offers` CPU is now the
+ceiling** (2.45 of its 3 cores at 2000rps): the search's geographic bounding box examines more offers per request as
+offer density grows, so 175k offers still passes with 0% KO but p99 jumps to ~0.5-1s, and 200k no longer holds
+2000rps. Two changes made the bigger dataset fit: `app-candidates` loads the candidate with a single `JOIN FETCH`
+instead of an entity graph (-22% CPU per request), and `postgres-job-offers` runs with `shared_buffers=1GB` instead
+of the 128MB default (most page reads had been syscall copies from the OS page cache).
+
+Before that, on the 50k-offer dataset (2026-09-24): 2000 RPS held ~10 minutes, 0% KO (1,320,000 requests,
+p50=12ms/p95=47ms/p99=202ms/max=321ms), with nothing at its limit. What moved it from the previous 1900rps
+(2026-09-20, p99=556ms — a run right on the queueing knee, not a stable ceiling) was a single query fix in
+`app-job-offers`: the search query used JPQL with `IN :list` parameters, and Hibernate never caches the HQL→SQL
+translation of such a query, so it recompiled it on every request (~15% of the service's CPU); it's now native SQL.
+Full detail, including
 everything that got the cluster here (CPU limit `3` on both apps, `app-candidates` pinned to 3 replicas — see
 [Autoscaling](#autoscaling), one dedicated worker node per replica via hard `podAntiAffinity` — see
 [Node taints](#node-taints--what-runs-where)), is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
 
 ### Row counts on the home k8s cluster
 
-Actual row counts in each database, as loaded on the physical Raspberry Pi cluster. Slightly above the generator's
-`100 000`/`50 000` defaults because each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of
-fixed demo rows on top of the bulk-generated data. Rounded to the nearest 50,000.
+Dataset loaded on the physical Raspberry Pi cluster since 2026-09-28 (`make k8s-reload-data candidates=100000
+jobOffers=150000 companies=10000` — sized so that 2000rps still holds, see [Measured capacity](#measured-capacity)).
+Each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of fixed demo rows on top of the
+bulk-generated data. Join and collection tables are estimates from the generator's distributions (1-5 skills per
+row, averaging 3; ~1.6 employment types per row), rounded to the nearest 50,000.
 
 **`app-candidates-db`:**
 
@@ -515,17 +524,17 @@ fixed demo rows on top of the bulk-generated data. Rounded to the nearest 50,000
 |---|---|
 | `candidate` | ~100,000 |
 | `candidate_skill` | ~300,000 |
-| `candidate_preferred_employment_type` | ~200,000 |
+| `candidate_preferred_employment_type` | ~150,000 |
 
-**`app-job-offers-db`:**
+**`app-job-offers-db`** (~217 MB):
 
 | Table | Rows |
 |---|---|
-| `job_offer` | ~100,000 |
-| `job_offer_skill` | ~300,000 |
-| `job_offer_employment_type` | ~200,000 |
-| `company` | ~50,000 |
-| `skill` | 58 |
+| `job_offer` | ~150,000 |
+| `job_offer_skill` | ~450,000 |
+| `job_offer_employment_type` | ~250,000 |
+| `company` | ~10,000 |
+| `skill` | 58 (53 generated + 5 demo) |
 
 ### Local testing without the physical cluster
 
@@ -747,8 +756,10 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   up. Low priority, no timeline yet — see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the
   architecture notes and the capacity risk (a single Keycloak instance handling introspection at ~1500rps needs to
   be measured in isolation first).
-* **Next session candidate #1**: bigger Postgres dataset (currently 100k candidates / 50k job offers via
-  `data-generator`) — no target scale decided yet.
+* **Next session candidate #1**: `postgres-job-offers` is the ceiling on the current 150k-offer dataset (see
+  [Measured capacity](#measured-capacity)) — measure the real per-query cost with `pg_stat_statements`, including
+  whether the search's prepared statements actually skip planning under load (planning ~0.95ms vs execution
+  ~0.58ms on a warm DB).
 * **Next session candidate #2 (alternative to #1, not both)**: the percentile-metrics estimation gap — see
   [Known issues](#known-issues).
 * Keycloak/SSO stays explicitly behind both of the above — no node, no timeline, see the bullet above.
