@@ -71,12 +71,13 @@ przed każdą pracą nad skalowaniem, nie duplikować tutaj.
    odciążenia: `findByIdIn` (entity graph + `IN`, ~26% próbek aktywnych), doładowania employment types (~6%).
    Niedokładne p99 w Grafanie (`README.md` Known issues) nadal otwarte; Keycloak/SSO świadomie za nimi, bez node'a.
 
-6. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — `load-data.sh` synchronizuje
-   `load-background`, ale nie plik do `make candidateSimulation`. Do rozważenia: krok w symulacji weryfikujący
-   próbkę ID przed testem.
+6. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — od 2026-09-30 każdy
+   `*load-data` (Compose/k8s/minikube) zawsze przeładowuje bazę, więc `data-generator/output/candidates/01-candidates.sql`
+   po ostatnim uruchomieniu zawsze pasuje do bazy, na którą je załadowano. Ryzyko zostaje przy przełączaniu między
+   środowiskami (plik z minikube vs. baza na RPi). Do rozważenia: krok w symulacji weryfikujący próbkę ID przed testem.
 
 6a. **`CandidateGeneratorSpec` jest niestabilny** — nazwisko z apostrofem (np. `O'Hara`) generator zapisuje w mailu
-   bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-reload-data`
+   bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-load-data`
    (2026-09-28, jedno z pięciu przeładowań). Ponowne uruchomienie przechodzi.
 
 7. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
@@ -102,10 +103,12 @@ przed każdą pracą nad skalowaniem, nie duplikować tutaj.
   dla niego miejsca i rollout się zakleszcza, aż ktoś ręcznie usunie stary pod.
 - **`bootstrap.sh`: `kubectl apply -f <katalog>` na katalogu z `kustomization.yaml` w środku wybucha** (próbuje
   sparsować plik kustomize jako zwykły manifest) — wymieniać pliki po nazwie, nie aplikować całego katalogu.
-- **`load-data.sh --force` kasował demo-seed Flywaya bezpowrotnie** — `TRUNCATE ... CASCADE` przed bulk-importem
-  kasował też wiersze zasiane przez migrację Flyway, która nigdy się nie powtórzy (`flyway_schema_history` już ją
-  oznaczył jako wykonaną). Fix: po truncate, przed importem, skrypt teraz odpala realny plik migracji
-  (`V1_1__demo-data.sql`) przez `psql -f`, nie kopię jego treści.
+- **`TRUNCATE ... CASCADE` w `load-data.sh` kasuje demo-seed Flywaya** — wiersze z migracji `V1_1`, której Flyway
+  nigdy nie powtórzy (`flyway_schema_history` ma ją jako wykonaną). Dlatego skrypt po truncate odpala realny plik
+  migracji (`V1_1__demo-data.sql`) przez `psql`, nie kopię jego treści. Schematu i `flyway_schema_history` nie rusza.
+- **`load-data` bez przeładowania rozjeżdżał plik z bazą** (do 2026-09-28): skrypt generował nowe losowe UUID, a potem
+  pomijał import niepustej bazy — load test szedł w 404. Teraz `*load-data` zawsze robi pełny przeładunek, a
+  `*reload-data`/`--force` nie istnieją.
 - **Lokalny `candidatesDataFile` łatwo rozjeżdża się cicho z bazą na klastrze** — Gatlingowy check
   (`status().in(200, 404)`) traktuje 404 jako sukces, więc test na nieaktualnych ID daje fałszywe "0% KO", nigdy
   faktycznie nie dotykając realnego matchingu. Zawsze weryfikować próbkę ID curl-em przed zaufaniem wynikom
@@ -114,7 +117,7 @@ przed każdą pracą nad skalowaniem, nie duplikować tutaj.
   rejestru** — commitować kod ZANIM się go długo testuje na klastrze, żeby `make k8s-deploy` zawsze był awaryjnym
   wyjściem po utracie rejestru.
 
-- **`make k8s-reload-data` sam generuje dane (`make generate-data`)** — bez `candidates=/jobOffers=/companies=`
+- **`make k8s-load-data` sam generuje dane (`make generate-data`)** — bez `candidates=/jobOffers=/companies=`
   wraca do domyślnych 100k/50k/10k i cicho zmienia rozmiar zbioru na klastrze. Parametry przechodzą do
   zagnieżdżonego `make` przez `MAKEFLAGS`. Po przeładowaniu: `VACUUM ANALYZE` (osobnym `psql -c`, nie w jednym
   `-c` z innymi poleceniami — wtedy leci w transakcji i Postgres odmawia), i nowy plik ID do Gatlinga, bo

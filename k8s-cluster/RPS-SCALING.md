@@ -521,7 +521,7 @@ More than the profile's 10%: the entity graph also loaded one of the collections
 
 ### 18. Bigger dataset — `postgres-job-offers` becomes the ceiling; `shared_buffers` 128MB → 1GB (2026-09-28)
 
-Goal: load Postgres, not the JVMs. Data scaled with `make k8s-reload-data` (100k candidates throughout; candidate
+Goal: load Postgres, not the JVMs. Data scaled with `make k8s-reload-data` (now `make k8s-load-data`; 100k candidates throughout; candidate
 count barely matters — one PK lookup per request). At 250k offers / 20k companies (359 MB) 2000rps collapsed to
 ~810rps with 47% fast 503s and `postgres-job-offers` at 3.0/3 cores. Sampling `pg_stat_activity` at 700rps showed
 >50% of active samples on an `IO` wait with zero disk reads: the 128MB default `shared_buffers` made most page reads

@@ -19,9 +19,6 @@ ensure-insecure-registry:
 load-data:
 	./scripts/load-data.sh
 
-reload-data:
-	./scripts/load-data.sh --force
-
 clean_build:
 	./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 
@@ -47,9 +44,6 @@ k8s-bootstrap:
 
 k8s-load-data:
 	./k8s-cluster/scripts/load-data.sh
-
-k8s-reload-data:
-	./k8s-cluster/scripts/load-data.sh --force
 
 k8s-rebuild-all: k8s-prep k8s-init k8s-bootstrap k8s-load-data
 

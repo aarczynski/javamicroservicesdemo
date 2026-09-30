@@ -77,7 +77,7 @@ Requires JDK25+, Docker (with Compose), and `make` installed on your machine.
 |---|---|
 | `make start` | Start everything: apps, observability stack, ambient traffic |
 | `make generate-data` | Generate SQL files with test data (see [Parameters](#parameters)) |
-| `make load-data` | Generate + import real data into Postgres (`make reload-data` to force a reload) |
+| `make load-data` | Replace all data in Postgres with a freshly generated dataset (truncates, restores Flyway's demo seed, imports) |
 
 ## Generating test data
 
@@ -125,9 +125,10 @@ data-generator/output/
     03-candidate-skills.sql
 ```
 
-`make load-data` generates these and imports them into the respective application databases in one step (skips a
-database that already has more than a handful of rows — pass `make reload-data` to truncate and reload
-unconditionally). To do it by hand instead, run `make generate-data` and import the files yourself (check
+`make load-data` generates these and imports them into the respective application databases in one step. It always
+replaces the existing data: truncates the business tables (the schema and `flyway_schema_history` stay), re-runs
+Flyway's `V1_1__demo-data.sql` seed, then imports the fresh files — each run produces new random UUIDs, so the load
+test's `candidatesDataFile` must be the file from the latest run. To do it by hand instead, run `make generate-data` and import the files yourself (check
 [compose.yml](compose.yml) for credentials).
 
 `01-candidates.sql` is used by **load-test** and **load-background** modules to generate requests with random candidates UUID.
@@ -481,7 +482,7 @@ targets.
 |---|---|
 | `make k8s-rebuild-all` | Bare metal → running cluster |
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
-| `make k8s-load-data` | Load real generated data (`make k8s-reload-data` to force a reload). Both regenerate the data with `make generate-data`, so pass the cluster's dataset size explicitly or they fall back to the generator defaults — currently `make k8s-reload-data candidates=100000 jobOffers=150000 companies=10000` |
+| `make k8s-load-data` | Replace all data with a freshly generated dataset (same steps as `make load-data`, plus syncing `load-background`). It regenerates the data with `make generate-data`, so pass the cluster's dataset size explicitly or it falls back to the generator defaults — currently `make k8s-load-data candidates=100000 jobOffers=150000 companies=10000` |
 | `make k8s-deploy-load-background` | Rare: rebuild+redeploy `load-background` after changing its own source (JS script, entrypoint, Dockerfile) |
 
 ![Physical cluster](readme-assets/img/k8s-cluster.gif)
@@ -512,7 +513,7 @@ everything that got the cluster here (CPU limit `3` on both apps, `app-candidate
 
 ### Row counts on the home k8s cluster
 
-Dataset loaded on the physical Raspberry Pi cluster since 2026-09-28 (`make k8s-reload-data candidates=100000
+Dataset loaded on the physical Raspberry Pi cluster since 2026-09-28 (`make k8s-load-data candidates=100000
 jobOffers=150000 companies=10000` — sized so that 2000rps still holds, see [Measured capacity](#measured-capacity)).
 Each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of fixed demo rows on top of the
 bulk-generated data. Join and collection tables are estimates from the generator's distributions (1-5 skills per
