@@ -1,73 +1,52 @@
 #!/usr/bin/env bash
-# Imports data-generator's SQL output into Docker Compose's Postgres
-# instances. Mirrors k8s-cluster/scripts/load-data.sh (the RPi cluster's
-# loader) — same row-count guard, same --force truncate-and-reload — just
-# via `docker exec` instead of `kubectl exec`/`kubectl cp`.
+# Replaces Docker Compose's Postgres data with a freshly generated
+# data-generator dataset. Same steps as k8s-cluster/scripts/load-data.sh
+# (the RPi cluster's and minikube's loader), just via `docker exec` instead
+# of `kubectl exec`/`kubectl cp`.
 #
-# load-background needs no separate sync step here, unlike the k8s/minikube
-# versions: compose.yml already bind-mounts data-generator/output/candidates/
-# 01-candidates.sql straight into the container (`load-background`'s
-# `volumes:`), so a fresh `make generate-data` is already visible on disk —
-# it only needs a restart to pick it up (k6's SharedArray reads the file
-# once at startup, same as everywhere else this data file is used).
+# Always a full reload: data-generator produces new random UUIDs on every
+# run, so generating without importing would leave the load test's
+# candidatesDataFile pointing at IDs that don't exist in Postgres.
 #
-# Safe by default: skips a database that already has rows, so re-running
-# never tries to double-insert and fail on a duplicate key. Pass --force to
-# truncate first and reload unconditionally (e.g. after regenerating a
-# bigger dataset with `make generate-data`).
+# Flyway stays intact: the schema (V1_0) and flyway_schema_history are never
+# touched, only the business tables are truncated. The demo-data seed (V1_1)
+# that TRUNCATE wipes is restored by re-executing the migration file itself —
+# Flyway won't re-run it (already marked applied), and the file is unchanged,
+# so its checksum still validates on the next app start.
+#
+# load-background needs no copy step here, unlike the k8s version:
+# compose.yml bind-mounts data-generator/output/candidates/01-candidates.sql
+# straight into the container, so it only needs a restart to re-read it
+# (k6's SharedArray reads the file once at startup).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORCE=false
-[[ "${1:-}" == "--force" ]] && FORCE=true
 
-import_file() {
-  local container="$1" db="$2" file="$3"
-  docker exec -i "$container" psql -U postgres -d "$db" <"$file"
+psql_in() {
+  local container="$1" db="$2"
+  shift 2
+  docker exec -i "$container" psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -q "$@"
 }
 
-load_database() {
-  local container="$1" db="$2" check_table="$3" truncate_tables="$4" demo_data_file="$5"
-  shift 5
+reload_database() {
+  local container="$1" db="$2" root_tables="$3" demo_data_file="$4"
+  shift 4
   local files=("$@")
 
-  local row_count
-  row_count=$(docker exec "$container" psql -U postgres -d "$db" -tAc "SELECT COUNT(*) FROM $check_table")
+  # Root tables, not every table: TRUNCATE ... CASCADE only follows foreign
+  # keys pointing at the truncated table, so truncating the roots clears the
+  # whole graph. Truncating only job_offer would leave company/skill (its
+  # parents) behind and the import would hit duplicate keys on their names.
+  echo "==> Truncating $db ($root_tables, CASCADE)"
+  psql_in "$container" "$db" -c "TRUNCATE TABLE $root_tables CASCADE"
 
-  # Flyway's baseline migration seeds a handful of fixed demo rows on every
-  # fresh start (see README) - a plain "> 0" check would treat that as
-  # "already bulk-loaded" and skip forever. Bulk data is thousands of rows,
-  # so use a threshold well above the demo seed count instead.
-  if [[ "$row_count" -gt 100 ]]; then
-    if [[ "$FORCE" == "true" ]]; then
-      echo "==> $db already has $row_count rows in $check_table — truncating (--force)"
-      # truncate_tables, not just check_table: TRUNCATE ... CASCADE only
-      # cascades to tables that reference the truncated one, not the other
-      # way round. job_offer is a fine table to COUNT (it's the thing we
-      # actually care whether is bulk-loaded), but TRUNCATEing only
-      # job_offer CASCADE leaves company/skill (its parents, not children)
-      # untouched - the next import then hits duplicate key errors on
-      # company.name/skill.name. Truncating every root table explicitly
-      # (with CASCADE) clears the whole graph regardless of direction.
-      for t in $truncate_tables; do
-        docker exec "$container" psql -U postgres -d "$db" -c "TRUNCATE TABLE $t CASCADE"
-      done
-      # TRUNCATE wipes Flyway's own demo-data seed too, but Flyway itself
-      # won't re-run that migration (already marked applied in
-      # flyway_schema_history) - restore it by re-executing the actual
-      # migration file directly, not a copy-pasted duplicate of its SQL.
-      echo "==> Restoring Flyway demo-data seed ($demo_data_file)"
-      import_file "$container" "$db" "$demo_data_file"
-    else
-      echo "==> $db already has $row_count rows in $check_table — skipping (use --force to reload)"
-      return 1
-    fi
-  fi
+  echo "==> Restoring Flyway demo-data seed ($demo_data_file)"
+  psql_in "$container" "$db" <"$demo_data_file"
 
-  echo "==> Importing into $db"
+  echo "==> Importing generated data into $db"
   for file in "${files[@]}"; do
     echo "    $file"
-    import_file "$container" "$db" "$file"
+    psql_in "$container" "$db" <"$file"
   done
 }
 
@@ -76,26 +55,20 @@ echo "==> Generating fresh SQL files (make generate-data)"
 
 OUT="$ROOT_DIR/data-generator/output"
 
-if load_database app-candidates-db app-candidates-db candidate candidate \
+reload_database app-candidates-db app-candidates-db "candidate" \
   "$ROOT_DIR/app-candidates/src/main/resources/db/migration/postgres/V1_1__demo-data.sql" \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
-  "$OUT/candidates/03-candidate-skills.sql"; then
-  # Only restart when candidates was actually (re)imported - restarting on
-  # a skip would just re-read the same file load-background already has
-  # loaded, for no benefit and a few seconds of dropped ambient traffic.
-  echo "==> Restarting load-background so it re-reads the fresh candidates file"
-  (cd "$ROOT_DIR" && docker compose restart load-background)
-fi
+  "$OUT/candidates/03-candidate-skills.sql"
+echo "==> Restarting load-background so it re-reads the fresh candidates file"
+(cd "$ROOT_DIR" && docker compose restart load-background)
 
-# truncate_tables is "company skill", not "job_offer" - both are roots
-# job_offer/job_offer_skill hang off of, see the comment in load_database.
-load_database app-job-offers-db app-job-offers-db job_offer "company skill" \
+reload_database app-job-offers-db app-job-offers-db "company, skill" \
   "$ROOT_DIR/app-job-offers/src/main/resources/db/migration/postgres/V1_1__demo-data.sql" \
   "$OUT/job-offers/01-companies.sql" \
   "$OUT/job-offers/02-skills.sql" \
   "$OUT/job-offers/03-job-offers.sql" \
   "$OUT/job-offers/04-job-offer-employment-types.sql" \
-  "$OUT/job-offers/05-job-offer-skills.sql" || true
+  "$OUT/job-offers/05-job-offer-skills.sql"
 
-echo "==> Load complete"
+echo "==> Load complete. Load test: candidatesDataFile=$OUT/candidates/01-candidates.sql"
