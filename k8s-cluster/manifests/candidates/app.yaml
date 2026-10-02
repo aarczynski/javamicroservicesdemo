@@ -78,8 +78,7 @@ spec:
       # the same node (reducing generic workers from 4 to 3 for
       # observability-3) caused a measured ~10x CPU-throttling gap between
       # the shared-node pod and a dedicated one, plus a self-reinforcing
-      # Gateway connection-imbalance under load — see
-      # k8s-cluster/RPS-SCALING.md. With exactly one generic worker per app
+      # Gateway connection-imbalance under load. With exactly one generic worker per app
       # replica again, this hard-requires that spread instead of hoping for
       # it after every restart/redeploy.
       affinity:
@@ -116,7 +115,7 @@ spec:
           # up to the default 384 MB (25% of the 1536Mi limit), so young-gen size - and
           # with it GC frequency and CPU per request - depended on how long a pod had
           # been running, making before/after comparisons across pods of different age
-          # meaningless (k8s-cluster/RPS-SCALING.md #15). Same 384 MB ceiling as before.
+          # meaningless (k8s-cluster/RPS-SCALING.md). Same 384 MB ceiling as before.
           command: ["java", "-Xms384m", "-Xmx384m", "-Djava.net.preferIPv4Stack=true", "-Dsun.net.inetaddr.negative.ttl=1", "-javaagent:./opentelemetry-javaagent.jar", "-jar", "./app-candidates.jar"]
           ports:
             - containerPort: 8080

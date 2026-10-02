@@ -61,7 +61,7 @@ patches:
       - op: remove
         path: /spec/template/spec/tolerations
   # app-candidates/app-job-offers carry a hard podAntiAffinity (added
-  # 2026-09-20 for the RPi cluster - see CLAUDE.md/RPS-SCALING.md) requiring
+  # 2026-09-20 for the RPi cluster - see CLAUDE.md) requiring
   # exactly one app replica per physical node. minikube's single node can
   # never satisfy that for more than one replica total, so every replica past
   # the first sits Pending forever ("didn't match pod anti-affinity rules")

@@ -11,7 +11,7 @@ local_registry_host: "192.168.10.190:5000"
 # internet. Measured live 2026-09-20: 13-48ms jitter per poll over WAN vs.
 # sub-ms on LAN - matters for distributed tracing, where spans recorded on
 # different nodes need clocks that agree closely with EACH OTHER, not just
-# with UTC. See node_prep's NTP tasks and RPS-SCALING.md / the handoff doc
+# with UTC. See node_prep's NTP tasks and the handoff doc
 # for the investigation that found this (broken trace waterfalls once
 # app-candidates/app-job-offers were forced onto separate nodes by the
 # podAntiAffinity fix).

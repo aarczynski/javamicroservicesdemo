@@ -10,7 +10,7 @@ frrk8s:
 
 # Pinned 2026-09-28: with no nodeSelector/toleration the controller drifted
 # onto worker-4, sharing it with an app replica — every worker is reserved
-# for exactly one app JVM (see RPS-SCALING.md #9).
+# for exactly one app JVM.
 controller:
   nodeSelector:
     kubernetes.io/hostname: k8s-rpi-platform-1

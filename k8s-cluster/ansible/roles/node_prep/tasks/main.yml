@@ -241,7 +241,7 @@
 # (PollIntervalUSec=34min 8s). Between polls each RPi5's onboard oscillator
 # free-runs and drifts independently, and different nodes hit that ceiling at
 # different times - part of the "clock skew breaks the trace waterfall"
-# symptom this fixes alongside the local server above (see RPS-SCALING.md /
+# symptom this fixes alongside the local server above (see the
 # handoff for the distributed tracing investigation that found this).
 - name: Point systemd-timesyncd at the local NTP server and tighten its poll interval
   when:

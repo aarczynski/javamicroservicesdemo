@@ -38,7 +38,7 @@ spec:
       # One pod per node, guaranteed — see k8s-cluster/manifests/candidates/app.yaml
       # for the full rationale (measured ~10x CPU-throttling gap + a
       # self-reinforcing Gateway connection-imbalance from two app replicas
-      # sharing a node, see k8s-cluster/RPS-SCALING.md).
+      # sharing a node).
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

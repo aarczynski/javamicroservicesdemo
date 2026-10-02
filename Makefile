@@ -22,7 +22,11 @@ load-data:
 clean_build:
 	./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 
+# Against the home cluster's Gateway, every run first forces a full GC in all app
+# replicas (k8s-gc) and lets them settle for 10 s, so an old-generation collection
+# doesn't land mid-test. Compose / minikube targets are left alone.
 candidateSimulation:
+	$(if $(findstring $(K8S_GATEWAY_HOST),$(targetHost)),$(MAKE) k8s-gc && sleep 10)
 	-./gradlew :load-test:gatlingRun --simulation pl.lunasoftware.demo.microservices.loadtest.CandidateSimulation $(if $(targetHost),-DtargetHost=$(targetHost)) -DcandidatesDataFile=$(candidatesDataFile) $(if $(maxRps),-DmaxRps=$(maxRps)) $(if $(stepDuration),-DstepDuration=$(stepDuration)) $(if $(ramps),-Dramps=$(ramps))
 
 # --- Home k8s cluster (Raspberry Pi 5) ---
@@ -32,6 +36,7 @@ candidateSimulation:
 # separately so a failed step can be resumed without redoing everything.
 
 ANSIBLE_INVENTORY = k8s-cluster/ansible/inventory.ini
+K8S_GATEWAY_HOST = 192.168.10.100
 
 k8s-prep:
 	ansible-playbook -i $(ANSIBLE_INVENTORY) k8s-cluster/ansible/playbook.yml
@@ -49,6 +54,9 @@ k8s-rebuild-all: k8s-prep k8s-init k8s-bootstrap k8s-load-data
 
 k8s-deploy: ensure-insecure-registry
 	./k8s-cluster/scripts/deploy.sh
+
+k8s-gc:
+	./k8s-cluster/scripts/gc-apps.sh
 
 # Rare: only needed when load-background's own source (src/candidate-search.js,
 # entrypoint.sh, Dockerfile.k8s) changes, not on every app deploy.

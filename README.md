@@ -299,6 +299,10 @@ minikube is `kubectl port-forward` locked onto a single pod and would never spre
 make candidateSimulation targetHost=http://localhost:30080 candidatesDataFile=/path/to/01-candidates.sql
 ```
 
+Against the home cluster's Gateway (`targetHost` containing `192.168.10.100`), `make candidateSimulation` first runs
+`make k8s-gc` — a forced full GC in every `app-candidates`/`app-job-offers` replica — and waits 10 s, so the Serial
+GC's old-generation collection (a ~0.3 s stop-the-world pause on long-running pods) doesn't land mid-test.
+
 Quick smoke test (peak 20 RPS, 1.5 min total, `stepDuration=30s` is below the 1-minute
 cap so it's a continuous ramp with no held peak):
 
@@ -442,9 +446,9 @@ Current state:
 |---|---|---|
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
-| `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md) |
+| `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest |
 | `platform-1` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, local NTP server (see below). Down to a single platform node since 2026-09-20 — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; repurposed to `worker-5` instead of keeping a dedicated (and mostly idle) failover node (see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
-| `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20 — see [RPS scaling journey](k8s-cluster/RPS-SCALING.md)). `worker-5` added 2026-09-20 (repurposed from `platform-2`); with `app-candidates` pinned to 3 replicas (see the HPA below) plus 2 `app-job-offers`, all 5 workers are permanently occupied |
+| `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20). `worker-5` added 2026-09-20 (repurposed from `platform-2`); with `app-candidates` pinned to 3 replicas (see the HPA below) plus 2 `app-job-offers`, all 5 workers are permanently occupied |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
@@ -483,6 +487,7 @@ targets.
 | `make k8s-rebuild-all` | Bare metal → running cluster |
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
 | `make k8s-load-data` | Replace all data with a freshly generated dataset (same steps as `make load-data`, plus syncing `load-background`). It regenerates the data with `make generate-data`, so pass the cluster's dataset size explicitly or it falls back to the generator defaults — currently `make k8s-load-data candidates=100000 jobOffers=150000 companies=10000` |
+| `make k8s-gc` | Force a full GC in every app replica — `make candidateSimulation` runs it automatically before a test against the cluster |
 | `make k8s-deploy-load-background` | Rare: rebuild+redeploy `load-background` after changing its own source (JS script, entrypoint, Dockerfile) |
 
 ![Physical cluster](readme-assets/img/k8s-cluster.gif)
@@ -493,23 +498,14 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current state (2026-09-28): 2000 RPS, 0% KO, p99=211ms on 150k job offers / 10k companies** (3x the previous
-50k-offer dataset, see [Row counts](#row-counts-on-the-home-k8s-cluster)). **`postgres-job-offers` CPU is now the
-ceiling** (2.45 of its 3 cores at 2000rps): the search's geographic bounding box examines more offers per request as
-offer density grows, so 175k offers still passes with 0% KO but p99 jumps to ~0.5-1s, and 200k no longer holds
-2000rps. Two changes made the bigger dataset fit: `app-candidates` loads the candidate with a single `JOIN FETCH`
-instead of an entity graph (-22% CPU per request), and `postgres-job-offers` runs with `shared_buffers=1GB` instead
-of the 128MB default (most page reads had been syscall copies from the OS page cache).
+**Current ceiling: 2100 RPS, 0% KO held for 10 minutes** on 100k candidates / 150k job offers / 10k companies
+(see [Row counts](#row-counts-on-the-home-k8s-cluster)), limited by `postgres-job-offers` CPU (~2.6 of its 3 cores):
+the search's geographic bounding box examines more offers per request as offer density grows, so Postgres, not the
+apps, sets the limit.
 
-Before that, on the 50k-offer dataset (2026-09-24): 2000 RPS held ~10 minutes, 0% KO (1,320,000 requests,
-p50=12ms/p95=47ms/p99=202ms/max=321ms), with nothing at its limit. What moved it from the previous 1900rps
-(2026-09-20, p99=556ms — a run right on the queueing knee, not a stable ceiling) was a single query fix in
-`app-job-offers`: the search query used JPQL with `IN :list` parameters, and Hibernate never caches the HQL→SQL
-translation of such a query, so it recompiled it on every request (~15% of the service's CPU); it's now native SQL.
-Full detail, including
-everything that got the cluster here (CPU limit `3` on both apps, `app-candidates` pinned to 3 replicas — see
-[Autoscaling](#autoscaling), one dedicated worker node per replica via hard `podAntiAffinity` — see
-[Node taints](#node-taints--what-runs-where)), is in [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).
+**How it got there: [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).** It starts from the untuned
+baseline (400 RPS) and adds one change at a time — Postgres `shared_buffers`, async logging, CPU limits, replicas,
+query fixes — with each step's result, bottleneck, key code changes (before/after) and Gatling/Grafana screenshots.
 
 ### Row counts on the home k8s cluster
 
@@ -696,6 +692,15 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 # Known issues
 
+* **Not all worker nodes are equally fast.** Raspberry Pi 5 boards come in two revisions: `worker-3`/`-4` are
+  Rev 1.0, `worker-1`/`-2`/`-5` Rev 1.1. On the Ubuntu 24.04 kernel (6.8) the Rev 1.1 boards are ~30-40% slower in
+  memory-heavy work (measured 2026-10-02 with the same pod on every worker: zeroing 48 GB took ~5.0-5.5 s on Rev 1.0,
+  ~6.6-7.0 s on `worker-1`/`-5`), while pure CPU work is identical on all of them. `worker-2` — also Rev 1.1, but on
+  Ubuntu 25.10 with kernel 6.17 — is as fast as the Rev 1.0 boards, which points at kernel support for the newer
+  board. The JVMs are memory-heavy, so an app replica on `worker-1`/`-5` costs ~10-15% more CPU per request than its
+  twin; when it's an `app-job-offers` replica near the ceiling, it saturates first. The scheduler places replicas
+  arbitrarily (hard anti-affinity only keeps one per node), so results near the ceiling can shift between rollouts.
+  Candidate fix: a newer kernel on the Rev 1.1 nodes (e.g. a newer Ubuntu LTS), verified with the same memory test.
 * **Spring percentile metrics do not work with OTEL Agent** — Grafana's p99 is a `histogram_quantile()` estimate
   over the OTel histogram's fixed bucket boundaries (750ms → 1s → 2.5s at the tail), not an exact calculation, and
   interpolation error grows when the tail is sparse. Measured live 2026-09-20: a 1900rps test's Grafana-estimated

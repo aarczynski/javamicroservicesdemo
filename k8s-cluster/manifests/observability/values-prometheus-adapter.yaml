@@ -3,7 +3,7 @@
 #
 # Bridges PromQL -> the external.metrics.k8s.io API, so HPA can scale
 # app-candidates on real RPS instead of CPU (2026-09-20: CPU utilization was
-# too close to its own target under real load — see RPS-SCALING.md/handoff —
+# too close to its own target under real load — see the handoff —
 # and RPS turned out to be the far more evenly-balanced signal across pods
 # anyway, measured ~750rps/pod vs a visibly uneven CPU split at the same
 # load).

@@ -1,6 +1,6 @@
 # Handoff: klaster k8s na RPi5
 
-Skondensowany handoff — stan na 2026-09-28. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
+Skondensowany handoff — stan na 2026-10-02. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
 żyje w historii gita tego pliku (`git log -p -- .claude/handoff-k8s-rpi-cluster.md`) — zakończone punkty są
 stąd usuwane, nie archiwizowane w treści.
 
@@ -13,12 +13,16 @@ ich Postgresy wdrożone, dane załadowane (100k candidates / **150k job offers /
 Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+MinIO). Ambient load
 (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj).
 
-**Zmierzony sufit (2026-09-28): 2000rps czyste na 150k ofert / 10k firm** (p99 211 ms, 0 KO). Wolumen ofert
-dobrany właśnie pod 2000rps: **sufitem jest teraz CPU `postgres-job-offers`** (2,45/3 rdzenia; 175k ofert przechodzi,
-ale p99 ~0,5-1 s, 200k już nie). Po drodze: `join fetch` zamiast entity graphu w `app-candidates` (-22% CPU/request,
--42% CPU Postgresa candidates) i `shared_buffers=1GB` na `postgres-job-offers` (domyślne 128 MB → odczyty jako
-syscalle z page cache). Pełna historia i tabele: `k8s-cluster/RPS-SCALING.md` ("Current state", #17, #18) — czytać
-przed każdą pracą nad skalowaniem, nie duplikować tutaj.
+**Zmierzony sufit (2026-10-02): 2100rps czyste na 150k ofert / 10k firm** (10 min, 0% KO), ogranicza CPU
+`postgres-job-offers` (~2,6/3 rdzenia); 2200 nie trzyma się powtarzalnie. Cała historia zmian odtworzona krok po kroku
+od stanu bazowego (400rps) na dzisiejszym klastrze i danych: `k8s-cluster/RPS-SCALING.md` — czytać przed każdą pracą
+nad skalowaniem, nie duplikować tutaj.
+
+**Klaster stoi na ostatnim stanie odtwarzania** (lokalny branch `replay/candidates-x3`, obrazy `38b73f9`), nie na
+`main`. Różnica: brak `max_parallel_workers_per_gather=0` na `postgres-job-offers` (na tych danych bez znaczenia —
+Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.md` ma swój lokalny branch `replay/*`
+(manifesty z gałkami + przypięte obrazy w rejestrze) — odtworzenie stanu to `kubectl apply` manifestów z brancha.
+`make candidateSimulation` przeciw klastrowi sam robi wymuszony pełny GC w appkach przed testem (`make k8s-gc`).
 
 ## TODO / Next steps (w kolejności priorytetu)
 
@@ -40,23 +44,27 @@ przed każdą pracą nad skalowaniem, nie duplikować tutaj.
    - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać, że pierwsze kilkanaście minut to
      rozgrzewka (JIT, Cilium) — nie mierzyć wtedy capacity.
 
-2. **`k8s-rpi-worker-2` padł sieciowo w trakcie load testu (2026-09-23 18:13:50 UTC), przyczyna niezbadana.**
-   Kubelet przestał raportować, node nieosiągalny (100% packet loss), wrócił dopiero po ręcznym power cyclu. To
-   **znany outlier**: Ubuntu 25.10 / kernel 6.17.0-1021-raspi, reszta floty Ubuntu 24.04.4 / 6.8.0-1064-raspi —
-   kandydat na przyczynę, niepotwierdzony. Do zrobienia: `journalctl -b -1` z tego node'a (SSH
-   `aarczynski@192.168.10.11`), rozważyć reinstalację na 24.04.
+2. **Workery nie są równie szybkie (2026-10-02).** `worker-3`/`-4` to płytki RPi5 Rev 1.0, `worker-1`/`-2`/`-5`
+   Rev 1.1 (`/proc/cpuinfo` Revision `d04170` vs `d04171`). Na kernelu 6.8 (Ubuntu 24.04) Rev 1.1 ma ~30-40% wolniejsze
+   operacje na pamięci (test: `dd if=/dev/zero of=/dev/null bs=32M count=1500` w podzie na każdym workerze — Rev 1.0
+   ~5,0-5,5 s, `worker-1`/`-5` ~6,6-7,0 s), czyste CPU identyczne; replika appki na `worker-1`/`-5` kosztuje ~10-15%
+   więcej CPU/request. `worker-2` (Rev 1.1, Ubuntu 25.10, kernel 6.17) jest szybki jak Rev 1.0 — trop: nowszy kernel.
+   Bootloader nie jest przyczyną (wolne node'y mają nowszy, 2025-06-13), `get_throttled=0x0` wszędzie. Decyzja
+   odłożona: **nie** reinstalować `worker-2` na 24.04 (spowolni go); kandydat — nowszy LTS na całej flocie, najpierw
+   test na `worker-1` tym samym `dd`. Osobno nadal niezbadany pad sieciowy `worker-2` z 2026-09-23 (`journalctl -b -1`);
+   w odtwarzaniu chodził pod obciążeniem bez problemu. SSH kluczem: `aarczynski@192.168.10.<10..14>`.
 
 3. **`app-candidates` HPA przypięty na sztywno 3 repliki — blokowane na Cilium.** Świeży pod po scale-upie dostaje
    pełny udział ruchu od razu (brak LB slow-startu w Gateway API Cilium) i zimny JVM zapycha pulę Hikari / wybija
    circuit breaker Envoya. `prometheus-adapter` + metryka RPS zostają żywe, odblokowanie to zmiana jednej linijki
    w `k8s-cluster/manifests/candidates/hpa.yaml`, gdy Cilium dostanie `slow_start_config` (śledzić
    [cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532) lub odpowiednik). Ten sam mechanizm zimnego
-   startu dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem (`RPS-SCALING.md` #13).
+   startu dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem.
 
 4. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
    w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
    i nadrabia, cykl ~30 s z fazą zależną od startu Gatlinga) okazał się pracą generatora na baterii — po podłączeniu
-   zasilania zniknął (`RPS-SCALING.md` #14). Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
+   zasilania zniknął. Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
    w git history tego pliku (2026-09-24).
 
 4a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
@@ -67,7 +75,7 @@ przed każdą pracą nad skalowaniem, nie duplikować tutaj.
 5. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
    wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
    (listy `IN` o zmiennej długości → różny tekst SQL) faktycznie omijają planowanie. `pg_stat_statements` da realny
-   koszt i liczbę wywołań każdego zapytania zamiast próbkowania `pg_stat_activity` (RPS-SCALING #18). Kandydaci do
+   koszt i liczbę wywołań każdego zapytania zamiast próbkowania `pg_stat_activity`. Kandydaci do
    odciążenia: `findByIdIn` (entity graph + `IN`, ~26% próbek aktywnych), doładowania employment types (~6%).
    Niedokładne p99 w Grafanie (`README.md` Known issues) nadal otwarte; Keycloak/SSO świadomie za nimi, bez node'a.
 
@@ -290,8 +298,7 @@ przed każdą pracą nad skalowaniem, nie duplikować tutaj.
 
 ### Load-testing / metodologia wydajności
 - **Testować jedną zmienną na raz pod realnym współbieżnym obciążeniem** — bundlowana zmiana dwóch rzeczy naraz
-  potrafi zamaskować, że jedna z nich jest katastrofalna a druga to czysty zysk (patrz historia w
-  `RPS-SCALING.md`). Pojedynczy `EXPLAIN ANALYZE` czy request nie przewiduje zachowania pod współbieżnością.
+  potrafi zamaskować, że jedna z nich jest katastrofalna a druga to czysty zysk. Pojedynczy `EXPLAIN ANALYZE` czy request nie przewiduje zachowania pod współbieżnością.
   Więcej równoległości (większy connection pool, więcej parallel workerów Postgresa, więcej replik) nie zawsze
   pomaga, jeśli prawdziwy limit jest gdzie indziej — tylko przesuwa kolejkowanie w gorsze miejsce.
 - **Jeden JVM/Postgres na fizyczny node RPi5 to wymóg poprawności, nie optymalizacja** — współdzielenie node'a
