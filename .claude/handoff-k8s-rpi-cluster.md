@@ -26,7 +26,29 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
+1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
+   większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
+   (patrz pkt 8 — `pg_stat_statements` jako pierwszy pomiar). Kierunek (replikacja odczytów, partycjonowanie,
+   indeksy, większy node) — do ustalenia.
+
+2. **Chaos monkey (dodane 2026-10-02).** Celowe zabijanie podów/node'ów pod obciążeniem, żeby sprawdzić odporność
+   klastra i appek. Narzędzie do wyboru. Pamiętać o znanych ograniczeniach: twardy `podAntiAffinity` bez wolnego
+   node'a (zastępczy pod zostaje `Pending`), Gatling po awarii node'a potrafi wisieć bez wysyłania ruchu.
+
+3. **Autoscaling rozwala klaster — duży ruch od razu idzie na nierozgrzany JVM.** `app-candidates` HPA jest dlatego
+   przypięty na sztywno 3 repliki. Świeży pod po scale-upie dostaje pełny udział ruchu od razu (brak LB slow-startu
+   w Gateway API Cilium) i zimny JVM zapycha pulę Hikari / wybija circuit breaker Envoya. `prometheus-adapter` +
+   metryka RPS zostają żywe, odblokowanie to zmiana jednej linijki w `k8s-cluster/manifests/candidates/hpa.yaml`.
+   Do rozwiązania: albo Cilium dostanie `slow_start_config` (śledzić
+   [cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532) lub odpowiednik), albo rozgrzewka JVM
+   przed przyjęciem ruchu (np. warmup w `startupProbe`/readiness, CDS/AOT cache). Ten sam mechanizm zimnego startu
+   dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem.
+
+4. **Flamegraph `app-candidates` — co zjada tyle CPU (dodane 2026-10-02).** Appka tylko pobiera kandydata z bazy,
+   woła `app-job-offers` przez Feign i zwraca wynik, a mimo to zużywa dużo CPU na request. Zdjąć flamegraph pod
+   obciążeniem (np. async-profiler / JFR) i znaleźć gorące miejsca.
+
+5. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`
      (`60cdd0b`) działa, wszystkie 5 instancji raportuje poprawnie po restarcie; CoreDNS obie repliki na jednym
      node'zie (`257dbc8`, twardy anti-affinity).
@@ -44,7 +66,7 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać, że pierwsze kilkanaście minut to
      rozgrzewka (JIT, Cilium) — nie mierzyć wtedy capacity.
 
-2. **Workery nie są równie szybkie (2026-10-02).** `worker-3`/`-4` to płytki RPi5 Rev 1.0, `worker-1`/`-2`/`-5`
+6. **Workery nie są równie szybkie (2026-10-02).** `worker-3`/`-4` to płytki RPi5 Rev 1.0, `worker-1`/`-2`/`-5`
    Rev 1.1 (`/proc/cpuinfo` Revision `d04170` vs `d04171`). Na kernelu 6.8 (Ubuntu 24.04) Rev 1.1 ma ~30-40% wolniejsze
    operacje na pamięci (test: `dd if=/dev/zero of=/dev/null bs=32M count=1500` w podzie na każdym workerze — Rev 1.0
    ~5,0-5,5 s, `worker-1`/`-5` ~6,6-7,0 s), czyste CPU identyczne; replika appki na `worker-1`/`-5` kosztuje ~10-15%
@@ -54,45 +76,38 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    test na `worker-1` tym samym `dd`. Osobno nadal niezbadany pad sieciowy `worker-2` z 2026-09-23 (`journalctl -b -1`);
    w odtwarzaniu chodził pod obciążeniem bez problemu. SSH kluczem: `aarczynski@192.168.10.<10..14>`.
 
-3. **`app-candidates` HPA przypięty na sztywno 3 repliki — blokowane na Cilium.** Świeży pod po scale-upie dostaje
-   pełny udział ruchu od razu (brak LB slow-startu w Gateway API Cilium) i zimny JVM zapycha pulę Hikari / wybija
-   circuit breaker Envoya. `prometheus-adapter` + metryka RPS zostają żywe, odblokowanie to zmiana jednej linijki
-   w `k8s-cluster/manifests/candidates/hpa.yaml`, gdy Cilium dostanie `slow_start_config` (śledzić
-   [cilium/cilium#43532](https://github.com/cilium/cilium/issues/43532) lub odpowiednik). Ten sam mechanizm zimnego
-   startu dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem.
-
-4. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
+7. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
    w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
    i nadrabia, cykl ~30 s z fazą zależną od startu Gatlinga) okazał się pracą generatora na baterii — po podłączeniu
    zasilania zniknął. Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
    w git history tego pliku (2026-09-24).
 
-4a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
+7a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
    `@Transactional(readOnly = true)` na całej metodzie. Krótka paczka ruchu nakręca kilkusekundową kolejkę do puli
    (do 190 oczekujących, 2026-09-27). Na równym ruchu z Gatlinga nie przeszkadza; poprawka strukturalna (zawężenie
    transakcji do dwóch zapytań, scoring poza nią) — do zrobienia, gdy ruch ma być realistycznie nierówny.
 
-5. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
+8. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
    wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
    (listy `IN` o zmiennej długości → różny tekst SQL) faktycznie omijają planowanie. `pg_stat_statements` da realny
    koszt i liczbę wywołań każdego zapytania zamiast próbkowania `pg_stat_activity`. Kandydaci do
    odciążenia: `findByIdIn` (entity graph + `IN`, ~26% próbek aktywnych), doładowania employment types (~6%).
    Niedokładne p99 w Grafanie (`README.md` Known issues) nadal otwarte; Keycloak/SSO świadomie za nimi, bez node'a.
 
-6. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — od 2026-09-30 każdy
+9. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — od 2026-09-30 każdy
    `*load-data` (Compose/k8s/minikube) zawsze przeładowuje bazę, więc `data-generator/output/candidates/01-candidates.sql`
    po ostatnim uruchomieniu zawsze pasuje do bazy, na którą je załadowano. Ryzyko zostaje przy przełączaniu między
    środowiskami (plik z minikube vs. baza na RPi). Do rozważenia: krok w symulacji weryfikujący próbkę ID przed testem.
 
-6a. **`CandidateGeneratorSpec` jest niestabilny** — nazwisko z apostrofem (np. `O'Hara`) generator zapisuje w mailu
+9a. **`CandidateGeneratorSpec` jest niestabilny** — nazwisko z apostrofem (np. `O'Hara`) generator zapisuje w mailu
    bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-load-data`
    (2026-09-28, jedno z pięciu przeładowań). Ponowne uruchomienie przechodzi.
 
-7. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
+10. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
    i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
    albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
 
-8. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
+11. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
    (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
 
