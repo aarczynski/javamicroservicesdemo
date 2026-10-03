@@ -891,9 +891,8 @@ data:
               "color": {
                 "mode": "palette-classic"
               },
-              "unit": "percentunit",
+              "unit": "short",
               "min": 0,
-              "max": 1,
               "custom": {
                 "axisBorderShow": false,
                 "axisCenteredZero": false,
@@ -939,7 +938,30 @@ data:
                 ]
               }
             },
-            "overrides": []
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "/limit/"
+                },
+                "properties": [
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "dash": [
+                        10,
+                        10
+                      ],
+                      "fill": "dash"
+                    }
+                  },
+                  {
+                    "id": "custom.fillOpacity",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
           },
           "gridPos": {
             "h": 8,
@@ -973,14 +995,26 @@ data:
                 "uid": "prometheus"
               },
               "editorMode": "code",
-              "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\", instance=~\"$instance\"} * on (instance) group_left (host_name) target_info{job=\"$service\"}",
+              "expr": "jvm_cpu_recent_utilization_ratio{job=\"$service\", instance=~\"$instance\"} * on (instance) jvm_cpu_count{job=\"$service\"} * on (instance) group_left (host_name) target_info{job=\"$service\"}",
               "instant": false,
               "legendFormat": "{{host_name}}",
               "range": true,
               "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "max(jvm_cpu_count{job=\"$service\", instance=~\"$instance\"})",
+              "instant": false,
+              "legendFormat": "limit per instance",
+              "range": true,
+              "refId": "B"
             }
           ],
-          "title": "JVM CPU Utilization",
+          "title": "JVM CPU Usage (cores)",
           "type": "timeseries"
         },
         {
