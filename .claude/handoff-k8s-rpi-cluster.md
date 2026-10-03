@@ -26,6 +26,20 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
+0. **Przetasowanie płytek D0/C1 + przebudowa klastra — zrobione 2026-10-03.** Wszystkie 4 D0 → `master` +
+   `observability-1/2/3`, 8× C1 → `platform-1`, `db-1/2`, `worker-1..5` (mapowanie MAC → rola w `inventory.ini`).
+   Pełna przebudowa: `kubeadm reset` 12/12 → `k8s-prep` → `k8s-init` → `k8s-bootstrap` → `k8s-deploy` (+
+   `k8s-deploy-load-background`) → `k8s-load-data candidates=100000 jobOffers=150000 companies=10000` → `VACUUM
+   ANALYZE`. Klaster stoi na `main` (`650912d`), nie na `replay/*`. Wyniki (10 min stałego ruchu, Mac na AC):
+   - 2100 rps, 20 min po starcie klastra: 0,01% KO, p50/p95/p99 243/884/1303 ms — zaburzony świeżym startem.
+   - **2100 rps, rozgrzany: 0% KO**, p50/p95/p99(OK) 42/~450/583 ms. Trzyma się, ale opóźnienia gorsze niż w
+     odtworzeniu z 2026-09-28 (20/145/602) — nie lepiej, jak oczekiwano.
+   - 2200 rps: 0,27% KO (503 z Gateway), p50 351 ms — nie trzyma się. Sufit nadal `postgres-job-offers` (3/3,
+     throttling 28-55%).
+   Niewyjaśnione: skąd gorsze opóźnienia przy 2100. Różnice względem 2026-09-28: `max_parallel_workers_per_gather=0`
+   (jest na `main`, nie było na `replay/candidates-x3`), nowy losowy zbiór danych tej samej wielkości, inne płytki
+   pod appkami. Do zbadania pojedynczo. Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
+
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
    (patrz pkt 8 — `pg_stat_statements` jako pierwszy pomiar). Kierunek (replikacja odczytów, partycjonowanie,
@@ -127,6 +141,22 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
 ### Automatyzacja / bootstrap
+- **Obrazy MinIO zniknęły też z quay.io (2026-10-03)** — `quay.io/minio/minio` i `minio/mc` zwracają 401 (repo
+  wymaga logowania), po Docker Hubie we wrześniu. Działa tylko dzięki obrazom w cache containerd: przy przebudowie
+  skopiowane z dawnego `observability-2` (dziś `worker-5`, `kubeadm reset` nie kasuje obrazów) na nowy
+  `observability-2` przez `ctr -n k8s.io images export --platform linux/arm64` | `ctr ... images import`. Kopia
+  (`minio-images.tar`, 78 MB) leżała w scratchpadzie sesji — **do zrobienia: trwałe źródło** (własna kopia poza
+  klastrem, przepięcie na inny obraz MinIO albo inny backend S3 dla Tempo); następny czysty dysk na `observability-2`
+  bez cache = Tempo nie wstanie.
+- **`bootstrap.sh` instalował CRD Gateway API po Cilium** — `cilium-operator` sprawdza je raz przy starcie, więc na
+  świeżym klastrze kontroler Gateway się nie włączał (`GatewayClass` `ACCEPTED=Unknown`, brak Service na `.100`).
+  Wcześniejsze przebudowy pewnie trafiały na restart operatora przypadkiem. Naprawione 2026-10-03: CRD przed Cilium.
+  Na żywym klastrze wystarcza `kubectl rollout restart deployment/cilium-operator -n kube-system`.
+- **`prometheus-adapter` nie był w `bootstrap.sh`** (instalowany kiedyś ręcznie) — dopisany 2026-10-03.
+- **Zmiana rezerwacji DHCP w Omadzie nie przestawia płytki, która już ma dzierżawę z puli dynamicznej** — po
+  przetasowaniu 2026-10-03 trzy płytki wstały na `.201`-`.203`, `networkctl renew` tylko przedłużało dzierżawę;
+  pomógł dopiero restart płytki. Weryfikacja: `arp -an` po pingu całej podsieci, porównanie MAC z `inventory.ini`.
+  Po zamianie IP między płytkami odświeżyć `~/.ssh/known_hosts` (`ssh-keygen -R` + `ssh-keyscan`).
 - **`GatewayClass "cilium"` nigdy nie był tworzony przez żaden skrypt** — istniał na klastrze tylko dzięki
   zapomnianemu ręcznemu krokowi sprzed pełnej automatyzacji. Ujawnione dopiero przy pełnym `kubeadm reset` +
   rebuild (2026-09-20): Gateway wisiał w `Pending`, MetalLB nie miał czego ogłaszać. **Fix na stałe**: nowy
