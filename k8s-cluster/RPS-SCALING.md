@@ -8,7 +8,7 @@ result is cumulative over everything above it.
 - **Dataset:** 100k candidates / 150k job offers / 10k companies.
   <sub>Join and collection tables: `candidate_skill` 300k, `candidate_preferred_employment_type` 200k,
   `job_offer_skill` 450k, `job_offer_employment_type` 300k; `skill` 58 rows.</sub>
-- **Trace sampling in the apps, 1%** (plus 4xx/5xx and local roots >= 500 ms) — `LocalTailSamplingSpanExporter` from
+- **Trace sampling in the apps, 1%** (plus every request that failed with 4xx/5xx or took >= 500 ms) — `LocalTailSamplingSpanExporter` from
   `otel-metrics-filter`, added to every state's image; app code otherwise untouched.
 - **Cluster topology:** 12 nodes, 3 observability nodes, local NTP. `worker-2` (the only node on Ubuntu 25.10 /
   kernel 6.17) is cordoned until the last step, the only one that needs all 5 workers.
@@ -27,6 +27,9 @@ memory 2-3× slower than **C1** on the Rev 1.0 boards as soon as the data no lon
 DRAM. Reads, L2 and pure CPU are the same. Neither the kernel (6.8 vs 6.17) nor the bootloader (`worker-1` flashed to
 2026-09-25, no change) makes a difference, and nothing is throttled — it's the silicon (measured 2026-10-03).
 
+Node names below are the roles **before the 2026-10-03 reshuffle**, when this was measured; the board → role mapping
+after it (by MAC) is in [`ansible/inventory.ini`](ansible/inventory.ini).
+
 | Node | Board | SoC | Bootloader | Kernel | L3 write (1.5 MB) GB/s | DRAM write GB/s | |
 |---|---|---|---|---|---|---|---|
 | `master` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 17.7 | 11.0 | fast |
@@ -43,17 +46,17 @@ DRAM. Reads, L2 and pure CPU are the same. Neither the kernel (6.8 vs 6.17) nor 
 | `observability-3` | **Rev 1.1** | **D0** | 2025-08-28 | 6.8 | 14.5 | 8.1 | **slow** |
 
 <sub>Measured on the live cluster (pods running, ambient load), one core pinned, glibc `memset` in a loop, best of 3 —
-the spread within each group is mostly load. Board: `Revision` in `/proc/cpuinfo` (`d04170` = Rev 1.0, `d04171` =
+the spread within each group is mostly load (`platform-1` re-measured on an idle moment: 11.5-13.4 GB/s DRAM write on
+every core, like the other C1 boards). Board: `Revision` in `/proc/cpuinfo` (`d04170` = Rev 1.0, `d04171` =
 Rev 1.1). Stepping: `sudo strings /sys/firmware/fdt | grep -o 'bcm2712[a-z0-9]*-pinctrl'` (`bcm2712d0-…` = D0).</sub>
 
 **Why it matters for RPS:** a JVM writes a lot of memory (zeroing new allocations, copying in GC), so an app replica on
 D0 burns ~10-23% more CPU per request — e.g. the two `app-job-offers` replicas in the
 [search split step](#2026-09-20--search-split-into-two-queries): 2.4 vs 2.95 ms, the slower one on `worker-1`. Traffic is split
-evenly, so the slowest replica caps the whole service. In the replayed states the bottleneck sits on C1 nodes
-(`postgres-job-offers` on `db-*`, `app-job-offers` on `worker-3`/`-4`), while all three `app-candidates` replicas run
-on D0 with headroom to spare. That placement is **not enforced** — a rollout or node failure that moves an
-`app-job-offers` replica onto D0 lowers the ceiling and makes runs inconsistent with no code change. Check where the
-pods landed (`kubectl get pods -A -o wide`) before comparing results.
+evenly, so the slowest replica caps the whole service. In the replayed states the bottleneck sat on C1 nodes
+(`postgres-job-offers` on `db-*`, `app-job-offers` on `worker-3`/`-4`), while all three `app-candidates` replicas ran
+on D0 with headroom to spare — but only by chance, nothing enforced it. Since 2026-10-03 all workers, both database
+nodes and `platform-1` are C1, and the D0 boards run only the master and observability (~8-15% CPU at ~2350 rps).
 
 ## How a state is built
 

@@ -400,7 +400,11 @@ Current state:
 * `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
   own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
 * Dedicated, tainted nodes for databases, observability, and platform/ingress services, plus generic worker nodes for
-  the Java apps.
+  the Java apps. Roles are matched to the hardware: 4 of the 12 boards (Rev 1.1, BCM2712 D0) write memory 2-3× slower,
+  so they run only the master and observability, which barely use CPU under load; the Gateway, Postgres and the apps
+  run on the 8 faster boards (Rev 1.0, C1) — see the note in
+  [`inventory.ini`](k8s-cluster/ansible/inventory.ini#L5-L9) (each node is listed there with its board and MAC) and
+  [Known issues](#known-issues).
 
 ### Services running in the cluster
 
@@ -452,6 +456,12 @@ Current state:
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
+
+Which board carries which role is not arbitrary: the 4 Rev 1.1 boards (BCM2712 D0, slower memory writes — see
+[Known issues](#known-issues)) run `master` and `observability-1`/`-2`/`-3`, which use ~8-15% CPU even at ~2350 rps.
+The 8 Rev 1.0 boards (C1) run everything on the request path: `platform-1` (Gateway), `db-1`/`db-2` and
+`worker-1`–`worker-5`. The board → role mapping (by MAC, as reserved in Omada) is in
+[`k8s-cluster/ansible/inventory.ini`](k8s-cluster/ansible/inventory.ini).
 
 ### NTP / clock sync
 
@@ -692,15 +702,15 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 # Known issues
 
-* **Not all worker nodes are equally fast.** Raspberry Pi 5 boards come in two revisions: `worker-3`/`-4` are
-  Rev 1.0, `worker-1`/`-2`/`-5` Rev 1.1. On the Ubuntu 24.04 kernel (6.8) the Rev 1.1 boards are ~30-40% slower in
-  memory-heavy work (measured 2026-10-02 with the same pod on every worker: zeroing 48 GB took ~5.0-5.5 s on Rev 1.0,
-  ~6.6-7.0 s on `worker-1`/`-5`), while pure CPU work is identical on all of them. `worker-2` — also Rev 1.1, but on
-  Ubuntu 25.10 with kernel 6.17 — is as fast as the Rev 1.0 boards, which points at kernel support for the newer
-  board. The JVMs are memory-heavy, so an app replica on `worker-1`/`-5` costs ~10-15% more CPU per request than its
-  twin; when it's an `app-job-offers` replica near the ceiling, it saturates first. The scheduler places replicas
-  arbitrarily (hard anti-affinity only keeps one per node), so results near the ceiling can shift between rollouts.
-  Candidate fix: a newer kernel on the Rev 1.1 nodes (e.g. a newer Ubuntu LTS), verified with the same memory test.
+* **4 of the 12 boards write memory 2-3× slower.** Raspberry Pi 5 Rev 1.1 boards carry the cost-reduced BCM2712
+  **D0** SoC stepping, Rev 1.0 boards the original **C1**. On D0, memory writes beyond L2 (through L3 and into DRAM)
+  are 2-3× slower; reads, L2 and pure CPU are the same. Neither the kernel (6.8 vs 6.17) nor the bootloader (one board
+  flashed to 2026-09-25) changes it — it's the silicon. A JVM writes a lot of memory (zeroing allocations, copying in
+  GC): an `app-job-offers` replica on D0 burns 10-23% more CPU per request, and a staircase test with both its replicas
+  on D0 broke down ~2000 rps instead of ~2350 (p99 at 2000 rps 436 ms vs 74 ms). Postgres mostly reads and loses
+  only ~5-10%. Worked around by placement: since 2026-10-03 the D0 boards run only the master and the observability
+  nodes (see [Node taints](#node-taints--what-runs-where)). Per-node measurements:
+  [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md#known-issue-not-every-pi-5-is-equally-fast).
 * **Spring percentile metrics do not work with OTEL Agent** — Grafana's p99 is a `histogram_quantile()` estimate
   over the OTel histogram's fixed bucket boundaries (750ms → 1s → 2.5s at the tail), not an exact calculation, and
   interpolation error grows when the tail is sparse. Measured live 2026-09-20: a 1900rps test's Grafana-estimated
