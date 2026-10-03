@@ -25,14 +25,17 @@ helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/ >/dev/null
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null
 helm repo update >/dev/null
 
-echo "==> CNI: Cilium 1.19.5 (includes Hubble Relay/UI, Gateway API controller)"
-helm upgrade --install cilium cilium/cilium -n kube-system \
-  -f "$MANIFESTS/cilium/values-cilium.yaml" --version 1.19.5
-
+# Before Cilium: cilium-operator checks for these CRDs once at startup and
+# leaves its Gateway controller off if they're missing (GatewayClass stays
+# ACCEPTED=Unknown, no LoadBalancer for .100 — hit on the 2026-10-03 rebuild).
 echo "==> Gateway API CRDs (standard channel, v1.4.1)"
 for crd in gatewayclasses gateways httproutes referencegrants grpcroutes; do
   kubectl apply -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
 done
+
+echo "==> CNI: Cilium 1.19.5 (includes Hubble Relay/UI, Gateway API controller)"
+helm upgrade --install cilium cilium/cilium -n kube-system \
+  -f "$MANIFESTS/cilium/values-cilium.yaml" --version 1.19.5
 
 echo "==> Cilium GatewayClass (not auto-created by the Cilium chart, see gatewayclass.yaml)"
 kubectl apply -f "$MANIFESTS/cilium/gatewayclass.yaml"
@@ -97,6 +100,10 @@ helm upgrade --install headlamp headlamp/headlamp -n headlamp \
 echo "==> metrics-server"
 helm upgrade --install metrics-server metrics-server/metrics-server -n kube-system \
   -f "$MANIFESTS/metrics-server/values-metrics-server.yaml" --version 3.14.0
+
+echo "==> prometheus-adapter (RPS metric for the app-candidates HPA)"
+helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapter -n observability \
+  -f "$MANIFESTS/observability/values-prometheus-adapter.yaml" --version 5.3.0
 
 echo "==> Apps"
 # Explicit filenames, not `-f "$dir/"` — that directory-wide form tries to
