@@ -20,6 +20,41 @@ result is cumulative over everything above it.
   before each run (`make candidateSimulation` does it against the cluster), so an old-generation collection doesn't
   land mid-test.
 
+## Known issue: not every Pi 5 is equally fast
+
+The fleet mixes two BCM2712 steppings. The 4 Rev 1.1 boards carry the cost-reduced **D0** stepping, and it writes
+memory 2-3× slower than **C1** on the Rev 1.0 boards as soon as the data no longer fits in L2: through L3 and into
+DRAM. Reads, L2 and pure CPU are the same. Neither the kernel (6.8 vs 6.17) nor the bootloader (`worker-1` flashed to
+2026-09-25, no change) makes a difference, and nothing is throttled — it's the silicon (measured 2026-10-03).
+
+| Node | Board | SoC | Bootloader | Kernel | L3 write (1.5 MB) GB/s | DRAM write GB/s | |
+|---|---|---|---|---|---|---|---|
+| `master` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 17.7 | 11.0 | fast |
+| `platform-1` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 19.0 | 8.8 | fast |
+| `worker-1` | **Rev 1.1** | **D0** | 2026-09-25 | 6.8 | 7.8 | 6.6 | **slow** |
+| `worker-2` | **Rev 1.1** | **D0** | 2025-06-13 | 6.17 | 10.3 | 6.8 | **slow** |
+| `worker-3` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 22.8 | 11.4 | fast |
+| `worker-4` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 29.6 | 12.4 | fast |
+| `worker-5` | **Rev 1.1** | **D0** | 2025-06-13 | 6.8 | 8.1 | 6.8 | **slow** |
+| `db-1` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 31.0 | 12.2 | fast |
+| `db-2` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 28.2 | 13.1 | fast |
+| `observability-1` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 25.8 | 10.1 | fast |
+| `observability-2` | Rev 1.0 | C1 | 2024-09-23 | 6.8 | 21.0 | 11.2 | fast |
+| `observability-3` | **Rev 1.1** | **D0** | 2025-08-28 | 6.8 | 14.5 | 8.1 | **slow** |
+
+<sub>Measured on the live cluster (pods running, ambient load), one core pinned, glibc `memset` in a loop, best of 3 —
+the spread within each group is mostly load. Board: `Revision` in `/proc/cpuinfo` (`d04170` = Rev 1.0, `d04171` =
+Rev 1.1). Stepping: `sudo strings /sys/firmware/fdt | grep -o 'bcm2712[a-z0-9]*-pinctrl'` (`bcm2712d0-…` = D0).</sub>
+
+**Why it matters for RPS:** a JVM writes a lot of memory (zeroing new allocations, copying in GC), so an app replica on
+D0 burns ~10-23% more CPU per request — e.g. the two `app-job-offers` replicas in the
+[search split step](#2026-09-20--search-split-into-two-queries): 2.4 vs 2.95 ms, the slower one on `worker-1`. Traffic is split
+evenly, so the slowest replica caps the whole service. In the replayed states the bottleneck sits on C1 nodes
+(`postgres-job-offers` on `db-*`, `app-job-offers` on `worker-3`/`-4`), while all three `app-candidates` replicas run
+on D0 with headroom to spare. That placement is **not enforced** — a rollout or node failure that moves an
+`app-job-offers` replica onto D0 lowers the ceiling and makes runs inconsistent with no code change. Check where the
+pods landed (`kubectl get pods -A -o wide`) before comparing results.
+
 ## How a state is built
 
 A local `replay/…` branch off the baseline, own worktree under `.claude/worktrees/`: app code from the change's
