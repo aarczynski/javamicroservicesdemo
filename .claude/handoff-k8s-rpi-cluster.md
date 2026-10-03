@@ -31,14 +31,17 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    Pełna przebudowa: `kubeadm reset` 12/12 → `k8s-prep` → `k8s-init` → `k8s-bootstrap` → `k8s-deploy` (+
    `k8s-deploy-load-background`) → `k8s-load-data candidates=100000 jobOffers=150000 companies=10000` → `VACUUM
    ANALYZE`. Klaster stoi na `main` (`650912d`), nie na `replay/*`. Wyniki (10 min stałego ruchu, Mac na AC):
-   - 2100 rps, 20 min po starcie klastra: 0,01% KO, p50/p95/p99 243/884/1303 ms — zaburzony świeżym startem.
-   - **2100 rps, rozgrzany: 0% KO**, p50/p95/p99(OK) 42/~450/583 ms. Trzyma się, ale opóźnienia gorsze niż w
-     odtworzeniu z 2026-09-28 (20/145/602) — nie lepiej, jak oczekiwano.
-   - 2200 rps: 0,27% KO (503 z Gateway), p50 351 ms — nie trzyma się. Sufit nadal `postgres-job-offers` (3/3,
-     throttling 28-55%).
-   Niewyjaśnione: skąd gorsze opóźnienia przy 2100. Różnice względem 2026-09-28: `max_parallel_workers_per_gather=0`
-   (jest na `main`, nie było na `replay/candidates-x3`), nowy losowy zbiór danych tej samej wielkości, inne płytki
-   pod appkami. Do zbadania pojedynczo. Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
+   - 2100 rps, ~20 min po starcie klastra: 0,01% KO, p50/p95/p99 243/884/1303 ms.
+   - 2100 rps, ~45 min: 0% KO, 42/~450/583 ms.
+   - **2100 rps, ~2,5 h: 0% KO, 25/~210/471 ms** — p99 lepsze niż 2026-09-28 (20/145/602).
+   - 2200 rps, ~1 h: 0,27% KO, p50 351 ms. **2200 rps, ~3 h: 22 KO (0,0015%), 233/977/1859 ms** — prawie, ale
+     nie czysto; `postgres-job-offers` 2,88/3, throttling 55%. Sufit nadal ~2100 czysto.
+   **Rozgrzewka po przebudowie trwa dużo dłużej niż 15-20 min** — te same dane i kod, każdy kolejny przebieg
+   lepszy przez ~2,5 h (JIT, Cilium, nadrabianie Tempo/Kafki; dokładna przyczyna niezbadana). Mierzyć dopiero na
+   klastrze stojącym kilka godzin. `max_parallel_workers_per_gather` (0 na `main` vs domyślne 2 na
+   `replay/candidates-x3`) **nie ma wpływu**: przy 2 `pg_stat_database.parallel_workers_launched` = 0 po ~6 mln
+   transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
+   Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
