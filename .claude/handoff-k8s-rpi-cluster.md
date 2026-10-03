@@ -66,15 +66,28 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać, że pierwsze kilkanaście minut to
      rozgrzewka (JIT, Cilium) — nie mierzyć wtedy capacity.
 
-6. **Workery nie są równie szybkie (2026-10-02).** `worker-3`/`-4` to płytki RPi5 Rev 1.0, `worker-1`/`-2`/`-5`
-   Rev 1.1 (`/proc/cpuinfo` Revision `d04170` vs `d04171`). Na kernelu 6.8 (Ubuntu 24.04) Rev 1.1 ma ~30-40% wolniejsze
-   operacje na pamięci (test: `dd if=/dev/zero of=/dev/null bs=32M count=1500` w podzie na każdym workerze — Rev 1.0
-   ~5,0-5,5 s, `worker-1`/`-5` ~6,6-7,0 s), czyste CPU identyczne; replika appki na `worker-1`/`-5` kosztuje ~10-15%
-   więcej CPU/request. `worker-2` (Rev 1.1, Ubuntu 25.10, kernel 6.17) jest szybki jak Rev 1.0 — trop: nowszy kernel.
-   Bootloader nie jest przyczyną (wolne node'y mają nowszy, 2025-06-13), `get_throttled=0x0` wszędzie. Decyzja
-   odłożona: **nie** reinstalować `worker-2` na 24.04 (spowolni go); kandydat — nowszy LTS na całej flocie, najpierw
-   test na `worker-1` tym samym `dd`. Osobno nadal niezbadany pad sieciowy `worker-2` z 2026-09-23 (`journalctl -b -1`);
-   w odtwarzaniu chodził pod obciążeniem bez problemu. SSH kluczem: `aarczynski@192.168.10.<10..14>`.
+6. **Workery nie są równie szybkie — przyczyna: stepping SoC D0 (lub jego bootloader), nie kernel (2026-10-03).**
+   Rev 1.1 (`d04171`: `worker-1`/`-2`/`-5`, `observability-3`) to **BCM2712 D0**, Rev 1.0 (`d04170`, reszta floty) to
+   **C1** — rozpoznanie po `sudo strings /sys/firmware/fdt | grep -o 'bcm2712[a-z0-9]*-pinctrl'`. Mikrobenchmark na
+   hoście (`taskset -c 3`, `python3` + `ctypes.memset`/`memmove`/`memcmp` w pętli, bufory 256K-64M, best of 3): **zapis**
+   na D0 ~2× wolniejszy już od L2 (memset 0 przy 256K: 26 vs 57 GB/s; 1,5M: 10 vs 25-34; DRAM: 6,9 vs 13,3 GB/s),
+   **odczyt** prawie równy (DRAM 10,6 vs 12,3 GB/s). `worker-2` (kernel 6.17) jest **tak samo wolny** jak `-1`/`-5` na
+   6.8 — wcześniejszy wniosek "szybki dzięki nowszemu kernelowi" był błędny (`dd` z `/dev/zero` mierzy też ścieżkę
+   kernela, która się między wersjami zmienia). `numa=fake=8` w cmdline `worker-2` dokleja firmware, ale kernel Ubuntu
+   go odrzuca (brak `CONFIG_NUMA`) — nie gra roli. JVM (zerowanie TLAB, kopiowanie w GC) jest zapisochłonny, co pasuje
+   do ~10-15% więcej CPU/request na D0. **Rozstrzygnięte: krzem, nie firmware** — `worker-1` dostał bootloader
+   `2026-09-25` (zawiera 2025-10-17 "Enable background refresh on 2712d0"), zapis L3/DRAM bez zmian (1,5M ~10 GB/s,
+   DRAM 6,9 GB/s). Różnica w L2 z pierwszego pomiaru była szumem od działającej appki — na pustym node'zie D0 ma L2
+   jak C1 (memset 0 przy 256K: 53 GB/s); porównywać zawsze node'y w tym samym stanie (pusty vs. z podem).
+   Tabela wszystkich 12 node'ów (płytka/SoC/pomiar): `k8s-cluster/RPS-SCALING.md` → "Known issue: not every Pi 5 is
+   equally fast". Firmware tego nie naprawi, zostaje rozmieszczenie: obecnie wszystkie 3 repliki `app-candidates` siedzą na D0
+   (`worker-1`/`-2`/`-5`), oba `app-job-offers` na C1 (`worker-3`/`-4`), Postgresy na C1 (`db-1`/`-2`).
+   Flash bootloadera: repo `rpi-eeprom` (paczka Ubuntu kończy się na 2024-11) i
+   `sudo env PATH="$HOME/rpi-eeprom:$PATH" FIRMWARE_ROOT="$HOME/rpi-eeprom/firmware" ~/rpi-eeprom/rpi-eeprom-update -f <bin>`
+   — bez `PATH` skrypt woła stary systemowy `rpi-eeprom-digest` bez `-c` i cicho nic nie przygotowuje; nowy skrypt
+   flashuje od razu przez `flashrom`, restart tylko po to, żeby nowy bootloader zadziałał. Osobno nadal niezbadany pad
+   sieciowy `worker-2` z 2026-09-23 (`journalctl -b -1`).
+   SSH kluczem: `aarczynski@<IP z inventory.ini>`.
 
 7. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
    w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
