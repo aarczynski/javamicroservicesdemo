@@ -44,7 +44,8 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
 0a. **Podbicie zależności (2026-10-04) — w repo; na klastrze dotąd tylko RustFS + Tempo (chart 3.10.1 / Tempo
-   3.1.0, odczyt bloków z RustFS zweryfikowany) i Grafana (chart 13.2.7 / 13.2.3, z fixem trace → logi), obie
+   3.1.0, odczyt bloków z RustFS zweryfikowany) i Grafana (chart 13.2.7 / obraz 13.1.7 — 13.2 ma regres z toastem „Unauthorized” dla anonimów,
+   grafana/grafana#131876, poprawka dopiero w 13.3; z fixem trace → logi), obie
    wdrożone 2026-10-04. Reszta czeka.** Po tej zmianie
    **2100 rps × 10 min: 0% KO, p50/p95/p99 26/194/382 ms** (aplikacje bez restartu od 18 h, Tempo ~15 min po
    upgrade) — sufit trzyma, węzły observability 2–12% CPU, ślady z testu w RustFS (4 bloki), zero restartów Tempo. Spring Boot 4.1.1, OTel agent 2.32.0,
