@@ -44,7 +44,8 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
 0a. **Podbicie zależności (2026-10-04) — w repo; na klastrze dotąd tylko RustFS + Tempo (chart 3.10.1 / Tempo
-   3.1.0, wdrożone 2026-10-04, odczyt bloków z RustFS zweryfikowany). Reszta czeka.** Po tej zmianie
+   3.1.0, odczyt bloków z RustFS zweryfikowany) i Grafana (chart 13.2.7 / 13.2.3, z fixem trace → logi), obie
+   wdrożone 2026-10-04. Reszta czeka.** Po tej zmianie
    **2100 rps × 10 min: 0% KO, p50/p95/p99 26/194/382 ms** (aplikacje bez restartu od 18 h, Tempo ~15 min po
    upgrade) — sufit trzyma, węzły observability 2–12% CPU, ślady z testu w RustFS (4 bloki), zero restartów Tempo. Spring Boot 4.1.1, OTel agent 2.32.0,
    Postgres 18.6, Grafana 13.2.3 (chart 13.2.7), Prometheus chart 29.35.0, Loki chart 18.13.7, tempo-distributed
@@ -213,10 +214,10 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
   Docker Desktop — przy 99% Loki odrzucał wszystkie pushe z Alloy komunikatem „Ingester is shutting down”, a
   wyglądał na zdrowy. Puste panele „by Pod”/dyskowe na minikube to z kolei stałe ograniczenie cAdvisora/node-exportera
   w minikube, nie błąd dashboardów (na klastrze mają dane). Szczegóły: `overlays/minikube/README.md`, „Known gaps”.
-- **Trace → logi w Grafanie nie działały nigdzie (naprawione 2026-10-04 w repo, na klastrze jeszcze nie).**
+- **Trace → logi w Grafanie nie działały nigdzie (naprawione i wdrożone na klaster 2026-10-04).**
   `tracesToLogsV2` mapował `service.name` na nieistniejącą etykietę `job` i filtrował po treści linii, a `trace_id`
   jest w structured metadata. Teraz własne zapytanie `{service_name=…} | trace_id="…"` — zweryfikowane na compose i
-  minikube (logi dla 10/10 zachowanych trace'ów). Na klaster wchodzi z `helm upgrade grafana` (values-grafana.yaml).
+  minikube i klastrze (logi dla wszystkich zachowanych trace'ów z requestów; health checki logów nie mają).
 - **`make minikube-start` wznawia klaster na starych obrazach** — niczego nie przebudowuje. 2026-09-28 minikube
   chodził na obrazach z 2026-09-21 (sprzed fixu JVM CPU `60cdd0b`, natywnego SQL, samplingu trace'ów): dwie z pięciu
   instancji raportowały `jvm_cpu_recent_utilization_ratio` = 0, co na dashboardzie wyglądało jak "pracują 2 z 3 i 1
