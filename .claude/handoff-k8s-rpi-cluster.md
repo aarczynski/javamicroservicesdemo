@@ -43,6 +43,20 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
+0a. **Podbicie zależności (2026-10-04) — w repo, jeszcze nie na klastrze.** Spring Boot 4.1.1, OTel agent 2.32.0,
+   Postgres 18.6, Grafana 13.2.3 (chart 13.2.7), Prometheus chart 29.35.0, Loki chart 18.13.7, tempo-distributed
+   3.10.1 (Tempo 3.1.0), otel-collector chart 0.175.0 (0.161.0), Alloy chart 1.13.0, Cilium 1.20.2, Gateway API
+   v1.6.2, registry 3.1.2. Kolejność wdrożenia na żywym klastrze:
+   - **Najpierw CRD Gateway API v1.6.2** (pętla z `bootstrap.sh`, `--server-side`, teraz też `backendtlspolicies` i
+     `tlsroutes`) — Cilium 1.20 wymaga >= v1.6.1.
+   - **Cilium 1.19.5 → 1.19.8 → 1.20.2**, nie od razu 1.20 — upgrade guide Cilium wymaga najpierw najnowszego patcha
+     bieżącej wersji minor. Upgrade przerywa połączenia przez proxy Envoy (Gateway `.100`).
+   - Chart Grafany 13.x domyślnie wymusza `readOnlyRootFilesystem` i obraz `-distroless`; zostajemy przy
+     standardowym tagu `13.2.3` (sprawdzone lokalnie: startuje z read-only rootfs + `/tmp` jako emptyDir).
+   - Potem obrazy appek (`k8s-deploy`) — zmieniona nazwa env `OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED`.
+   Kubernetes 1.36 → 1.37 świadomie poza tym podbiciem (`kubeadm upgrade` węzeł po węźle, osobna operacja).
+   Po wdrożeniu zmierzyć sufit RPS ponownie (Boot 4.1 / Tempo 3.1 mogą go przesunąć w obie strony).
+
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
    (patrz pkt 8 — `pg_stat_statements` jako pierwszy pomiar). Kierunek (replikacja odczytów, partycjonowanie,
