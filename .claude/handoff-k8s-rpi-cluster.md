@@ -44,7 +44,9 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
 0a. **Podbicie zależności (2026-10-04) — w repo; na klastrze dotąd tylko RustFS + Tempo (chart 3.10.1 / Tempo
-   3.1.0, wdrożone 2026-10-04, odczyt bloków z RustFS zweryfikowany). Reszta czeka.** Spring Boot 4.1.1, OTel agent 2.32.0,
+   3.1.0, wdrożone 2026-10-04, odczyt bloków z RustFS zweryfikowany). Reszta czeka.** Po tej zmianie
+   **2100 rps × 10 min: 0% KO, p50/p95/p99 26/194/382 ms** (aplikacje bez restartu od 18 h, Tempo ~15 min po
+   upgrade) — sufit trzyma, węzły observability 2–12% CPU, ślady z testu w RustFS (4 bloki), zero restartów Tempo. Spring Boot 4.1.1, OTel agent 2.32.0,
    Postgres 18.6, Grafana 13.2.3 (chart 13.2.7), Prometheus chart 29.35.0, Loki chart 18.13.7, tempo-distributed
    3.10.1 (Tempo 3.1.0), otel-collector chart 0.175.0 (0.161.0), Alloy chart 1.13.0, Cilium 1.20.2, Gateway API
    v1.6.2, registry 3.1.2. Kolejność wdrożenia na żywym klastrze:
