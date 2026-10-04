@@ -35,7 +35,7 @@ no matching taints.
 ## Observability stack, Headlamp, metrics-server
 
 The same `minikube-bootstrap.sh` script (`make minikube-bootstrap`, chained
-into `make minikube-rebuild-all`) also installs Kafka (Strimzi), MinIO,
+into `make minikube-rebuild-all`) also installs Kafka (Strimzi), RustFS,
 Tempo-distributed, Loki, Prometheus, Grafana, otel-collector, Alloy,
 Headlamp, metrics-server, right after Cilium/MetalLB/storage — same shape as
 `bootstrap.sh` for the RPi cluster, one script start to finish. Same
@@ -48,10 +48,10 @@ override per Helm release, plus:
 | `values-tempo-distributed.yaml` | Same, but for all 7 components (`backendScheduler`, `backendWorker`, `blockBuilder`, `liveStore`, `distributor`, `querier`, `queryFrontend`) — production pins each one to `k8s-rpi-observability-1` or `-2` to balance load across two physical nodes; nothing to balance on one minikube node. |
 | `values-grafana.yaml`, `values-headlamp.yaml` | Drop `nodeSelector`/`tolerations` and repoint the pinned `192.168.10.19x` LoadBalancer IP at this overlay's MetalLB pool (`.148` Grafana, `.149` Headlamp — see `metallb-ip-pools.yaml`). |
 | `values-alloy.yaml` | Adds `alloy.mounts.dockercontainers: true`. Not a nodeSelector issue — this is a real behavioral difference from production. minikube here runs `--container-runtime=docker` (required so `--cni=false` can work — see `minikube-start.sh`), so `/var/log/pods/.../*.log` is a **symlink** into `/var/lib/docker/containers/<id>/<id>-json.log` (the legacy dockershim log layout), not a real file. Without this mount, Alloy can `ls` the symlink but every `stat`/read of it fails ("no such file or directory" — the target is outside its mount namespace) and nothing reaches Loki. The chart's own values file already documents this exact tradeoff; production (real containerd, no dockershim) correctly leaves it off. |
-| `observability/kustomization.yaml` | Same base-plus-patches pattern as `../kustomization.yaml`, for the plain manifests: strips Kafka's `KafkaNodePool` `affinity`/`tolerations` and MinIO's Deployment+Job `nodeSelector`/`tolerations`. Used to also remap `minio/minio`/`minio/mc` to `quay.io/minio/minio`/`quay.io/minio/mc` here (Docker Hub had pulled both repos entirely) — that fix landed directly in `manifests/minio/minio.yaml` itself instead, so this overlay no longer needs an `images:` override for it. |
+| `observability/kustomization.yaml` | Same base-plus-patches pattern as `../kustomization.yaml`, for the plain manifests: strips Kafka's `KafkaNodePool` `affinity`/`tolerations` and RustFS's Deployment `nodeSelector`/`tolerations`. |
 
 Base `kustomization.yaml` files were added to `manifests/observability/`,
-`manifests/kafka/`, and `manifests/minio/` (listing the same files their
+`manifests/kafka/`, and `manifests/rustfs/` (listing the same files their
 respective scripts already `kubectl apply -f` directly) purely so this
 overlay's kustomization can reference them as directories — kustomize
 refuses to load a file from outside its own root without one. No existing

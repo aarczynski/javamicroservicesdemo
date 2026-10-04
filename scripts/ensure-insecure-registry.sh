@@ -3,7 +3,7 @@
 # (k8s-cluster/manifests/registry/registry.yaml, 192.168.10.190:5000) over
 # plain HTTP. Without this, `docker push` from k8s-cluster/scripts/deploy.sh
 # fails with "server gave HTTP response to HTTPS client" — the registry has
-# no TLS cert (LAN-only homelab, same posture as minio.yaml's plaintext
+# no TLS cert (LAN-only homelab, same posture as rustfs.yaml's plaintext
 # creds). Wired into `make start`/`make k8s-deploy` so this is never a manual
 # step to remember.
 #

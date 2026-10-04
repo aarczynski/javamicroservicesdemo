@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Everything on top of a bare minikube cluster (see minikube-start.sh):
 # Cilium CNI + Gateway API, MetalLB, local-path-provisioner, the full
-# observability stack (Kafka/MinIO/tempo-distributed, Loki, Prometheus,
+# observability stack (Kafka/RustFS/tempo-distributed, Loki, Prometheus,
 # Grafana, otel-collector, Alloy), Headlamp, metrics-server, and finally the
 # apps themselves (candidates/job-offers/load-background) — one script, same
 # shape as bootstrap.sh for the RPi cluster (which also ends with "Apps"),
@@ -31,15 +31,17 @@ helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/ >/dev/null
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null
 helm repo update >/dev/null
 
-echo "==> CNI: Cilium 1.20.2 (includes Hubble Relay/UI, Gateway API controller)"
-helm upgrade --install cilium cilium/cilium -n kube-system --version 1.20.2 \
-  -f "$MANIFESTS/cilium/values-cilium.yaml" \
-  -f "$OVERLAY/cilium-values.yaml"
-
+# Before Cilium: cilium-operator checks for these CRDs once at startup and
+# leaves its Gateway controller off if they're missing (same as bootstrap.sh).
 echo "==> Gateway API CRDs (standard channel, v1.6.2)"
 for crd in gatewayclasses gateways httproutes referencegrants grpcroutes backendtlspolicies tlsroutes; do
   kubectl apply --server-side -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.2/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
 done
+
+echo "==> CNI: Cilium 1.20.2 (includes Hubble Relay/UI, Gateway API controller)"
+helm upgrade --install cilium cilium/cilium -n kube-system --version 1.20.2 \
+  -f "$MANIFESTS/cilium/values-cilium.yaml" \
+  -f "$OVERLAY/cilium-values.yaml"
 
 echo "==> MetalLB 0.16.1"
 kubectl create namespace metallb-system --dry-run=client -o yaml | kubectl apply -f -
@@ -102,7 +104,7 @@ helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n 
 echo "    Waiting for the Kafka/KafkaNodePool CRDs the operator installs"
 kubectl wait --for=condition=Established crd/kafkas.kafka.strimzi.io crd/kafkanodepools.kafka.strimzi.io --timeout=120s
 
-echo "==> Kafka cluster + MinIO"
+echo "==> Kafka cluster + RustFS"
 kubectl apply -k "$OVERLAY/observability"
 
 echo "==> tempo-distributed 3.10.1"

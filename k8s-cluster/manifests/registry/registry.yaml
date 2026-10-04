@@ -15,7 +15,7 @@
 # /var/lib/registry with the filesystem driver, which is exactly what a single
 # self-hosted instance needs.
 #
-# No auth, no TLS — same posture as minio.yaml's plaintext credentials in this
+# No auth, no TLS — same posture as rustfs.yaml's plaintext credentials in this
 # repo: LAN-only homelab cluster, not internet-exposed. Every node's containerd
 # and the Mac's Docker daemon both need to be told to trust this host over
 # plain HTTP explicitly (containerd: k8s-cluster/ansible/roles/node_prep,

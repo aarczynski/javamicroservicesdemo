@@ -1,4 +1,4 @@
-# Kafka (KafkaNodePool) and MinIO (Deployment + Job) are plain manifests, not
+# Kafka (KafkaNodePool) and RustFS (Deployment) are plain manifests, not
 # Helm values — same node-pinning problem as candidates/job-offers' Postgres
 # (see ../kustomization.yaml), same fix: strip nodeSelector/affinity/
 # tolerations so they can schedule on minikube's single, untainted node.
@@ -7,7 +7,7 @@
 resources:
   - ../../../observability
   - ../../../kafka
-  - ../../../minio
+  - ../../../rustfs
 
 patches:
   - target:
@@ -35,15 +35,7 @@ patches:
         path: /spec/entityOperator/template/pod/tolerations
   - target:
       kind: Deployment
-      name: minio
-    patch: |-
-      - op: remove
-        path: /spec/template/spec/nodeSelector
-      - op: remove
-        path: /spec/template/spec/tolerations
-  - target:
-      kind: Job
-      name: minio-create-bucket
+      name: rustfs
     patch: |-
       - op: remove
         path: /spec/template/spec/nodeSelector

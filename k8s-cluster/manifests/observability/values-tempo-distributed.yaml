@@ -9,14 +9,14 @@
 # backend-worker} -> {querier, query-frontend}. No more ingester/compactor — those
 # don't exist in this chart version at all. See the "Differences from Docker Compose"
 # section in the README for the full monolithic-vs-microservices explanation with a
-# diagram, and k8s-cluster/manifests/kafka/ + k8s-cluster/manifests/minio/ for the two
+# diagram, and k8s-cluster/manifests/kafka/ + k8s-cluster/manifests/rustfs/ for the two
 # dependencies this pulls in that Compose's monolithic Tempo never needed.
 #
 # Verified (not assumed) before writing this file, all via `helm template` against
 # the real chart (no cluster contact) plus the chart's own values.yaml comments:
 #   - storage.trace.backend: local mounts an emptyDir PER POD, not a shared volume —
 #     genuinely broken for multi-pod operation (querier can't see block-builder's
-#     blocks). Real reason this needs MinIO, not a chart quirk to work around.
+#     blocks). Real reason this needs RustFS (S3), not a chart quirk to work around.
 #   - traces.otlp.grpc.enabled defaults to FALSE — otel-collector's OTLP traces would
 #     silently have nowhere to land without the override below.
 #   - Kafka is not optional once liveStore/blockBuilder are enabled — chart comment:
@@ -43,18 +43,18 @@ storage:
     backend: s3
     s3:
       bucket: tempo-traces
-      endpoint: minio.observability.svc.cluster.local:9000
-      access_key: minioadmin
-      secret_key: minioadmin123
-      insecure: true # MinIO over plain HTTP, internal-only traffic
-      forcepathstyle: true # required for MinIO (no virtual-hosted-style bucket DNS)
+      endpoint: rustfs.observability.svc.cluster.local:9000
+      access_key: rustfsadmin
+      secret_key: rustfsadmin123
+      insecure: true # RustFS over plain HTTP, internal-only traffic
+      forcepathstyle: true # required for RustFS (no virtual-hosted-style bucket DNS)
     # Chart default (unset here previously) is 5m: confirmed live via querier logs
     # ("blocklist poll complete" every 5m on the dot) 2026-09-20 while investigating
     # "only traces from a few minutes ago, nothing new" - a completed block leaves
     # live-store's own short-lived searchable buffer (~30-60s after completion) well
-    # before the next 5m poll picks it up from MinIO, leaving a multi-minute blind
+    # before the next 5m poll picks it up from RustFS, leaving a multi-minute blind
     # spot where a just-ingested trace is in neither place. 30s keeps that blind spot
-    # close to live-store's own window instead of compounding it; MinIO LIST cost at
+    # close to live-store's own window instead of compounding it; RustFS LIST cost at
     # this data volume is trivial.
     blocklist_poll: 30s
 
@@ -121,7 +121,7 @@ backendWorker:
 blockBuilder:
   replicas: 1 # must equal ingest.kafka.auto_create_topic_default_partitions
   # cpu 500m->1000m, memory 512Mi->1.5Gi->3Gi on 2026-09-03: a 200rps Gatling burst
-  # OOMKilled this repeatedly (CrashLoopBackOff) — the flush-to-MinIO memory spike
+  # OOMKilled this repeatedly (CrashLoopBackOff) — the flush-to-S3 memory spike
   # outpaces the 15-30s cAdvisor scrape interval, so working-set metrics never showed
   # >150MiB even right before each kill. Both nodes had 77-88% idle CPU throughout, so
   # this was a too-tight default limit, not a physical capacity problem — same root
@@ -187,10 +187,10 @@ liveStore:
       value: observability
       effect: NoSchedule
 
-# distributor stays on observability-2 (with Loki/Prometheus/Grafana/MinIO); querier
+# distributor stays on observability-2 (with Loki/Prometheus/Grafana/RustFS); querier
 # and queryFrontend moved to observability-1 on 2026-09-14 as part of a data-driven
 # CPU rebalance (see k8s-cluster/manifests/kafka/kafka-cluster.yaml and
-# k8s-cluster/manifests/minio/minio.yaml for the same day's node-swap experiment this
+# k8s-cluster/manifests/rustfs/rustfs.yaml (then MinIO) for the same day's node-swap experiment this
 # continues) — ambient-load CPU measured per-pod via Prometheus put observability-1 at
 # 45.2m and observability-2 at 105.6m; moving otel-collector + querier + query-frontend
 # (all lightweight, off the Kafka ingest hot path) to observability-1 balances it to

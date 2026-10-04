@@ -81,7 +81,7 @@ helm upgrade --install loki grafana-community/loki -n observability \
   -f "$MANIFESTS/observability/values-loki.yaml" --version 18.13.7
 helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n observability \
   -f "$MANIFESTS/kafka/values-strimzi-operator.yaml" --version 1.2.0
-kubectl apply -f "$MANIFESTS/kafka/kafka-cluster.yaml" -f "$MANIFESTS/minio/minio.yaml"
+kubectl apply -f "$MANIFESTS/kafka/kafka-cluster.yaml" -f "$MANIFESTS/rustfs/rustfs.yaml"
 helm upgrade --install tempo grafana-community/tempo-distributed -n observability \
   -f "$MANIFESTS/observability/values-tempo-distributed.yaml" --version 3.10.1
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability \
