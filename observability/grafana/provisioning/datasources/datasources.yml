@@ -41,7 +41,10 @@ datasources:
         datasourceUid: loki
         spanStartTimeShift: '-10m'
         spanEndTimeShift: '10m'
-        filterByTraceID: true
-        filterBySpanID: true
-        tags: [ { key: 'service.name', value: 'job' } ]
+        # Custom query, not filterByTraceID/filterBySpanID: those append a line filter (|="<id>"),
+        # but trace_id lives in structured metadata (OTLP logs don't carry it in the line body),
+        # and Loki's label is service_name - there is no `job` label.
+        customQuery: true
+        query: '{$${__tags}} | trace_id="$${__trace.traceId}"'
+        tags: [ { key: 'service.name', value: 'service_name' } ]
 

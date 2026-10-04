@@ -65,6 +65,26 @@ to a real trace in Tempo tagged `service.name=app-candidates` — the whole
 Alloy → Loki and otel-collector → Kafka → Tempo pipelines work, not just
 "pods are Running".
 
+### Known gaps vs the RPi cluster
+
+- **No per-container cAdvisor metrics.** With `--container-runtime=docker`, the
+  kubelet's cAdvisor only sees pod-level cgroups — `container_*` series carry
+  `pod`/`namespace` but never a `container` label (true for this cluster's whole
+  history, not a regression). Every panel filtering on `container=...` or
+  `container!=""` stays empty here: "CPU/Memory Usage by Pod" and "CPU Throttling by
+  Pod" (Kubernetes Cluster), and Postgres CPU usage (only its limit line shows).
+  JVM CPU comes from the OTel agent, not cAdvisor, so "JVM CPU Usage" is unaffected.
+- **No node disk panels.** node-exporter inside the minikube container doesn't see a
+  real `/` filesystem or block devices, so "Disk Usage by Node" and the Postgres
+  "Disk Busy Time"/"Throughput" panels stay empty.
+- **minikube's disk is Docker Desktop's disk.** With the docker driver, `/` inside
+  minikube is the Docker Desktop VM's disk, shared with every image, volume and build
+  cache on the Mac. Past 90% Loki's WAL stops accepting writes and Alloy's pushes fail
+  with the misleading `Ingester is shutting down` — Loki looks healthy but holds no
+  new logs (hit 2026-10-04 at 99%). Check `minikube ssh -- df -h /` and `docker system
+  df`; `docker builder prune` and removing superseded images frees it, and Loki
+  resumes on its own.
+
 ### Reaching things from the Mac
 
 `make minikube-rebuild-all` and `make minikube-deploy` both end by running
