@@ -28,14 +28,14 @@ helm repo update >/dev/null
 # Before Cilium: cilium-operator checks for these CRDs once at startup and
 # leaves its Gateway controller off if they're missing (GatewayClass stays
 # ACCEPTED=Unknown, no LoadBalancer for .100 — hit on the 2026-10-03 rebuild).
-echo "==> Gateway API CRDs (standard channel, v1.4.1)"
-for crd in gatewayclasses gateways httproutes referencegrants grpcroutes; do
-  kubectl apply -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
+echo "==> Gateway API CRDs (standard channel, v1.6.2)"
+for crd in gatewayclasses gateways httproutes referencegrants grpcroutes backendtlspolicies tlsroutes; do
+  kubectl apply --server-side -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.2/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
 done
 
-echo "==> CNI: Cilium 1.19.5 (includes Hubble Relay/UI, Gateway API controller)"
+echo "==> CNI: Cilium 1.20.2 (includes Hubble Relay/UI, Gateway API controller)"
 helm upgrade --install cilium cilium/cilium -n kube-system \
-  -f "$MANIFESTS/cilium/values-cilium.yaml" --version 1.19.5
+  -f "$MANIFESTS/cilium/values-cilium.yaml" --version 1.20.2
 
 echo "==> Cilium GatewayClass (not auto-created by the Cilium chart, see gatewayclass.yaml)"
 kubectl apply -f "$MANIFESTS/cilium/gatewayclass.yaml"
@@ -76,20 +76,20 @@ kubectl apply -f "$MANIFESTS/registry/"
 echo "==> Observability stack"
 kubectl apply -f "$MANIFESTS/observability/namespace.yaml"
 helm upgrade --install prometheus prometheus-community/prometheus -n observability \
-  -f "$MANIFESTS/observability/values-prometheus.yaml" --version 29.27.0
+  -f "$MANIFESTS/observability/values-prometheus.yaml" --version 29.35.0
 helm upgrade --install loki grafana-community/loki -n observability \
-  -f "$MANIFESTS/observability/values-loki.yaml" --version 18.11.3
+  -f "$MANIFESTS/observability/values-loki.yaml" --version 18.13.7
 helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n observability \
   -f "$MANIFESTS/kafka/values-strimzi-operator.yaml" --version 1.2.0
-kubectl apply -f "$MANIFESTS/kafka/kafka-cluster.yaml" -f "$MANIFESTS/minio/minio.yaml"
+kubectl apply -f "$MANIFESTS/kafka/kafka-cluster.yaml" -f "$MANIFESTS/rustfs/rustfs.yaml"
 helm upgrade --install tempo grafana-community/tempo-distributed -n observability \
-  -f "$MANIFESTS/observability/values-tempo-distributed.yaml" --version 3.5.1
+  -f "$MANIFESTS/observability/values-tempo-distributed.yaml" --version 3.10.1
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability \
-  -f "$MANIFESTS/observability/values-otel-collector.yaml" --version 0.171.0
+  -f "$MANIFESTS/observability/values-otel-collector.yaml" --version 0.175.0
 helm upgrade --install alloy grafana/alloy -n observability \
-  -f "$MANIFESTS/alloy/values-alloy.yaml" --version 1.12.1
+  -f "$MANIFESTS/alloy/values-alloy.yaml" --version 1.13.0
 helm upgrade --install grafana grafana-community/grafana -n observability \
-  -f "$MANIFESTS/observability/values-grafana.yaml" --version 12.11.2
+  -f "$MANIFESTS/observability/values-grafana.yaml" --version 13.2.7
 kubectl apply -f "$MANIFESTS/observability/dashboards-configmap.yaml"
 
 echo "==> Headlamp"

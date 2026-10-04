@@ -395,7 +395,7 @@ Current state:
 * **MetalLB** (L2 mode) providing `LoadBalancer` services on the home LAN, IP pool `192.168.10.100`–`192.168.10.199`.
 * **`local-path-provisioner`** for node-local persistent storage.
 * The full observability stack from this README — Prometheus, Loki, Tempo, OTEL Collector, Grafana — running on the
-  cluster via Helm, plus two k8s-only pieces (Alloy for logs, Kafka + MinIO for `tempo-distributed`) that Compose
+  cluster via Helm, plus two k8s-only pieces (Alloy for logs, Kafka + RustFS for `tempo-distributed`) that Compose
   doesn't need — see [Differences from Docker Compose](#differences-from-docker-compose) for why.
 * `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
   own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
@@ -422,7 +422,7 @@ Current state:
 | Tempo (`tempo-distributed`) | Observability | Trace storage/search, split into `distributor`/`querier`/`query-frontend`/`live-store`/`block-builder`/`backend-scheduler`/`backend-worker` |
 | OTEL Collector | Observability | Receives OTLP traces/metrics from the apps, forwards to Prometheus/Tempo |
 | Kafka (Strimzi operator) | Observability | Buffers trace spans between Tempo's ingestion and storage stages (k8s-only, see below) |
-| MinIO | Observability | S3-compatible object storage — holds Tempo's trace blocks (k8s-only, see below) |
+| RustFS | Observability | S3-compatible object storage — holds Tempo's trace blocks (k8s-only, see below) |
 | `kube-state-metrics` | Observability | Exposes Kubernetes object state (pods, nodes, deployments...) as metrics |
 | `prometheus-node-exporter` | Observability | Exposes per-node OS/hardware metrics (CPU, RAM, disk, network) |
 | `metrics-server` | Observability | Lightweight CPU/RAM metrics powering `kubectl top` and Headlamp's resource view |
@@ -450,7 +450,7 @@ Current state:
 |---|---|---|
 | `master` | `node-role.kubernetes.io/control-plane` | Control plane (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
-| `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, MinIO, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest |
+| `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, RustFS, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest |
 | `platform-1` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, local NTP server (see below). Down to a single platform node since 2026-09-20 — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; repurposed to `worker-5` instead of keeping a dedicated (and mostly idle) failover node (see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
 | `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20). `worker-5` added 2026-09-20 (repurposed from `platform-2`); with `app-candidates` pinned to 3 replicas (see the HPA below) plus 2 `app-job-offers`, all 5 workers are permanently occupied |
 
@@ -618,7 +618,7 @@ end-to-end; tracked in detail in [`.claude/handoff-k8s-rpi-cluster.md`](.claude/
   during that same load test) — and once distributor and live-store/block-builder are separate pods instead of one
   process, Tempo 3.x requires Kafka as the transport between them. Separately, `storage.trace.backend: local` turned
   out to mount an **emptyDir per pod** (verified via `helm template`, not assumed) — block-builder's blocks would be
-  invisible to querier on another pod — so trace storage also moved to MinIO (self-hosted S3-compatible object
+  invisible to querier on another pod — so trace storage also moved to RustFS (self-hosted S3-compatible object
   storage), the one piece every component can reach over the network regardless of which pod it's on. **Docker
   Compose keeps single-binary Tempo permanently** — one process never needs Kafka or shared object storage to talk to
   itself.
@@ -658,7 +658,7 @@ flowchart LR
         prometheus["Prometheus"]
         loki["Loki"]
         kafka[("Kafka\n(single node, KRaft)\ningest buffer")]
-        minio[("MinIO\nshared trace block storage")]
+        rustfs[("RustFS\nshared trace block storage")]
         subgraph tempo_dist["Tempo (distributed)"]
             distributor["distributor"]
             livestore["live-store"]
@@ -681,10 +681,10 @@ flowchart LR
     distributor --> kafka
     kafka --> livestore
     kafka --> blockbuilder
-    blockbuilder -->|write blocks| minio
-    backend -->|compact| minio
+    blockbuilder -->|write blocks| rustfs
+    backend -->|compact| rustfs
     livestore --> querier
-    minio -->|read blocks| querier
+    rustfs -->|read blocks| querier
 
     candidates -.->|stdout| alloy
     joboffers -.->|stdout| alloy
@@ -698,7 +698,7 @@ flowchart LR
 Manifests for both: [`k8s-cluster/manifests/alloy/`](k8s-cluster/manifests/alloy), Tempo's
 [`values-tempo-distributed.yaml`](k8s-cluster/manifests/observability/values-tempo-distributed.yaml), and their two
 new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka) and
-[`k8s-cluster/manifests/minio/`](k8s-cluster/manifests/minio).
+[`k8s-cluster/manifests/rustfs/`](k8s-cluster/manifests/rustfs).
 
 # Known issues
 

@@ -161,7 +161,7 @@ spec:
               value: "false"
             - name: OTEL_JAVAAGENT_EXTENSIONS
               value: "./otel-metrics-filter.jar"
-            - name: OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED
+            - name: OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
             # Emits the db.client.operation.duration histogram behind the DB panels
             # (buckets and labels set in otel-metrics-filter's DbClientDurationViewCustomizer).

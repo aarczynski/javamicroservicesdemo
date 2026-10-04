@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Everything on top of a bare minikube cluster (see minikube-start.sh):
 # Cilium CNI + Gateway API, MetalLB, local-path-provisioner, the full
-# observability stack (Kafka/MinIO/tempo-distributed, Loki, Prometheus,
+# observability stack (Kafka/RustFS/tempo-distributed, Loki, Prometheus,
 # Grafana, otel-collector, Alloy), Headlamp, metrics-server, and finally the
 # apps themselves (candidates/job-offers/load-background) — one script, same
 # shape as bootstrap.sh for the RPi cluster (which also ends with "Apps"),
@@ -31,15 +31,17 @@ helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/ >/dev/null
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null
 helm repo update >/dev/null
 
-echo "==> CNI: Cilium 1.19.5 (includes Hubble Relay/UI, Gateway API controller)"
-helm upgrade --install cilium cilium/cilium -n kube-system --version 1.19.5 \
+# Before Cilium: cilium-operator checks for these CRDs once at startup and
+# leaves its Gateway controller off if they're missing (same as bootstrap.sh).
+echo "==> Gateway API CRDs (standard channel, v1.6.2)"
+for crd in gatewayclasses gateways httproutes referencegrants grpcroutes backendtlspolicies tlsroutes; do
+  kubectl apply --server-side -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.6.2/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
+done
+
+echo "==> CNI: Cilium 1.20.2 (includes Hubble Relay/UI, Gateway API controller)"
+helm upgrade --install cilium cilium/cilium -n kube-system --version 1.20.2 \
   -f "$MANIFESTS/cilium/values-cilium.yaml" \
   -f "$OVERLAY/cilium-values.yaml"
-
-echo "==> Gateway API CRDs (standard channel, v1.4.1)"
-for crd in gatewayclasses gateways httproutes referencegrants grpcroutes; do
-  kubectl apply -f "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard/gateway.networking.k8s.io_${crd}.yaml"
-done
 
 echo "==> MetalLB 0.16.1"
 kubectl create namespace metallb-system --dry-run=client -o yaml | kubectl apply -f -
@@ -85,13 +87,13 @@ kubectl apply -f "https://raw.githubusercontent.com/rancher/local-path-provision
 echo "==> Observability namespace"
 kubectl apply -f "$MANIFESTS/observability/namespace.yaml"
 
-echo "==> Prometheus 29.27.0"
-helm upgrade --install prometheus prometheus-community/prometheus -n observability --version 29.27.0 \
+echo "==> Prometheus 29.35.0"
+helm upgrade --install prometheus prometheus-community/prometheus -n observability --version 29.35.0 \
   -f "$MANIFESTS/observability/values-prometheus.yaml" \
   -f "$OVERLAY/values-prometheus.yaml"
 
-echo "==> Loki 18.11.3"
-helm upgrade --install loki grafana-community/loki -n observability --version 18.11.3 \
+echo "==> Loki 18.13.7"
+helm upgrade --install loki grafana-community/loki -n observability --version 18.13.7 \
   -f "$MANIFESTS/observability/values-loki.yaml" \
   -f "$OVERLAY/values-loki.yaml"
 
@@ -102,26 +104,26 @@ helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n 
 echo "    Waiting for the Kafka/KafkaNodePool CRDs the operator installs"
 kubectl wait --for=condition=Established crd/kafkas.kafka.strimzi.io crd/kafkanodepools.kafka.strimzi.io --timeout=120s
 
-echo "==> Kafka cluster + MinIO"
+echo "==> Kafka cluster + RustFS"
 kubectl apply -k "$OVERLAY/observability"
 
-echo "==> tempo-distributed 3.5.1"
-helm upgrade --install tempo grafana-community/tempo-distributed -n observability --version 3.5.1 \
+echo "==> tempo-distributed 3.10.1"
+helm upgrade --install tempo grafana-community/tempo-distributed -n observability --version 3.10.1 \
   -f "$MANIFESTS/observability/values-tempo-distributed.yaml" \
   -f "$OVERLAY/values-tempo-distributed.yaml"
 
-echo "==> otel-collector 0.171.0"
-helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability --version 0.171.0 \
+echo "==> otel-collector 0.175.0"
+helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability --version 0.175.0 \
   -f "$MANIFESTS/observability/values-otel-collector.yaml" \
   -f "$OVERLAY/values-otel-collector.yaml"
 
-echo "==> Alloy 1.12.1"
-helm upgrade --install alloy grafana/alloy -n observability --version 1.12.1 \
+echo "==> Alloy 1.13.0"
+helm upgrade --install alloy grafana/alloy -n observability --version 1.13.0 \
   -f "$MANIFESTS/alloy/values-alloy.yaml" \
   -f "$OVERLAY/values-alloy.yaml"
 
-echo "==> Grafana 12.11.2"
-helm upgrade --install grafana grafana-community/grafana -n observability --version 12.11.2 \
+echo "==> Grafana 13.2.7"
+helm upgrade --install grafana grafana-community/grafana -n observability --version 13.2.7 \
   -f "$MANIFESTS/observability/values-grafana.yaml" \
   -f "$OVERLAY/values-grafana.yaml"
 

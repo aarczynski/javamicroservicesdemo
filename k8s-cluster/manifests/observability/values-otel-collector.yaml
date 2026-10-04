@@ -1,5 +1,5 @@
 # helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-# helm install otel-collector open-telemetry/opentelemetry-collector -n observability -f values-otel-collector.yaml --version 0.171.0
+# helm install otel-collector open-telemetry/opentelemetry-collector -n observability -f values-otel-collector.yaml --version 0.175.0
 #
 # Endpoints point at in-cluster Service DNS names (verified via `helm template` against
 # the actually-rendered prometheus/tempo-distributed Services in this same directory):
@@ -14,7 +14,7 @@ replicaCount: 1
 
 image:
   repository: otel/opentelemetry-collector-contrib
-  tag: "0.159.0"
+  tag: "0.161.0"
 
 # alternateConfig fully replaces the chart's default config (no merge with chart
 # presets) — same pipeline as observability/otel-collector/otel-collector.yml,

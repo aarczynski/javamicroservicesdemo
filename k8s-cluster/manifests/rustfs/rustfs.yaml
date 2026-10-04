@@ -1,0 +1,137 @@
+# kubectl apply -f rustfs.yaml
+#
+# Shared object storage backend for tempo-distributed's block-builder/backend-worker/
+# querier (see values-tempo-distributed.yaml) — k8s only, no Compose equivalent.
+#
+# Why this exists: storage.trace.backend: local in the tempo-distributed chart mounts
+# an emptyDir PER POD (verified via `helm template`) — block-builder would write trace
+# blocks nobody else, including querier, can read. tempo-distributed needs a real
+# network-accessible backend shared across pods.
+#
+# Why RustFS, not MinIO (replaced 2026-10-04): MinIO stopped publishing images — gone
+# from Docker Hub in September 2026, quay.io returns 401 since 2026-10-03, and the
+# cluster only kept running from containerd's local image cache. RustFS is an
+# Apache-2.0, S3-compatible server with the same single-binary/single-volume model,
+# multi-arch images on Docker Hub, and the tempo-distributed chart's own CI runs
+# against it (charts/tempo-distributed/ci/integration in grafana-community/helm-charts).
+#
+# NOT via Helm: plain YAML, same pattern already used for Postgres in this repo.
+#
+# Credentials in plaintext below, same posture as postgres.yaml's Secret in this repo —
+# LAN-only homelab cluster, not internet-exposed.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rustfs-credentials
+  namespace: observability
+type: Opaque
+stringData:
+  RUSTFS_ACCESS_KEY: rustfsadmin
+  RUSTFS_SECRET_KEY: rustfsadmin123
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rustfs-data
+  namespace: observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rustfs
+  namespace: observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: rustfs
+  template:
+    metadata:
+      labels:
+        app: rustfs
+    spec:
+      # Pinned: local-path-provisioner ties the PV to whichever node it was first
+      # bound on, so moving the pod without migrating the PV would orphan the data.
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-observability-2
+      tolerations:
+        - key: role
+          operator: Equal
+          value: observability
+          effect: NoSchedule
+      # RustFS serves every top-level directory of its data volume as a bucket, so
+      # creating Tempo's bucket is a plain mkdir - no S3 client image and no separate
+      # Job (MinIO's needed `mc mb`). Idempotent across restarts. The image runs as
+      # uid 10001; local-path creates the volume directory world-writable (0777).
+      initContainers:
+        - name: create-bucket
+          image: rustfs/rustfs:1.0.1
+          command: ["mkdir", "-p", "/data/tempo-traces"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs:1.0.1
+          ports:
+            - containerPort: 9000
+              name: s3
+          envFrom:
+            - secretRef:
+                name: rustfs-credentials
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: rustfs-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs
+  namespace: observability
+spec:
+  type: ClusterIP
+  selector:
+    app: rustfs
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000

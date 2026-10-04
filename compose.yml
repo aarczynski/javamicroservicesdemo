@@ -39,7 +39,7 @@ services:
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
       OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
-      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED: true
       OTEL_SEMCONV_STABILITY_OPT_IN: "database"
       JOB_OFFERS_URL: "http://app-job-offers:8080"
     ports:
@@ -83,7 +83,7 @@ services:
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
       OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
-      OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED: true
+      OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED: true
       OTEL_SEMCONV_STABILITY_OPT_IN: "database"
     ports:
       - "8081:8080"
@@ -106,7 +106,7 @@ services:
 
   postgres-candidates:
     container_name: app-candidates-db
-    image: postgres:18.3
+    image: postgres:18.6
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
@@ -125,7 +125,7 @@ services:
 
   postgres-job-offers:
     container_name: app-job-offers-db
-    image: postgres:18.3
+    image: postgres:18.6
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
@@ -204,7 +204,7 @@ services:
 
   prometheus:
     container_name: prometheus
-    image: prom/prometheus:v3.14.0
+    image: prom/prometheus:v3.15.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-remote-write-receiver
@@ -248,7 +248,9 @@ services:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:13.1.4
+    # 13.1.x, not 13.2.x: 13.2 shows anonymous users an "Unauthorized" toast on every visit
+    # (grafana/grafana#131876, fixed on main, not in any 13.2 release). Move up once 13.3 ships.
+    image: grafana/grafana:13.1.7
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin

@@ -1,5 +1,5 @@
 # Layered on top of ../../cilium/values-cilium.yaml:
-#   helm upgrade --install cilium cilium/cilium -n kube-system --version 1.19.5 \
+#   helm upgrade --install cilium cilium/cilium -n kube-system --version 1.20.2 \
 #     -f manifests/cilium/values-cilium.yaml -f manifests/overlays/minikube/cilium-values.yaml
 #
 # k8sServiceHost/k8sServicePort: kubeProxyReplacement needs the API server's

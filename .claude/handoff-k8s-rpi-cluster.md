@@ -10,7 +10,7 @@ stąd usuwane, nie archiwizowane w treści.
 `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2, jedna replika na node) +
 ich Postgresy wdrożone, dane załadowane (100k candidates / **150k job offers / 10k companies** od 2026-09-28,
 `data-generator`). Stack observability:
-Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+MinIO). Ambient load
+Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+RustFS). Ambient load
 (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj).
 
 **Zmierzony sufit (2026-10-02): 2100rps czyste na 150k ofert / 10k firm** (10 min, 0% KO), ogranicza CPU
@@ -42,6 +42,25 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    `replay/candidates-x3`) **nie ma wpływu**: przy 2 `pg_stat_database.parallel_workers_launched` = 0 po ~6 mln
    transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
+
+0a. **Podbicie zależności (2026-10-04) — w repo; na klastrze dotąd tylko RustFS + Tempo (chart 3.10.1 / Tempo
+   3.1.0, odczyt bloków z RustFS zweryfikowany) i Grafana (chart 13.2.7 / obraz 13.1.7 — 13.2 ma regres z toastem „Unauthorized” dla anonimów,
+   grafana/grafana#131876, poprawka dopiero w 13.3; z fixem trace → logi), obie
+   wdrożone 2026-10-04. Reszta czeka.** Po tej zmianie
+   **2100 rps × 10 min: 0% KO, p50/p95/p99 26/194/382 ms** (aplikacje bez restartu od 18 h, Tempo ~15 min po
+   upgrade) — sufit trzyma, węzły observability 2–12% CPU, ślady z testu w RustFS (4 bloki), zero restartów Tempo. Spring Boot 4.1.1, OTel agent 2.32.0,
+   Postgres 18.6, Grafana 13.2.3 (chart 13.2.7), Prometheus chart 29.35.0, Loki chart 18.13.7, tempo-distributed
+   3.10.1 (Tempo 3.1.0), otel-collector chart 0.175.0 (0.161.0), Alloy chart 1.13.0, Cilium 1.20.2, Gateway API
+   v1.6.2, registry 3.1.2. Kolejność wdrożenia na żywym klastrze:
+   - **Najpierw CRD Gateway API v1.6.2** (pętla z `bootstrap.sh`, `--server-side`, teraz też `backendtlspolicies` i
+     `tlsroutes`) — Cilium 1.20 wymaga >= v1.6.1.
+   - **Cilium 1.19.5 → 1.19.8 → 1.20.2**, nie od razu 1.20 — upgrade guide Cilium wymaga najpierw najnowszego patcha
+     bieżącej wersji minor. Upgrade przerywa połączenia przez proxy Envoy (Gateway `.100`).
+   - Chart Grafany 13.x domyślnie wymusza `readOnlyRootFilesystem` i obraz `-distroless`; zostajemy przy
+     standardowym tagu `13.2.3` (sprawdzone lokalnie: startuje z read-only rootfs + `/tmp` jako emptyDir).
+   - Potem obrazy appek (`k8s-deploy`) — zmieniona nazwa env `OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED`.
+   Kubernetes 1.36 → 1.37 świadomie poza tym podbiciem (`kubeadm upgrade` węzeł po węźle, osobna operacja).
+   Po wdrożeniu zmierzyć sufit RPS ponownie (Boot 4.1 / Tempo 3.1 mogą go przesunąć w obie strony).
 
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
@@ -133,9 +152,10 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-load-data`
    (2026-09-28, jedno z pięciu przeładowań). Ponowne uruchomienie przechodzi.
 
-10. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
-   i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
-   albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
+10a. **Dashboardy Grafany na klastrze ładują się za wolno (zgłoszone 2026-10-04, problem „od dawna”).** Wykresy długo
+   się wczytują. Nie badane — przyczyna nieznana. Na start: zmierzyć czas pojedynczych zapytań paneli (Query
+   inspector w Grafanie albo `/api/ds/query` z pomiarem czasu) i porównać z obciążeniem Prometheusa/Loki
+   (`prometheus-server`, `loki-0` — oba na `observability-2`, płytka D0).
 
 11. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
@@ -144,13 +164,12 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
 ### Automatyzacja / bootstrap
-- **Obrazy MinIO zniknęły też z quay.io (2026-10-03)** — `quay.io/minio/minio` i `minio/mc` zwracają 401 (repo
-  wymaga logowania), po Docker Hubie we wrześniu. Działa tylko dzięki obrazom w cache containerd: przy przebudowie
-  skopiowane z dawnego `observability-2` (dziś `worker-5`, `kubeadm reset` nie kasuje obrazów) na nowy
-  `observability-2` przez `ctr -n k8s.io images export --platform linux/arm64` | `ctr ... images import`. Kopia
-  (`minio-images.tar`, 78 MB) leżała w scratchpadzie sesji — **do zrobienia: trwałe źródło** (własna kopia poza
-  klastrem, przepięcie na inny obraz MinIO albo inny backend S3 dla Tempo); następny czysty dysk na `observability-2`
-  bez cache = Tempo nie wstanie.
+- **MinIO przestało publikować obrazy** (Docker Hub wrzesień 2026, quay.io 401 od 2026-10-03) — klaster jechał
+  tylko na cache containerd. **2026-10-04 zastąpione RustFS** (`k8s-cluster/manifests/rustfs/`, `rustfs/rustfs:1.0.1`
+  z Docker Hub, arm64). Bucket zakłada initContainer przez `mkdir` (RustFS traktuje katalog w `/data` jako bucket),
+  bez `mc`. MinIO usunięte z klastra razem z PV i obrazami w cache (`observability-2`, `worker-3`, `worker-5`).
+  Na węzłach nie ma `crictl` — obrazy usuwa się `ctr -n k8s.io images rm` (np. przez `kubectl debug node/...`).
+  Tempo startujące przed RustFS restartuje kilka razy (`ListObjects` connection refused), potem wstaje samo.
 - **`bootstrap.sh` instalował CRD Gateway API po Cilium** — `cilium-operator` sprawdza je raz przy starcie, więc na
   świeżym klastrze kontroler Gateway się nie włączał (`GatewayClass` `ACCEPTED=Unknown`, brak Service na `.100`).
   Wcześniejsze przebudowy pewnie trafiały na restart operatora przypadkiem. Naprawione 2026-10-03: CRD przed Cilium.
@@ -193,6 +212,14 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
   kandydaci też dostają nowe UUID.
 
 ### minikube
+- **Pełny dysk Docker Desktop zatrzymuje Loki po cichu (2026-10-04).** Dysk minikube (sterownik docker) to dysk VM
+  Docker Desktop — przy 99% Loki odrzucał wszystkie pushe z Alloy komunikatem „Ingester is shutting down”, a
+  wyglądał na zdrowy. Puste panele „by Pod”/dyskowe na minikube to z kolei stałe ograniczenie cAdvisora/node-exportera
+  w minikube, nie błąd dashboardów (na klastrze mają dane). Szczegóły: `overlays/minikube/README.md`, „Known gaps”.
+- **Trace → logi w Grafanie nie działały nigdzie (naprawione i wdrożone na klaster 2026-10-04).**
+  `tracesToLogsV2` mapował `service.name` na nieistniejącą etykietę `job` i filtrował po treści linii, a `trace_id`
+  jest w structured metadata. Teraz własne zapytanie `{service_name=…} | trace_id="…"` — zweryfikowane na compose i
+  minikube i klastrze (logi dla wszystkich zachowanych trace'ów z requestów; health checki logów nie mają).
 - **`make minikube-start` wznawia klaster na starych obrazach** — niczego nie przebudowuje. 2026-09-28 minikube
   chodził na obrazach z 2026-09-21 (sprzed fixu JVM CPU `60cdd0b`, natywnego SQL, samplingu trace'ów): dwie z pięciu
   instancji raportowały `jvm_cpu_recent_utilization_ratio` = 0, co na dashboardzie wyglądało jak "pracują 2 z 3 i 1
@@ -282,10 +309,7 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
   configu pod schemat Tempo 3.x (`app.Config` przebudowany od zera) — jedyna droga do Tempo 3.x to `tempo-distributed`.
 - **`storage.trace.backend: local` w `tempo-distributed` nie działa wielopodowo** — każdy pod montuje osobny
   `emptyDir`, bloki zapisane przez jeden komponent są niewidoczne dla innych. Wymaga współdzielonego backendu S3
-  (MinIO).
-- **MinIO zniknęło z Docker Hub** (usunięte całkowicie we wrześniu 2026) — obrazy `minio/minio`/`minio/mc` trzeba
-  ciągnąć z `quay.io/minio/...`, ten sam tag. **Już naprawione w produkcyjnym `k8s-cluster/manifests/minio/minio.yaml`**
-  (zweryfikowane 2026-09-20: oba kontenery na `quay.io`).
+  (RustFS, wcześniej MinIO).
 - **Grafana `datasource.jsonData.timeInterval` musi zgadzać się z realnym Prometheus `scrape_interval`** — jeśli
   się rozjadą (np. `timeInterval=1s` przy `scrape_interval=1m`), `$__rate_interval` może skolabsować do okna
   mniejszego niż odstęp między próbkami i panele `rate()` pokazują "No data", mimo że surowe metryki i pipeline są

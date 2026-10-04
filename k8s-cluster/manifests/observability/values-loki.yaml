@@ -1,5 +1,5 @@
 # helm repo add grafana-community https://grafana-community.github.io/helm-charts
-# helm install loki grafana-community/loki -n observability -f values-loki.yaml --version 18.11.3
+# helm install loki grafana-community/loki -n observability -f values-loki.yaml --version 18.13.7
 #
 # NOTE: grafana.github.io/helm-charts is frozen (migrated to grafana-community/helm-charts
 # on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.

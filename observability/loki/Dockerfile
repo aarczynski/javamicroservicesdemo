@@ -1,4 +1,4 @@
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.49 AS grpc-health-probe
-FROM grafana/loki:3.7.6
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.57 AS grpc-health-probe
+FROM grafana/loki:3.7.8
 COPY --from=grpc-health-probe /ko-app/grpc-health-probe /grpc-health-probe
 VOLUME /loki

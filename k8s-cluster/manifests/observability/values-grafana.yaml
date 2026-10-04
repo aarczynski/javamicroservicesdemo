@@ -1,11 +1,12 @@
 # helm repo add grafana-community https://grafana-community.github.io/helm-charts
-# helm install grafana grafana-community/grafana -n observability -f values-grafana.yaml --version 12.11.2
+# helm install grafana grafana-community/grafana -n observability -f values-grafana.yaml --version 13.2.7
 #
 # NOTE: grafana.github.io/helm-charts is frozen (migrated to grafana-community/helm-charts
 # on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.
 
 image:
-  tag: "13.1.4" # matches compose.yml
+  # 13.1.x, not 13.2.x - same reason as compose.yml (grafana/grafana#131876). Matches compose.yml.
+  tag: "13.1.7"
 
 env:
   GF_AUTH_ANONYMOUS_ENABLED: "true"
@@ -120,6 +121,9 @@ datasources:
             datasourceUid: loki
             spanStartTimeShift: '-10m'
             spanEndTimeShift: '10m'
-            filterByTraceID: true
-            filterBySpanID: true
-            tags: [ { key: 'service.name', value: 'job' } ]
+            # Custom query, not filterByTraceID/filterBySpanID: those append a line filter (|="<id>"),
+            # but trace_id lives in structured metadata (OTLP logs don't carry it in the line body),
+            # and Loki's label is service_name - there is no `job` label.
+            customQuery: true
+            query: '{$${__tags}} | trace_id="$${__trace.traceId}"'
+            tags: [ { key: 'service.name', value: 'service_name' } ]

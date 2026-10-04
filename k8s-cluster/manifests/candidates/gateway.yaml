@@ -1,6 +1,6 @@
 # kubectl apply -f gateway.yaml
 # Cilium Gateway API entry point for the system's public API. Requires:
-# - Gateway API CRDs (standard channel v1.4.1) already installed cluster-wide.
+# - Gateway API CRDs (standard channel v1.6.2) already installed cluster-wide.
 # - Cilium's kubeProxyReplacement + gatewayAPI.enabled=true (see
 #   k8s-cluster/manifests/cilium/values-cilium.yaml).
 #
