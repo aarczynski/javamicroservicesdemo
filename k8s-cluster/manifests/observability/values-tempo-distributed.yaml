@@ -1,9 +1,9 @@
 # helm repo add grafana-community https://grafana-community.github.io/helm-charts
-# helm install tempo grafana-community/tempo-distributed -n observability -f values-tempo-distributed.yaml --version 3.5.1
+# helm install tempo grafana-community/tempo-distributed -n observability -f values-tempo-distributed.yaml --version 3.10.1
 #
 # Replaces values-tempo.yaml (single-binary Tempo, 2.10.8 — permanently stuck below
 # Compose's 3.0.3, see the removed pitfall-4 comments in that file's git history).
-# tempo-distributed's chart is current with Tempo 3.x (appVersion 3.0.3, matches
+# tempo-distributed's chart is current with Tempo 3.x (appVersion 3.1.0, matches
 # Compose) because it models the *microservices* architecture Tempo 3.0 actually
 # shipped: distributor -> Kafka -> {live-store, block-builder} -> {backend-scheduler,
 # backend-worker} -> {querier, query-frontend}. No more ingester/compactor — those

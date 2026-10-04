@@ -1,7 +1,7 @@
 # Separate from Dockerfile (used by Compose's bind-mount approach). Build
 # context must be repo root so the data file is reachable:
 #   docker build -f load-background/Dockerfile.k8s -t <tag> .
-FROM grafana/k6:2.0.0
+FROM grafana/k6:2.3.0
 
 COPY load-background/entrypoint.sh /entrypoint.sh
 COPY load-background/src/candidate-search.js /scripts/candidate-search.js

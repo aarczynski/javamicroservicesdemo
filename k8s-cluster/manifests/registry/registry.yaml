@@ -67,7 +67,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: registry
-          image: registry:3.1.1
+          image: registry:3.1.2
           env:
             # No pruning policy on this registry yet, and tags accumulate one
             # per deploy (git-sha tagged, see deploy.sh) — allow blob deletion

@@ -35,7 +35,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export KUBECONFIG="$ROOT_DIR/k8s-cluster/kubeconfig-minikube"
 export MINIKUBE_HOME="$ROOT_DIR/k8s-cluster/.minikube"
 
-KUBERNETES_VERSION="${KUBERNETES_VERSION:-v1.36.0}"
+KUBERNETES_VERSION="${KUBERNETES_VERSION:-v1.36.5}"
 MINIKUBE_CPUS="${MINIKUBE_CPUS:-8}"
 MINIKUBE_MEMORY="${MINIKUBE_MEMORY:-20000}"
 

@@ -1,11 +1,11 @@
 # helm repo add grafana-community https://grafana-community.github.io/helm-charts
-# helm install grafana grafana-community/grafana -n observability -f values-grafana.yaml --version 12.11.2
+# helm install grafana grafana-community/grafana -n observability -f values-grafana.yaml --version 13.2.7
 #
 # NOTE: grafana.github.io/helm-charts is frozen (migrated to grafana-community/helm-charts
 # on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.
 
 image:
-  tag: "13.1.4" # matches compose.yml
+  tag: "13.2.3" # matches compose.yml
 
 env:
   GF_AUTH_ANONYMOUS_ENABLED: "true"
