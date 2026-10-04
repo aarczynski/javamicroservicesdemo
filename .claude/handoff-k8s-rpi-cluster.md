@@ -155,6 +155,11 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
    albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
 
+10a. **Dashboardy Grafany na klastrze ładują się za wolno (zgłoszone 2026-10-04, problem „od dawna”).** Wykresy długo
+   się wczytują. Nie badane — przyczyna nieznana. Na start: zmierzyć czas pojedynczych zapytań paneli (Query
+   inspector w Grafanie albo `/api/ds/query` z pomiarem czasu) i porównać z obciążeniem Prometheusa/Loki
+   (`prometheus-server`, `loki-0` — oba na `observability-2`, płytka D0).
+
 11. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
    (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
