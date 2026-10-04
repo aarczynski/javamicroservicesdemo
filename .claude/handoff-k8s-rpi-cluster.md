@@ -151,10 +151,6 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-load-data`
    (2026-09-28, jedno z pięciu przeładowań). Ponowne uruchomienie przechodzi.
 
-10. **Docker Compose — niezweryfikowane na żywo**: fix OTel/Micrometer (`otel-metrics-filter` + `MeterFilter.deny`)
-   i zmienna `Instance` na dashboardzie JVM (`host.name` nie jest ustawione w Compose — może wyjść hash kontenera
-   albo pusto). Odpalić `docker compose up` i sprawdzić dashboard JVM.
-
 10a. **Dashboardy Grafany na klastrze ładują się za wolno (zgłoszone 2026-10-04, problem „od dawna”).** Wykresy długo
    się wczytują. Nie badane — przyczyna nieznana. Na start: zmierzyć czas pojedynczych zapytań paneli (Query
    inspector w Grafanie albo `/api/ds/query` z pomiarem czasu) i porównać z obciążeniem Prometheusa/Loki
