@@ -5,7 +5,8 @@
 # on 2026-01-30) — use grafana-community, not grafana, or you get stale/unmaintained charts.
 
 image:
-  tag: "13.2.3" # matches compose.yml
+  # 13.1.x, not 13.2.x - same reason as compose.yml (grafana/grafana#131876). Matches compose.yml.
+  tag: "13.1.7"
 
 env:
   GF_AUTH_ANONYMOUS_ENABLED: "true"
