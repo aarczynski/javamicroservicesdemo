@@ -209,6 +209,14 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
   kandydaci też dostają nowe UUID.
 
 ### minikube
+- **Pełny dysk Docker Desktop zatrzymuje Loki po cichu (2026-10-04).** Dysk minikube (sterownik docker) to dysk VM
+  Docker Desktop — przy 99% Loki odrzucał wszystkie pushe z Alloy komunikatem „Ingester is shutting down”, a
+  wyglądał na zdrowy. Puste panele „by Pod”/dyskowe na minikube to z kolei stałe ograniczenie cAdvisora/node-exportera
+  w minikube, nie błąd dashboardów (na klastrze mają dane). Szczegóły: `overlays/minikube/README.md`, „Known gaps”.
+- **Trace → logi w Grafanie nie działały nigdzie (naprawione 2026-10-04 w repo, na klastrze jeszcze nie).**
+  `tracesToLogsV2` mapował `service.name` na nieistniejącą etykietę `job` i filtrował po treści linii, a `trace_id`
+  jest w structured metadata. Teraz własne zapytanie `{service_name=…} | trace_id="…"` — zweryfikowane na compose i
+  minikube (logi dla 10/10 zachowanych trace'ów). Na klaster wchodzi z `helm upgrade grafana` (values-grafana.yaml).
 - **`make minikube-start` wznawia klaster na starych obrazach** — niczego nie przebudowuje. 2026-09-28 minikube
   chodził na obrazach z 2026-09-21 (sprzed fixu JVM CPU `60cdd0b`, natywnego SQL, samplingu trace'ów): dwie z pięciu
   instancji raportowały `jvm_cpu_recent_utilization_ratio` = 0, co na dashboardzie wyglądało jak "pracują 2 z 3 i 1
