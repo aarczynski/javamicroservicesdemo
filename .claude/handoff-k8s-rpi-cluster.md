@@ -43,24 +43,25 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
-0a. **Podbicie zależności (2026-10-04) — w repo; na klastrze dotąd tylko RustFS + Tempo (chart 3.10.1 / Tempo
-   3.1.0, odczyt bloków z RustFS zweryfikowany) i Grafana (chart 13.2.7 / obraz 13.1.7 — 13.2 ma regres z toastem „Unauthorized” dla anonimów,
-   grafana/grafana#131876, poprawka dopiero w 13.3; z fixem trace → logi), obie
-   wdrożone 2026-10-04. Reszta czeka.** Po tej zmianie
-   **2100 rps × 10 min: 0% KO, p50/p95/p99 26/194/382 ms** (aplikacje bez restartu od 18 h, Tempo ~15 min po
-   upgrade) — sufit trzyma, węzły observability 2–12% CPU, ślady z testu w RustFS (4 bloki), zero restartów Tempo. Spring Boot 4.1.1, OTel agent 2.32.0,
-   Postgres 18.6, Grafana 13.2.3 (chart 13.2.7), Prometheus chart 29.35.0, Loki chart 18.13.7, tempo-distributed
-   3.10.1 (Tempo 3.1.0), otel-collector chart 0.175.0 (0.161.0), Alloy chart 1.13.0, Cilium 1.20.2, Gateway API
-   v1.6.2, registry 3.1.2. Kolejność wdrożenia na żywym klastrze:
-   - **Najpierw CRD Gateway API v1.6.2** (pętla z `bootstrap.sh`, `--server-side`, teraz też `backendtlspolicies` i
-     `tlsroutes`) — Cilium 1.20 wymaga >= v1.6.1.
+0a. **Podbicie zależności (2026-10-04 + 2026-10-15) — w repo, na klastrze w toku.** Na klastrze już od 2026-10-04:
+   RustFS + Tempo (chart 3.10.1 / Tempo 3.1.0) i Grafana (chart 13.2.7, obraz 13.1.x — 13.2 ma regres z toastem
+   „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Podbicie 2026-10-15 dodało: Gradle
+   9.8.1, Flyway 13.10.0, pgjdbc 42.7.14, Spock 2.5, Grafana 13.1.8 (chart 13.6.0), Prometheus chart 29.37.0, Loki
+   chart 18.15.1, Strimzi 1.3.0, tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy chart
+   1.13.1, grpc-health-probe v0.4.59. Compose i świeży minikube zweryfikowane (w tym linki logi ↔ trace).
+   Kolejność wdrożenia na żywym klastrze (stan przed: Cilium 1.19.5, Gateway API v1.4.1, Loki 18.11.3,
+   otel-collector 0.171.0, Prometheus 29.27.0, Alloy 1.12.1, Strimzi 1.2.0, appki `650912d`):
+   - **Najpierw CRD Gateway API v1.6.2** (pętla z `bootstrap.sh`, `--server-side`) — Cilium 1.20 wymaga >= v1.6.1.
    - **Cilium 1.19.5 → 1.19.8 → 1.20.2**, nie od razu 1.20 — upgrade guide Cilium wymaga najpierw najnowszego patcha
      bieżącej wersji minor. Upgrade przerywa połączenia przez proxy Envoy (Gateway `.100`).
-   - Chart Grafany 13.x domyślnie wymusza `readOnlyRootFilesystem` i obraz `-distroless`; zostajemy przy
-     standardowym tagu `13.2.3` (sprawdzone lokalnie: startuje z read-only rootfs + `/tmp` jako emptyDir).
-   - Potem obrazy appek (`k8s-deploy`) — zmieniona nazwa env `OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED`.
+   - **CRD Strimzi 1.3.0 przed operatorem** — `helm upgrade` nie aktualizuje CRD z `crds/` (komenda w `bootstrap.sh`).
+   - Charty observability w kolejności z `bootstrap.sh`, potem obrazy appek (`k8s-deploy`).
    Kubernetes 1.36 → 1.37 świadomie poza tym podbiciem (`kubeadm upgrade` węzeł po węźle, osobna operacja).
-   Po wdrożeniu zmierzyć sufit RPS ponownie (Boot 4.1 / Tempo 3.1 mogą go przesunąć w obie strony).
+   Po wdrożeniu zmierzyć sufit RPS ponownie.
+   **Power cycle 2026-10-15:** `observability-1` wisiał od 2026-10-11 13:17 (brak pinga i SSH), Kafka/Tempo w
+   `Terminating` przez 4 dni. Po restarcie klaster wstał sam, bez `failed to reserve container name`; lag
+   `block-builder` tylko 52 (bez resetu offsetu). `tempo-block-builder` i `entity-operator` utknęły w backoffie po
+   starcie przed brokerem Kafki — wystarczyło usunąć pody.
 
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
@@ -181,8 +182,10 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
   Po zamianie IP między płytkami odświeżyć `~/.ssh/known_hosts` (`ssh-keygen -R` + `ssh-keyscan`).
 - **`GatewayClass "cilium"` nigdy nie był tworzony przez żaden skrypt** — istniał na klastrze tylko dzięki
   zapomnianemu ręcznemu krokowi sprzed pełnej automatyzacji. Ujawnione dopiero przy pełnym `kubeadm reset` +
-  rebuild (2026-09-20): Gateway wisiał w `Pending`, MetalLB nie miał czego ogłaszać. **Fix na stałe**: nowy
-  `k8s-cluster/manifests/cilium/gatewayclass.yaml` + krok w `bootstrap.sh` zaraz po instalacji Gateway API CRDs.
+  rebuild (2026-09-20): Gateway wisiał w `Pending`, MetalLB nie miał czego ogłaszać. Przyczyna: chart Cilium
+  z `gatewayClass.create: auto` tworzy go tylko, gdy CRD Gateway API są widoczne przy instalacji. **Fix na stałe
+  (2026-10-15)**: `gatewayClass.create: "true"` w `values-cilium.yaml` — chart zawsze go tworzy (wcześniej osobny
+  `gatewayclass.yaml`, przez który `helm upgrade` do 1.19.8 odmówił przejęcia obiektu).
 - **`podAntiAffinity` bez jawnego `namespaces` w `labelSelector` widzi tylko własny namespace** — cross-namespace
   reguła (np. `app-candidates` unikający `app-job-offers` w innym namespace) wygląda poprawnie skonfigurowana, ale
   cicho nigdy się nie odpala. Zawsze dopisywać jawną listę `namespaces`.

@@ -42,6 +42,12 @@ echo "==> CNI: Cilium 1.20.2 (includes Hubble Relay/UI, Gateway API controller)"
 helm upgrade --install cilium cilium/cilium -n kube-system --version 1.20.2 \
   -f "$MANIFESTS/cilium/values-cilium.yaml" \
   -f "$OVERLAY/cilium-values.yaml"
+# On a fresh minikube, pods created before cilium-agent is ready get an IP but no
+# working route (`10.96.0.1:443: no route to host`) and crash-loop forever - hit
+# with Cilium 1.20.2 on 2026-10-15 by metallb-controller and hubble-relay/ui.
+echo "    Waiting for cilium-agent, then recreating the Hubble pods that started alongside it"
+kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
+kubectl rollout restart deployment/hubble-relay deployment/hubble-ui -n kube-system
 
 echo "==> MetalLB 0.16.1"
 kubectl create namespace metallb-system --dry-run=client -o yaml | kubectl apply -f -
@@ -87,18 +93,22 @@ kubectl apply -f "https://raw.githubusercontent.com/rancher/local-path-provision
 echo "==> Observability namespace"
 kubectl apply -f "$MANIFESTS/observability/namespace.yaml"
 
-echo "==> Prometheus 29.35.0"
-helm upgrade --install prometheus prometheus-community/prometheus -n observability --version 29.35.0 \
+echo "==> Prometheus 29.37.0"
+helm upgrade --install prometheus prometheus-community/prometheus -n observability --version 29.37.0 \
   -f "$MANIFESTS/observability/values-prometheus.yaml" \
   -f "$OVERLAY/values-prometheus.yaml"
 
-echo "==> Loki 18.13.7"
-helm upgrade --install loki grafana-community/loki -n observability --version 18.13.7 \
+echo "==> Loki 18.15.1"
+helm upgrade --install loki grafana-community/loki -n observability --version 18.15.1 \
   -f "$MANIFESTS/observability/values-loki.yaml" \
   -f "$OVERLAY/values-loki.yaml"
 
-echo "==> Strimzi Kafka operator 1.2.0"
-helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n observability --version 1.2.0 \
+echo "==> Strimzi Kafka operator 1.3.0"
+# Helm installs a chart's crds/ only on first install, never upgrades them -
+# on an existing cluster a newer operator would otherwise run against stale CRDs.
+kubectl apply --server-side --force-conflicts \
+  -f https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.3.0/strimzi-crds-1.3.0.yaml
+helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n observability --version 1.3.0 \
   -f "$MANIFESTS/kafka/values-strimzi-operator.yaml" \
   -f "$OVERLAY/values-strimzi-operator.yaml"
 echo "    Waiting for the Kafka/KafkaNodePool CRDs the operator installs"
@@ -107,23 +117,23 @@ kubectl wait --for=condition=Established crd/kafkas.kafka.strimzi.io crd/kafkano
 echo "==> Kafka cluster + RustFS"
 kubectl apply -k "$OVERLAY/observability"
 
-echo "==> tempo-distributed 3.10.1"
-helm upgrade --install tempo grafana-community/tempo-distributed -n observability --version 3.10.1 \
+echo "==> tempo-distributed 3.12.0"
+helm upgrade --install tempo grafana-community/tempo-distributed -n observability --version 3.12.0 \
   -f "$MANIFESTS/observability/values-tempo-distributed.yaml" \
   -f "$OVERLAY/values-tempo-distributed.yaml"
 
-echo "==> otel-collector 0.175.0"
-helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability --version 0.175.0 \
+echo "==> otel-collector 0.176.0"
+helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability --version 0.176.0 \
   -f "$MANIFESTS/observability/values-otel-collector.yaml" \
   -f "$OVERLAY/values-otel-collector.yaml"
 
-echo "==> Alloy 1.13.0"
-helm upgrade --install alloy grafana/alloy -n observability --version 1.13.0 \
+echo "==> Alloy 1.13.1"
+helm upgrade --install alloy grafana/alloy -n observability --version 1.13.1 \
   -f "$MANIFESTS/alloy/values-alloy.yaml" \
   -f "$OVERLAY/values-alloy.yaml"
 
-echo "==> Grafana 13.2.7"
-helm upgrade --install grafana grafana-community/grafana -n observability --version 13.2.7 \
+echo "==> Grafana 13.6.0"
+helm upgrade --install grafana grafana-community/grafana -n observability --version 13.6.0 \
   -f "$MANIFESTS/observability/values-grafana.yaml" \
   -f "$OVERLAY/values-grafana.yaml"
 

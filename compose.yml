@@ -250,7 +250,7 @@ services:
     container_name: grafana
     # 13.1.x, not 13.2.x: 13.2 shows anonymous users an "Unauthorized" toast on every visit
     # (grafana/grafana#131876, fixed on main, not in any 13.2 release). Move up once 13.3 ships.
-    image: grafana/grafana:13.1.7
+    image: grafana/grafana:13.1.8
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin

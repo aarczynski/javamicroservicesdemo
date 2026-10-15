@@ -1,5 +1,5 @@
 # helm repo add grafana-community https://grafana-community.github.io/helm-charts
-# helm install tempo grafana-community/tempo-distributed -n observability -f values-tempo-distributed.yaml --version 3.10.1
+# helm install tempo grafana-community/tempo-distributed -n observability -f values-tempo-distributed.yaml --version 3.12.0
 #
 # Replaces values-tempo.yaml (single-binary Tempo, 2.10.8 — permanently stuck below
 # Compose's 3.0.3, see the removed pitfall-4 comments in that file's git history).

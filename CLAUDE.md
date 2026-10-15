@@ -512,7 +512,22 @@ After every dependency upgrade, verify the observability stack is intact by runn
    - **Prometheus** (`GET http://localhost:9090/api/v1/query`):
      - HTTP Monitoring: `http_server_request_duration_seconds_count{job="app-candidates", http_route=~"/api.*"}` returns data
      - JVM Monitoring: `jvm_memory_used_bytes{job="app-candidates"}`, `jvm_thread_count{job="app-candidates"}`, `jvm_cpu_recent_utilization_ratio{job="app-candidates"}` return data
+   - **Links between logs and traces** — a datasource config that looks right is not enough, the links must resolve.
+     Pick a trace id from Tempo search (traces are sampled, so start from Tempo, not from a random log). Search with
+     TraceQL `{resource.service.name="app-candidates"} && {resource.service.name="app-job-offers"}` — a plain
+     `service.name` tag search returns mostly `load-background`'s 404s, which never reach `app-job-offers`:
+     - Trace → logs: run the Tempo datasource's `tracesToLogsV2.query` with the placeholders filled in exactly as Grafana
+       does (`{service_name="app-candidates"} | trace_id="<traceId>"`) against Loki — it returns that trace's log lines,
+       for both services.
+     - Logs → trace: take the `trace_id` from one of those log lines (the field `derivedFields` matches) and fetch
+       `GET /api/datasources/proxy/uid/tempo/api/traces/<trace_id>` — it returns the trace with spans from both services.
 6. `docker compose down`
+7. Repeat steps 3-5 on local minikube (`make minikube-rebuild-all`, or `make minikube-deploy` on an existing one;
+   Grafana is forwarded to `localhost:3000`, `app-candidates` to `localhost:8080`, Prometheus only through the Grafana
+   proxy `GET /api/datasources/proxy/uid/prometheus/api/v1/query`). Check the logs ↔ traces links here too — minikube
+   runs the cluster's log path (Alloy, not the agent's OTLP export), so it can break independently of Compose.
+   Traces reach `tempo-distributed` through Kafka, so they show up in search up to a minute later than in Compose —
+   re-query before calling a missing trace a failure.
 
 ## Home Kubernetes Cluster (Raspberry Pi 5)
 

@@ -1,5 +1,5 @@
 # helm repo add grafana https://grafana.github.io/helm-charts
-# helm install alloy grafana/alloy -n observability -f values-alloy.yaml --version 1.13.0
+# helm install alloy grafana/alloy -n observability -f values-alloy.yaml --version 1.13.1
 #
 # NOTE: unlike Grafana/Loki/Tempo (see pitfall 1 in the observability values
 # files), the Alloy chart is NOT part of the grafana.github.io/helm-charts ->
