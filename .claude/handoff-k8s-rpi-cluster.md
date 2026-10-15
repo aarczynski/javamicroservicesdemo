@@ -43,7 +43,13 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
-0a. **Podbicie zależności (2026-10-04 + 2026-10-15) — w repo, na klastrze w toku.** Na klastrze już od 2026-10-04:
+0a. **Podbicie zależności (2026-10-04 + 2026-10-15) — na klastrze wszystko poza Cilium (stan 2026-10-15):** CRD
+   Gateway API v1.6.2, CRD + operator Strimzi 1.3.0, wszystkie charty observability, appki `23b837e`; checki z
+   `CLAUDE.md` (w tym linki logi ↔ trace) przechodzą. **Zostaje Cilium 1.19.5 → 1.19.8 → 1.20.2** — zablokowany
+   przez klasyfikator auto mode, do odpalenia ręcznie. Przed pierwszym `helm upgrade` oznaczyć istniejący
+   `GatewayClass cilium` do przejęcia przez Helma (`kubectl label gatewayclass cilium
+   app.kubernetes.io/managed-by=Helm` + `kubectl annotate gatewayclass cilium meta.helm.sh/release-name=cilium
+   meta.helm.sh/release-namespace=kube-system`), inaczej upgrade odmawia (chart od teraz go tworzy). Na klastrze już od 2026-10-04:
    RustFS + Tempo (chart 3.10.1 / Tempo 3.1.0) i Grafana (chart 13.2.7, obraz 13.1.x — 13.2 ma regres z toastem
    „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Podbicie 2026-10-15 dodało: Gradle
    9.8.1, Flyway 13.10.0, pgjdbc 42.7.14, Spock 2.5, Grafana 13.1.8 (chart 13.6.0), Prometheus chart 29.37.0, Loki
