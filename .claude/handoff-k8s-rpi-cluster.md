@@ -43,27 +43,21 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
    Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
 
-0a. **Podbicie zależności (2026-10-04 + 2026-10-15) — na klastrze wszystko poza Cilium (stan 2026-10-15):** CRD
-   Gateway API v1.6.2, CRD + operator Strimzi 1.3.0, wszystkie charty observability, appki `23b837e`; checki z
-   `CLAUDE.md` (w tym linki logi ↔ trace) przechodzą. **Zostaje Cilium 1.19.5 → 1.19.8 → 1.20.2** — zablokowany
-   przez klasyfikator auto mode, do odpalenia ręcznie. Przed pierwszym `helm upgrade` oznaczyć istniejący
-   `GatewayClass cilium` do przejęcia przez Helma (`kubectl label gatewayclass cilium
-   app.kubernetes.io/managed-by=Helm` + `kubectl annotate gatewayclass cilium meta.helm.sh/release-name=cilium
-   meta.helm.sh/release-namespace=kube-system`), inaczej upgrade odmawia (chart od teraz go tworzy). Na klastrze już od 2026-10-04:
-   RustFS + Tempo (chart 3.10.1 / Tempo 3.1.0) i Grafana (chart 13.2.7, obraz 13.1.x — 13.2 ma regres z toastem
-   „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Podbicie 2026-10-15 dodało: Gradle
-   9.8.1, Flyway 13.10.0, pgjdbc 42.7.14, Spock 2.5, Grafana 13.1.8 (chart 13.6.0), Prometheus chart 29.37.0, Loki
-   chart 18.15.1, Strimzi 1.3.0, tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy chart
-   1.13.1, grpc-health-probe v0.4.59. Compose i świeży minikube zweryfikowane (w tym linki logi ↔ trace).
-   Kolejność wdrożenia na żywym klastrze (stan przed: Cilium 1.19.5, Gateway API v1.4.1, Loki 18.11.3,
-   otel-collector 0.171.0, Prometheus 29.27.0, Alloy 1.12.1, Strimzi 1.2.0, appki `650912d`):
-   - **Najpierw CRD Gateway API v1.6.2** (pętla z `bootstrap.sh`, `--server-side`) — Cilium 1.20 wymaga >= v1.6.1.
-   - **Cilium 1.19.5 → 1.19.8 → 1.20.2**, nie od razu 1.20 — upgrade guide Cilium wymaga najpierw najnowszego patcha
-     bieżącej wersji minor. Upgrade przerywa połączenia przez proxy Envoy (Gateway `.100`).
-   - **CRD Strimzi 1.3.0 przed operatorem** — `helm upgrade` nie aktualizuje CRD z `crds/` (komenda w `bootstrap.sh`).
-   - Charty observability w kolejności z `bootstrap.sh`, potem obrazy appek (`k8s-deploy`).
-   Kubernetes 1.36 → 1.37 świadomie poza tym podbiciem (`kubeadm upgrade` węzeł po węźle, osobna operacja).
-   Po wdrożeniu zmierzyć sufit RPS ponownie.
+0a. **Podbicie zależności (2026-10-04 + 2026-10-15) — w całości na klastrze (2026-10-15).** Cilium 1.20.2, Gateway
+   API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1, tempo-distributed 3.12.0, otel-collector 0.162.0
+   (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2 ma regres z toastem „Unauthorized” dla anonimów,
+   grafana/grafana#131876, poprawka dopiero w 13.3), appki `23b837e` (Boot 4.1.1, OTel agent 2.32.0). Checki z
+   `CLAUDE.md` (w tym linki logi ↔ trace) przechodzą na Compose, minikube i klastrze. Kubernetes 1.36 → 1.37
+   świadomie poza tym podbiciem (osobna operacja). **Do zrobienia: zmierzyć sufit RPS ponownie** (Boot 4.1, Tempo
+   3.1, Cilium 1.20 mogą go przesunąć w obie strony) — dopiero po kilku godzinach rozgrzewki.
+   Pułapki z tego wdrożenia:
+   - **Operator Cilium 1.19.x nie startuje przy CRD Gateway API v1.6.x** — `TLSRoute` z kanału standard serwuje
+     tylko `v1`, operator 1.19 szuka `v1alpha2` (`no matches for kind "TLSRoute" in version ... v1alpha2`, fatal).
+     Pośredni krok 1.19.8 upadł na operatorze (agenty przeszły); pomogło od razu dokończenie na 1.20.2. Przy
+     następnym takim skoku: CRD Gateway API podbijać dopiero razem z wersją Cilium, która je obsługuje.
+   - Chart Cilium sam tworzy `GatewayClass cilium` (`gatewayClass.create: "true"`); obiekt założony wcześniej
+     `kubectl apply` trzeba było oznaczyć etykietą/adnotacjami Helma, żeby upgrade go przejął.
+   - Alloy (DaemonSet na 12 node'ach) nie mieści się w `--wait --timeout 10m` — dać 20 min.
    **Power cycle 2026-10-15:** `observability-1` wisiał od 2026-10-11 13:17 (brak pinga i SSH), Kafka/Tempo w
    `Terminating` przez 4 dni. Po restarcie klaster wstał sam, bez `failed to reserve container name`; lag
    `block-builder` tylko 52 (bez resetu offsetu). `tempo-block-builder` i `entity-operator` utknęły w backoffie po
