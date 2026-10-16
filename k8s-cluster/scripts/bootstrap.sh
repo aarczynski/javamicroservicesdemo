@@ -37,9 +37,6 @@ echo "==> CNI: Cilium 1.20.2 (includes Hubble Relay/UI, Gateway API controller)"
 helm upgrade --install cilium cilium/cilium -n kube-system \
   -f "$MANIFESTS/cilium/values-cilium.yaml" --version 1.20.2
 
-echo "==> Cilium GatewayClass (not auto-created by the Cilium chart, see gatewayclass.yaml)"
-kubectl apply -f "$MANIFESTS/cilium/gatewayclass.yaml"
-
 echo "==> CoreDNS: hard anti-affinity between its 2 replicas (kubeadm default is soft-only)"
 kubectl patch deployment coredns -n kube-system --type=strategic \
   --patch-file "$MANIFESTS/coredns/anti-affinity-patch.yaml"
@@ -76,20 +73,24 @@ kubectl apply -f "$MANIFESTS/registry/"
 echo "==> Observability stack"
 kubectl apply -f "$MANIFESTS/observability/namespace.yaml"
 helm upgrade --install prometheus prometheus-community/prometheus -n observability \
-  -f "$MANIFESTS/observability/values-prometheus.yaml" --version 29.35.0
+  -f "$MANIFESTS/observability/values-prometheus.yaml" --version 29.37.0
 helm upgrade --install loki grafana-community/loki -n observability \
-  -f "$MANIFESTS/observability/values-loki.yaml" --version 18.13.7
+  -f "$MANIFESTS/observability/values-loki.yaml" --version 18.15.1
+# Helm installs a chart's crds/ only on first install, never upgrades them -
+# on an existing cluster a newer operator would otherwise run against stale CRDs.
+kubectl apply --server-side --force-conflicts \
+  -f https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.3.0/strimzi-crds-1.3.0.yaml
 helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator -n observability \
-  -f "$MANIFESTS/kafka/values-strimzi-operator.yaml" --version 1.2.0
+  -f "$MANIFESTS/kafka/values-strimzi-operator.yaml" --version 1.3.0
 kubectl apply -f "$MANIFESTS/kafka/kafka-cluster.yaml" -f "$MANIFESTS/rustfs/rustfs.yaml"
 helm upgrade --install tempo grafana-community/tempo-distributed -n observability \
-  -f "$MANIFESTS/observability/values-tempo-distributed.yaml" --version 3.10.1
+  -f "$MANIFESTS/observability/values-tempo-distributed.yaml" --version 3.12.0
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -n observability \
-  -f "$MANIFESTS/observability/values-otel-collector.yaml" --version 0.175.0
+  -f "$MANIFESTS/observability/values-otel-collector.yaml" --version 0.176.0
 helm upgrade --install alloy grafana/alloy -n observability \
-  -f "$MANIFESTS/alloy/values-alloy.yaml" --version 1.13.0
+  -f "$MANIFESTS/alloy/values-alloy.yaml" --version 1.13.1
 helm upgrade --install grafana grafana-community/grafana -n observability \
-  -f "$MANIFESTS/observability/values-grafana.yaml" --version 13.2.7
+  -f "$MANIFESTS/observability/values-grafana.yaml" --version 13.6.0
 kubectl apply -f "$MANIFESTS/observability/dashboards-configmap.yaml"
 
 echo "==> Headlamp"

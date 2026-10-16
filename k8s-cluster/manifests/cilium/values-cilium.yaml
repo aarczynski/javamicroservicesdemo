@@ -67,3 +67,8 @@ k8sServicePort: "6443"
 
 gatewayAPI:
   enabled: true
+  # "true", not the chart's default "auto": auto only creates the GatewayClass when the
+  # Gateway API CRDs were already discoverable at install time - a rebuild that missed
+  # that left every Gateway Pending (2026-09-20).
+  gatewayClass:
+    create: "true"

@@ -1,7 +1,7 @@
 FROM alpine:3.24 AS dirs
 RUN mkdir -p /tmp/tempo && touch /tmp/tempo/.keep && chown -R 10001:10001 /tmp/tempo
 
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.57 AS grpc-health-probe
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.59 AS grpc-health-probe
 FROM grafana/tempo:3.1.0
 COPY --from=grpc-health-probe /ko-app/grpc-health-probe /grpc-health-probe
 COPY --chown=10001:10001 --from=dirs /tmp/tempo /tmp/tempo
