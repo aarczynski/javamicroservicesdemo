@@ -48,8 +48,7 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
    (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2 ma regres z toastem „Unauthorized” dla anonimów,
    grafana/grafana#131876, poprawka dopiero w 13.3), appki `23b837e` (Boot 4.1.1, OTel agent 2.32.0). Checki z
    `CLAUDE.md` (w tym linki logi ↔ trace) przechodzą na Compose, minikube i klastrze. Kubernetes 1.36 → 1.37
-   świadomie poza tym podbiciem (osobna operacja). **Do zrobienia: zmierzyć sufit RPS ponownie** (Boot 4.1, Tempo
-   3.1, Cilium 1.20 mogą go przesunąć w obie strony) — dopiero po kilku godzinach rozgrzewki.
+   świadomie poza tym podbiciem (osobna operacja).
    Pułapki z tego wdrożenia:
    - **Operator Cilium 1.19.x nie startuje przy CRD Gateway API v1.6.x** — `TLSRoute` z kanału standard serwuje
      tylko `v1`, operator 1.19 szuka `v1alpha2` (`no matches for kind "TLSRoute" in version ... v1alpha2`, fatal).
