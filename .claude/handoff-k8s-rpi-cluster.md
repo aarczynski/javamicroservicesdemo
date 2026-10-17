@@ -37,8 +37,6 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-0. **Opisy historyczne w tabeli node'ów w `CLAUDE.md`** — do odchudzenia po przetasowaniu D0/C1 (2026-10-03).
-
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
    (patrz pkt 8 — `pg_stat_statements` jako pierwszy pomiar). Kierunek (replikacja odczytów, partycjonowanie,
