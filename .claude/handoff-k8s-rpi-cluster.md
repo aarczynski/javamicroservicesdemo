@@ -1,66 +1,43 @@
 # Handoff: klaster k8s na RPi5
 
-Skondensowany handoff — stan na 2026-10-02. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
+Skondensowany handoff — stan na 2026-10-17. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
 żyje w historii gita tego pliku (`git log -p -- .claude/handoff-k8s-rpi-cluster.md`) — zakończone punkty są
 stąd usuwane, nie archiwizowane w treści.
 
 ## Obecny stan (skrót)
 
-12/12 node'ów fizycznych w klastrze, `kubeadm` (nie k3s), Cilium (CNI + Gateway API, bez kube-proxy), MetalLB (L2),
-`local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2, jedna replika na node) +
-ich Postgresy wdrożone, dane załadowane (100k candidates / **150k job offers / 10k companies** od 2026-09-28,
-`data-generator`). Stack observability:
-Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+RustFS). Ambient load
-(`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj).
+12/12 node'ów fizycznych w klastrze, `kubeadm` (nie k3s, Kubernetes 1.36), Cilium 1.20.2 (CNI + Gateway API v1.6.2,
+bez kube-proxy), MetalLB (L2), `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2,
+jedna replika na node) + ich Postgresy wdrożone, dane załadowane (100k candidates / **150k job offers / 10k
+companies**, `data-generator`). Stack observability: Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze
+`tempo-distributed` (Kafka+RustFS). Ambient load (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w
+`CLAUDE.md` (nie duplikować tutaj).
 
-**Zmierzony sufit (2026-10-02): 2100rps czyste na 150k ofert / 10k firm** (10 min, 0% KO), ogranicza CPU
-`postgres-job-offers` (~2,6/3 rdzenia); 2200 nie trzyma się powtarzalnie. Cała historia zmian odtworzona krok po kroku
-od stanu bazowego (400rps) na dzisiejszym klastrze i danych: `k8s-cluster/RPS-SCALING.md` — czytać przed każdą pracą
-nad skalowaniem, nie duplikować tutaj.
+**Płytki D0/C1 rozdzielone wg ról (przebudowa 2026-10-03):** 4× D0 → `master` + `observability-1/2/3`, 8× C1 →
+`platform-1`, `db-1/2`, `worker-1..5` — wszystkie appki i Postgresy na C1 (mapowanie MAC → rola w `inventory.ini`).
 
-**Klaster stoi na ostatnim stanie odtwarzania** (lokalny branch `replay/candidates-x3`, obrazy `38b73f9`), nie na
-`main`. Różnica: brak `max_parallel_workers_per_gather=0` na `postgres-job-offers` (na tych danych bez znaczenia —
-Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.md` ma swój lokalny branch `replay/*`
-(manifesty z gałkami + przypięte obrazy w rejestrze) — odtworzenie stanu to `kubectl apply` manifestów z brancha.
-`make candidateSimulation` przeciw klastrowi sam robi wymuszony pełny GC w appkach przed testem (`make k8s-gc`).
+**Klaster stoi na `main`**, obrazy appek `23b837e` (Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
+całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1,
+tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2
+ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Checki z
+`CLAUDE.md` (w tym linki logi ↔ trace) przechodzą na Compose, minikube i klastrze. Kubernetes 1.36 → 1.37 świadomie
+poza tym podbiciem (osobna operacja).
+
+**Zmierzony sufit (2026-10-03, po przebudowie): 2100rps czyste** (10 min, 0% KO, p50/p95/p99 25/~210/471 ms na
+klastrze stojącym ~2,5 h). 2200rps prawie, ale nie czysto (22 KO, p99 1859 ms) — ogranicza CPU `postgres-job-offers`
+(2,88/3 rdzenia, throttling 55%). Cała historia zmian odtworzona krok po kroku od stanu bazowego (400rps):
+`k8s-cluster/RPS-SCALING.md` — czytać przed każdą pracą nad skalowaniem, nie duplikować tutaj. Każdy krok stamtąd ma
+swój lokalny branch `replay/*` (manifesty z gałkami + przypięte obrazy w rejestrze) — odtworzenie stanu to
+`kubectl apply` manifestów z brancha. `make candidateSimulation` przeciw klastrowi sam robi wymuszony pełny GC w
+appkach przed testem (`make k8s-gc`).
+
+**Rozgrzewka po przebudowie/restarcie trwa ~2,5 h, nie 15-20 min** — te same dane i kod, każdy kolejny przebieg
+lepszy (JIT, Cilium, nadrabianie Tempo/Kafki; dokładna przyczyna niezbadana). Mierzyć capacity dopiero na klastrze
+stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-0. **Przetasowanie płytek D0/C1 + przebudowa klastra — zrobione 2026-10-03.** Wszystkie 4 D0 → `master` +
-   `observability-1/2/3`, 8× C1 → `platform-1`, `db-1/2`, `worker-1..5` (mapowanie MAC → rola w `inventory.ini`).
-   Pełna przebudowa: `kubeadm reset` 12/12 → `k8s-prep` → `k8s-init` → `k8s-bootstrap` → `k8s-deploy` (+
-   `k8s-deploy-load-background`) → `k8s-load-data candidates=100000 jobOffers=150000 companies=10000` → `VACUUM
-   ANALYZE`. Klaster stoi na `main` (`650912d`), nie na `replay/*`. Wyniki (10 min stałego ruchu, Mac na AC):
-   - 2100 rps, ~20 min po starcie klastra: 0,01% KO, p50/p95/p99 243/884/1303 ms.
-   - 2100 rps, ~45 min: 0% KO, 42/~450/583 ms.
-   - **2100 rps, ~2,5 h: 0% KO, 25/~210/471 ms** — p99 lepsze niż 2026-09-28 (20/145/602).
-   - 2200 rps, ~1 h: 0,27% KO, p50 351 ms. **2200 rps, ~3 h: 22 KO (0,0015%), 233/977/1859 ms** — prawie, ale
-     nie czysto; `postgres-job-offers` 2,88/3, throttling 55%. Sufit nadal ~2100 czysto.
-   **Rozgrzewka po przebudowie trwa dużo dłużej niż 15-20 min** — te same dane i kod, każdy kolejny przebieg
-   lepszy przez ~2,5 h (JIT, Cilium, nadrabianie Tempo/Kafki; dokładna przyczyna niezbadana). Mierzyć dopiero na
-   klastrze stojącym kilka godzin. `max_parallel_workers_per_gather` (0 na `main` vs domyślne 2 na
-   `replay/candidates-x3`) **nie ma wpływu**: przy 2 `pg_stat_database.parallel_workers_launched` = 0 po ~6 mln
-   transakcji, planer nie wybiera planów równoległych. Przywrócone do stanu z repo (0).
-   Do zaktualizowania: tabela node'ów w `CLAUDE.md` (opisy historyczne).
-
-0a. **Podbicie zależności (2026-10-04 + 2026-10-15) — w całości na klastrze (2026-10-15).** Cilium 1.20.2, Gateway
-   API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1, tempo-distributed 3.12.0, otel-collector 0.162.0
-   (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2 ma regres z toastem „Unauthorized” dla anonimów,
-   grafana/grafana#131876, poprawka dopiero w 13.3), appki `23b837e` (Boot 4.1.1, OTel agent 2.32.0). Checki z
-   `CLAUDE.md` (w tym linki logi ↔ trace) przechodzą na Compose, minikube i klastrze. Kubernetes 1.36 → 1.37
-   świadomie poza tym podbiciem (osobna operacja).
-   Pułapki z tego wdrożenia:
-   - **Operator Cilium 1.19.x nie startuje przy CRD Gateway API v1.6.x** — `TLSRoute` z kanału standard serwuje
-     tylko `v1`, operator 1.19 szuka `v1alpha2` (`no matches for kind "TLSRoute" in version ... v1alpha2`, fatal).
-     Pośredni krok 1.19.8 upadł na operatorze (agenty przeszły); pomogło od razu dokończenie na 1.20.2. Przy
-     następnym takim skoku: CRD Gateway API podbijać dopiero razem z wersją Cilium, która je obsługuje.
-   - Chart Cilium sam tworzy `GatewayClass cilium` (`gatewayClass.create: "true"`); obiekt założony wcześniej
-     `kubectl apply` trzeba było oznaczyć etykietą/adnotacjami Helma, żeby upgrade go przejął.
-   - Alloy (DaemonSet na 12 node'ach) nie mieści się w `--wait --timeout 10m` — dać 20 min.
-   **Power cycle 2026-10-15:** `observability-1` wisiał od 2026-10-11 13:17 (brak pinga i SSH), Kafka/Tempo w
-   `Terminating` przez 4 dni. Po restarcie klaster wstał sam, bez `failed to reserve container name`; lag
-   `block-builder` tylko 52 (bez resetu offsetu). `tempo-block-builder` i `entity-operator` utknęły w backoffie po
-   starcie przed brokerem Kafki — wystarczyło usunąć pody.
+0. **Opisy historyczne w tabeli node'ów w `CLAUDE.md`** — do odchudzenia po przetasowaniu D0/C1 (2026-10-03).
 
 1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
    większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
@@ -99,31 +76,14 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
      retencji, catch-up nie mieści się w RAM `observability-1`). Obejście: reset offsetu grupy `block-builder`
      `--to-latest` (procedura w git history tego pliku, 2026-09-22). Trwale: krótsza retencja topicu
      `tempo-traces`, albo automatyczny reset przy starcie.
-   - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać, że pierwsze kilkanaście minut to
-     rozgrzewka (JIT, Cilium) — nie mierzyć wtedy capacity.
+   - **Power cycle 2026-10-15** (`observability-1` wisiał od 2026-10-11 bez pinga i SSH, Kafka/Tempo 4 dni w
+     `Terminating`): klaster wstał sam, bez `failed to reserve container name`; lag `block-builder` tylko 52 (bez
+     resetu offsetu). `tempo-block-builder` i `entity-operator` utknęły w backoffie po starcie przed brokerem
+     Kafki — wystarczyło usunąć pody.
+   - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać o rozgrzewce (patrz „Obecny stan”) —
+     nie mierzyć wtedy capacity.
 
-6. **Workery nie są równie szybkie — przyczyna: stepping SoC D0 (lub jego bootloader), nie kernel (2026-10-03).**
-   Rev 1.1 (`d04171`: `worker-1`/`-2`/`-5`, `observability-3`) to **BCM2712 D0**, Rev 1.0 (`d04170`, reszta floty) to
-   **C1** — rozpoznanie po `sudo strings /sys/firmware/fdt | grep -o 'bcm2712[a-z0-9]*-pinctrl'`. Mikrobenchmark na
-   hoście (`taskset -c 3`, `python3` + `ctypes.memset`/`memmove`/`memcmp` w pętli, bufory 256K-64M, best of 3): **zapis**
-   na D0 ~2× wolniejszy już od L2 (memset 0 przy 256K: 26 vs 57 GB/s; 1,5M: 10 vs 25-34; DRAM: 6,9 vs 13,3 GB/s),
-   **odczyt** prawie równy (DRAM 10,6 vs 12,3 GB/s). `worker-2` (kernel 6.17) jest **tak samo wolny** jak `-1`/`-5` na
-   6.8 — wcześniejszy wniosek "szybki dzięki nowszemu kernelowi" był błędny (`dd` z `/dev/zero` mierzy też ścieżkę
-   kernela, która się między wersjami zmienia). `numa=fake=8` w cmdline `worker-2` dokleja firmware, ale kernel Ubuntu
-   go odrzuca (brak `CONFIG_NUMA`) — nie gra roli. JVM (zerowanie TLAB, kopiowanie w GC) jest zapisochłonny, co pasuje
-   do ~10-15% więcej CPU/request na D0. **Rozstrzygnięte: krzem, nie firmware** — `worker-1` dostał bootloader
-   `2026-09-25` (zawiera 2025-10-17 "Enable background refresh on 2712d0"), zapis L3/DRAM bez zmian (1,5M ~10 GB/s,
-   DRAM 6,9 GB/s). Różnica w L2 z pierwszego pomiaru była szumem od działającej appki — na pustym node'zie D0 ma L2
-   jak C1 (memset 0 przy 256K: 53 GB/s); porównywać zawsze node'y w tym samym stanie (pusty vs. z podem).
-   Tabela wszystkich 12 node'ów (płytka/SoC/pomiar): `k8s-cluster/RPS-SCALING.md` → "Known issue: not every Pi 5 is
-   equally fast". Firmware tego nie naprawi, zostaje rozmieszczenie: obecnie wszystkie 3 repliki `app-candidates` siedzą na D0
-   (`worker-1`/`-2`/`-5`), oba `app-job-offers` na C1 (`worker-3`/`-4`), Postgresy na C1 (`db-1`/`-2`).
-   Flash bootloadera: repo `rpi-eeprom` (paczka Ubuntu kończy się na 2024-11) i
-   `sudo env PATH="$HOME/rpi-eeprom:$PATH" FIRMWARE_ROOT="$HOME/rpi-eeprom/firmware" ~/rpi-eeprom/rpi-eeprom-update -f <bin>`
-   — bez `PATH` skrypt woła stary systemowy `rpi-eeprom-digest` bez `-c` i cicho nic nie przygotowuje; nowy skrypt
-   flashuje od razu przez `flashrom`, restart tylko po to, żeby nowy bootloader zadziałał. Osobno nadal niezbadany pad
-   sieciowy `worker-2` z 2026-09-23 (`journalctl -b -1`).
-   SSH kluczem: `aarczynski@<IP z inventory.ini>`.
+6. **Niezbadany pad sieciowy `worker-2` z 2026-09-23** (`journalctl -b -1`). Niskopriorytetowe, nie powtórzył się.
 
 7. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
    w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
@@ -164,6 +124,11 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
 ### Automatyzacja / bootstrap
+- **Operator Cilium 1.19.x nie startuje przy CRD Gateway API v1.6.x (2026-10-15)** — `TLSRoute` z kanału standard
+  serwuje tylko `v1`, operator 1.19 szuka `v1alpha2` (`no matches for kind "TLSRoute" in version ... v1alpha2`,
+  fatal). Pośredni krok 1.19.8 upadł na operatorze (agenty przeszły); pomogło od razu dokończenie na 1.20.2. Przy
+  następnym takim skoku: CRD Gateway API podbijać dopiero razem z wersją Cilium, która je obsługuje.
+- Alloy (DaemonSet na 12 node'ach) nie mieści się w `helm --wait --timeout 10m` — dać 20 min.
 - **MinIO przestało publikować obrazy** (Docker Hub wrzesień 2026, quay.io 401 od 2026-10-03) — klaster jechał
   tylko na cache containerd. **2026-10-04 zastąpione RustFS** (`k8s-cluster/manifests/rustfs/`, `rustfs/rustfs:1.0.1`
   z Docker Hub, arm64). Bucket zakłada initContainer przez `mkdir` (RustFS traktuje katalog w `/data` jako bucket),
@@ -383,6 +348,21 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
   `app-job-offers` w poszukiwaniu prawdziwej przyczyny innego problemu). Nic do zrobienia — nie próbować "naprawiać"
   przez usuwanie klas z bootstrap classpath, bo to zepsułoby samą instrumentację OTel.
 
+### Sprzęt: płytki D0 vs C1
+- **Rev 1.1 (`d04171`) to BCM2712 D0, Rev 1.0 (`d04170`) to C1** — rozpoznanie po
+  `sudo strings /sys/firmware/fdt | grep -o 'bcm2712[a-z0-9]*-pinctrl'`. Na D0 **zapis** do pamięci jest ~2×
+  wolniejszy od L3 w górę (memset 1,5M: 10 vs 25-34 GB/s; DRAM: 6,9 vs 13,3 GB/s), odczyt prawie równy. JVM (zerowanie
+  TLAB, kopiowanie w GC) jest zapisochłonny → ~10-15% więcej CPU/request na D0. To krzem, nie kernel ani firmware
+  (bootloader `2026-09-25` z "Enable background refresh on 2712d0" nic nie zmienił). Dlatego od 2026-10-03 D0 obsługują
+  tylko `master`/`observability-*`. Pomiary (`taskset -c 3`, `python3` + `ctypes.memset`/`memmove`, bufory 256K-64M,
+  best of 3) porównywać na node'ach w tym samym stanie (pusty vs. z podem) — działająca appka zaszumia L2. Tabela
+  wszystkich 12 node'ów: `k8s-cluster/RPS-SCALING.md` → "Known issue: not every Pi 5 is equally fast".
+- Flash bootloadera: repo `rpi-eeprom` (paczka Ubuntu kończy się na 2024-11) i
+  `sudo env PATH="$HOME/rpi-eeprom:$PATH" FIRMWARE_ROOT="$HOME/rpi-eeprom/firmware" ~/rpi-eeprom/rpi-eeprom-update -f <bin>`
+  — bez `PATH` skrypt woła stary systemowy `rpi-eeprom-digest` bez `-c` i cicho nic nie przygotowuje; nowy skrypt
+  flashuje od razu przez `flashrom`, restart tylko po to, żeby nowy bootloader zadziałał. SSH kluczem:
+  `aarczynski@<IP z inventory.ini>`.
+
 ### Load-testing / metodologia wydajności
 - **Testować jedną zmienną na raz pod realnym współbieżnym obciążeniem** — bundlowana zmiana dwóch rzeczy naraz
   potrafi zamaskować, że jedna z nich jest katastrofalna a druga to czysty zysk. Pojedynczy `EXPLAIN ANALYZE` czy request nie przewiduje zachowania pod współbieżnością.
@@ -404,5 +384,8 @@ Postgres i tak nie odpala równoległych workerów). Każdy krok z `RPS-SCALING.
 - **Po power cyclu 2026-09-27**: unattended-upgrades podniosły kernel na `6.8.0-1065` na 9 node'ach (`worker-1`/`-4`
   zostały na 1064, `worker-2` na 6.17), a nieczyste zamknięcie wyzerowało `pg_stat_user_tables` (statystyki planera w
   `pg_class`/`pg_stats` przetrwały). Na wyniki nie wpłynęło — ale kernel dryfuje sam, warto rozważyć przypięcie.
+- **`max_parallel_workers_per_gather` na `postgres-job-offers` nie ma wpływu** (2026-10-03): przy domyślnym 2
+  `pg_stat_database.parallel_workers_launched` = 0 po ~6 mln transakcji — planer nie wybiera planów równoległych.
+  W repo zostaje 0.
 - Masowy restart całego klastra zawsze daje kilkanaście-kilkadziesiąt minut degradacji (JIT warmup appek + Cilium/
   CNI reconciliation) — nie traktować pierwszego load testu po restarcie jako miarodajnego pomiaru capacity.
