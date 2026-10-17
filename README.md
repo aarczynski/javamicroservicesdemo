@@ -722,10 +722,22 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   percentile histograms (`publishPercentileHistogram`/`publishPercentiles`) can be wired through the OTel Java
   agent, or whether finer/more tail-weighted histogram bucket boundaries in the OTel Collector's config would
   narrow the estimation error enough to be usable as-is.
-* Running `load-test` against the Gateway from a client on Wi-Fi, or on a different VLAN than the cluster, produces
-  `ConnectTimeoutException`/dropped SYNs unrelated to cluster capacity — packet capture traced it to the client↔cluster
-  route itself (Wi-Fi instability and/or inter-VLAN routing), not Cilium/Envoy/the apps. Wire the client directly into
-  the cluster's VLAN for load tests that need clean results.
+* **Run `load-test` from a client inside the cluster's VLAN (`192.168.10.0/24`), wired.** From Wi-Fi, or from another
+  VLAN, results are polluted by the client↔cluster route, not by Cilium/Envoy/the apps:
+  * Wi-Fi produces `ConnectTimeoutException`/dropped SYNs and periodic multi-second stalls.
+  * Inter-VLAN traffic goes through the router (ER7406). Measured 2026-10-17 at 2100 rps: after ~4-5 minutes of load
+    the router stalls every ~33 s for 0.3-3 s (growing with test length) — a ping from a cluster node to the router
+    stalls too, while node-to-node pings through the switch alone stay clean. Gatling keeps sending, no responses come
+    back for 2-3 s, then the backlog arrives at once and Envoy answers ~4k requests with 503; the app pods sit idle
+    during the stall. Router CPU in Omada stays low (~16% average), DPI and IPS are off. 3-minute tests don't reach it.
+  * A client on a dock port carrying both VLANs (Default untagged, Cloud tagged) can join the Cloud VLAN with a macOS
+    VLAN interface on top of the wired adapter (`sudo networksetup -createVLAN Cloud en10 2` — VLAN ID 2; the service
+    shows up as "Cloud Configuration"). Traffic to `192.168.10.x` then goes straight through the switch, everything else
+    still through the Default VLAN. **Set that interface's MTU to 1496** (`sudo networksetup -setMTU vlan0 1496`): with
+    the default 1500 a full-size frame plus the 4-byte VLAN tag is silently dropped on that path (`ping -D -s 1472`
+    fails, `-s 1468` passes), so small requests work but larger responses hang until Gatling's 60 s timeout, and
+    Gatling opening replacement connections exhausts the Mac's ephemeral ports (`BindException: Can't assign
+    requested address`, 84% KO).
 * **A load test much shorter than the dashboard's visible time range will not show a real CPU bottleneck.** All
   `rate()` queries on these dashboards use `$__rate_interval` (Grafana's self-adjusting window based on the visible
   time range and scrape interval) rather than a hardcoded one — the correct general-purpose choice, since a fixed
