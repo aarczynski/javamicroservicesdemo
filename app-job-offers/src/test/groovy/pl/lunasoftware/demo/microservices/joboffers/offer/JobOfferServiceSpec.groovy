@@ -1,14 +1,10 @@
 package pl.lunasoftware.demo.microservices.joboffers.offer
 
-import org.instancio.Instancio
-import pl.lunasoftware.demo.microservices.joboffers.company.CompanyEntity
+import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferMatch.RequiredSkill
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSearchRequest
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSkillRequest
 import pl.lunasoftware.demo.microservices.joboffers.skill.SeniorityLevel
-import pl.lunasoftware.demo.microservices.joboffers.skill.SkillEntity
 import spock.lang.Specification
-
-import static org.instancio.Select.field
 
 class JobOfferServiceSpec extends Specification {
 
@@ -39,16 +35,16 @@ class JobOfferServiceSpec extends Specification {
         service.search(request)
 
         then:
-        1 * jobOfferRepository.findCandidateMatchIds(_, _, _, _, _, ['B2B'], ['Java'] as Set) >> []
+        1 * jobOfferRepository.findCandidateMatches(_, _, _, _, _, ['B2B'] as String[], ['Java'] as String[]) >> []
     }
 
     def "should return matched offers sorted by score descending"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
 
-        def javaSkill = skill('Java')
-        def springSkill = skill('Spring Boot')
-        def reactSkill = skill('React')
+        def javaSkill = 'Java'
+        def springSkill = 'Spring Boot'
+        def reactSkill = 'React'
 
         def offerWithBothSkills = offer(company, 20000, [
                 offerSkill(javaSkill, '1.00', true, SeniorityLevel.MID),
@@ -74,8 +70,8 @@ class JobOfferServiceSpec extends Specification {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
         def offerSkills = [
-                offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID),
-                offerSkill(skill('Spring Boot'), '0.80', true, SeniorityLevel.MID)
+                offerSkill('Java', '1.00', true, SeniorityLevel.MID),
+                offerSkill('Spring Boot', '0.80', true, SeniorityLevel.MID)
         ]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId)
@@ -92,7 +88,7 @@ class JobOfferServiceSpec extends Specification {
     def "should reduce score when candidate seniority is below required"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.SENIOR)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.SENIOR)]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId)
         stubMatches([theOffer])
@@ -108,7 +104,7 @@ class JobOfferServiceSpec extends Specification {
     def "should give maximum score when offer is higher than expected salary"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.MID)]
         def theOffer = offer(company, 25000, offerSkills)  // Higher than expected
         stubMatches([theOffer])
 
@@ -124,7 +120,7 @@ class JobOfferServiceSpec extends Specification {
     def "should decrease score when offer is below expected salary"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.MID)]
         def theOffer = offer(company, 15000, offerSkills)
         stubMatches([theOffer])
 
@@ -141,7 +137,7 @@ class JobOfferServiceSpec extends Specification {
     def "should reduce score when candidate lacks required years of experience"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.SENIOR)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.SENIOR)]
         def theOffer = offer(company, 20000, offerSkills, UUID.randomUUID(), 5)
         stubMatches([theOffer])
 
@@ -156,7 +152,7 @@ class JobOfferServiceSpec extends Specification {
     def "should reduce score when candidate remote preference mismatches office requirement"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.MID)]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId, 0, 80)
         stubMatches([theOffer])
@@ -172,7 +168,7 @@ class JobOfferServiceSpec extends Specification {
     def "should give maximum distance score for fully remote offer regardless of candidate distance"() {
         given:
         def distantCompany = companyAt(51.5074, -0.1278) // London — ~1700 km, outside RADIUS_KM
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.MID)]
         def fullyRemoteOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 0)
         def inOfficeOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 100)
         stubMatches([fullyRemoteOffer, inOfficeOffer])
@@ -187,7 +183,7 @@ class JobOfferServiceSpec extends Specification {
     def "should reduce distance penalty proportionally to allowed home office days"() {
         given:
         def distantCompany = companyAt(51.5074, -0.1278) // London — ~1700 km, outside RADIUS_KM
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.MID)]
         def fullyRemoteOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 0)
         def hybridOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 60)
         def inOfficeOffer = offer(distantCompany, 20000, offerSkills, UUID.randomUUID(), 0, 100)
@@ -204,7 +200,7 @@ class JobOfferServiceSpec extends Specification {
     def "should give full remote score when candidate is willing to work more in office than required"() {
         given:
         def company = companyAt(CANDIDATE_LAT, CANDIDATE_LON)
-        def offerSkills = [offerSkill(skill('Java'), '1.00', true, SeniorityLevel.MID)]
+        def offerSkills = [offerSkill('Java', '1.00', true, SeniorityLevel.MID)]
         def offerId = UUID.randomUUID()
         def theOffer = offer(company, 20000, offerSkills, offerId, 0, 40)
         stubMatches([theOffer])
@@ -219,9 +215,8 @@ class JobOfferServiceSpec extends Specification {
 
     // --- helpers ---
 
-    private void stubMatches(List<JobOfferEntity> offers) {
-        jobOfferRepository.findCandidateMatchIds(*_) >> (offers.empty ? [] : [UUID.randomUUID()])
-        jobOfferRepository.findByIdIn(_) >> offers
+    private void stubMatches(List<JobOfferMatch> offers) {
+        jobOfferRepository.findCandidateMatches(*_) >> offers
     }
 
     private static CandidateSearchRequest searchRequest(Map<String, SeniorityLevel> skills, int yearsOfExperience,
@@ -238,40 +233,24 @@ class JobOfferServiceSpec extends Specification {
         )
     }
 
-    private static CompanyEntity companyAt(double lat, double lon) {
-        def company = new CompanyEntity()
-        company.geoLat = lat
-        company.geoLon = lon
-        company
+    private static Map<String, Double> companyAt(double lat, double lon) {
+        [lat: lat, lon: lon]
     }
 
-    private static SkillEntity skill(String name) {
-        def s = new SkillEntity()
-        s.name = name
-        s
+    private static RequiredSkill offerSkill(String name, String weight, boolean mandatory, SeniorityLevel level) {
+        new RequiredSkill(name, level, mandatory, new BigDecimal(weight).doubleValue())
     }
 
-    private static JobOfferSkillEntity offerSkill(SkillEntity skill, String weight, boolean mandatory, SeniorityLevel level) {
-        def jos = new JobOfferSkillEntity()
-        jos.skill = skill
-        jos.weight = new BigDecimal(weight)
-        jos.mandatory = mandatory
-        jos.requiredSeniorityLevel = level
-        jos
-    }
-
-    private static JobOfferEntity offer(CompanyEntity company, double salaryTo,
-                                        List<JobOfferSkillEntity> skills,
-                                        UUID id = UUID.randomUUID(), int requiredYearsOfExperience = 0,
-                                        int requiredOfficeDaysPercentage = 0) {
-        Instancio.of(JobOfferEntity)
-                .set(field(JobOfferEntity, 'id'), id)
-                .set(field(JobOfferEntity, 'company'), company)
-                .set(field(JobOfferEntity, 'salaryFrom'), new BigDecimal('10000.00'))
-                .set(field(JobOfferEntity, 'salaryTo'), new BigDecimal(salaryTo))
-                .set(field(JobOfferEntity, 'requiredYearsOfExperience'), requiredYearsOfExperience)
-                .set(field(JobOfferEntity, 'requiredOfficeDaysPercentage'), requiredOfficeDaysPercentage)
-                .set(field(JobOfferEntity, 'skills'), skills)
-                .create()
+    private static JobOfferMatch offer(Map<String, Double> company, double salaryTo,
+                                       List<RequiredSkill> skills,
+                                       UUID id = UUID.randomUUID(), int requiredYearsOfExperience = 0,
+                                       int requiredOfficeDaysPercentage = 0) {
+        new JobOfferMatch(
+                id, UUID.randomUUID(), 'Company', company.lat, company.lon,
+                'Title', 'Description',
+                new BigDecimal('10000.00'), new BigDecimal(salaryTo), 'PLN',
+                requiredYearsOfExperience, requiredOfficeDaysPercentage,
+                JobOfferStatus.ACTIVE, [EmploymentType.B2B] as Set, skills
+        )
     }
 }

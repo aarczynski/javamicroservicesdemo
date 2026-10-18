@@ -2,9 +2,16 @@ package pl.lunasoftware.demo.microservices.joboffers.offer
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
+import org.springframework.context.annotation.Import
+import org.springframework.test.context.jdbc.Sql
+import pl.lunasoftware.demo.microservices.joboffers.PostgresContainerConfig
+import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferMatch.RequiredSkill
+import pl.lunasoftware.demo.microservices.joboffers.skill.SeniorityLevel
 import spock.lang.Specification
 
-@DataJpaTest
+@DataJpaTest(properties = 'spring.flyway.locations=classpath:db/migration/postgres')
+@Import(PostgresContainerConfig)
+@Sql('/sql/job-offer-search-data.sql')
 class JobOfferRepositorySpec extends Specification {
 
     @Autowired
@@ -23,7 +30,7 @@ class JobOfferRepositorySpec extends Specification {
         )
 
         then:
-        offers*.title as Set == ['Senior Java Developer', 'Full Stack Developer'] as Set
+        offers*.title() as Set == ['Senior Java Developer', 'Full Stack Developer'] as Set
     }
 
     def "should exclude offers where salary to is below expected salary"() {
@@ -36,7 +43,7 @@ class JobOfferRepositorySpec extends Specification {
         )
 
         then:
-        offers*.title == ['Senior Java Developer']
+        offers*.title() == ['Senior Java Developer']
     }
 
     def "should exclude offers outside radius"() {
@@ -49,7 +56,7 @@ class JobOfferRepositorySpec extends Specification {
         )
 
         then:
-        offers*.title == ['Senior Java Developer']
+        offers*.title() == ['Senior Java Developer']
     }
 
     def "should include Krakow offer when radius is large enough"() {
@@ -62,7 +69,7 @@ class JobOfferRepositorySpec extends Specification {
         )
 
         then:
-        offers*.title as Set == ['Senior Java Developer', 'Backend Engineer'] as Set
+        offers*.title() as Set == ['Senior Java Developer', 'Backend Engineer'] as Set
     }
 
     def "should return empty when no employment type matches"() {
@@ -91,26 +98,38 @@ class JobOfferRepositorySpec extends Specification {
         offers.isEmpty()
     }
 
-    def "should load offered employment types via batched fetch without lazy initialization exceptions"() {
+    def "should map company, employment types and required skills of a matched offer"() {
         given:
         def box = boundingBox(WARSAW_LAT, WARSAW_LON, 100)
 
         when:
-        def offers = findMatches(
-                box, new BigDecimal('18000.00'), [EmploymentType.B2B], ['Java']
-        )
+        def offer = findMatches(
+                box, new BigDecimal('24000.00'), [EmploymentType.EMPLOYMENT], ['Spring Boot']
+        ).first()
 
         then:
-        offers.every { !it.offeredEmploymentTypes.isEmpty() }
+        offer.title() == 'Senior Java Developer'
+        offer.companyName() == 'Java House Warszawa sp. z o.o.'
+        offer.companyGeoLat() == WARSAW_LAT
+        offer.companyGeoLon() == WARSAW_LON
+        offer.salaryTo() == new BigDecimal('24000.00')
+        offer.requiredYearsOfExperience() == 5
+        offer.requiredOfficeDaysPercentage() == 40
+        offer.status() == JobOfferStatus.ACTIVE
+        offer.employmentTypes() == [EmploymentType.B2B, EmploymentType.EMPLOYMENT] as Set
+        offer.skills() == [
+                new RequiredSkill('Java', SeniorityLevel.SENIOR, true, 1.0d),
+                new RequiredSkill('Spring Boot', SeniorityLevel.MID, false, 0.8d)
+        ]
     }
 
-    private List<JobOfferEntity> findMatches(double[] box, BigDecimal expectedSalary,
-                                              Collection<EmploymentType> employmentTypes,
-                                              Collection<String> skillNames) {
-        def ids = jobOfferRepository.findCandidateMatchIds(
-                box[0], box[1], box[2], box[3], expectedSalary, employmentTypes*.name(), skillNames
+    private List<JobOfferMatch> findMatches(double[] box, BigDecimal expectedSalary,
+                                            Collection<EmploymentType> employmentTypes,
+                                            Collection<String> skillNames) {
+        jobOfferRepository.findCandidateMatches(
+                box[0], box[1], box[2], box[3], expectedSalary,
+                employmentTypes*.name() as String[], skillNames as String[]
         )
-        ids.isEmpty() ? [] : jobOfferRepository.findByIdIn(ids)
     }
 
     private static double[] boundingBox(double lat, double lon, double radiusKm) {

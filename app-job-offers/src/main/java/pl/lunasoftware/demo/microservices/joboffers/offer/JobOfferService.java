@@ -3,8 +3,7 @@ package pl.lunasoftware.demo.microservices.joboffers.offer;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import pl.lunasoftware.demo.microservices.joboffers.company.CompanyEntity;
+import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferMatch.RequiredSkill;
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSearchRequest;
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.CandidateSkillRequest;
 import pl.lunasoftware.demo.microservices.joboffers.offer.api.JobOfferMatchDto;
@@ -16,7 +15,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -38,27 +36,22 @@ public class JobOfferService {
         this.jobOfferRepository = jobOfferRepository;
     }
 
-    @Transactional(readOnly = true)
     @WithSpan
     public List<JobOfferMatchDto> search(CandidateSearchRequest request) {
         double[] bbox = boundingBox(request.geoLat(), request.geoLon(), request.radiusKm());
-        Set<String> skillNames = request.candidateSkills().stream()
+        String[] skillNames = request.candidateSkills().stream()
                 .map(CandidateSkillRequest::skillName)
-                .collect(Collectors.toSet());
-        List<String> employmentTypes = request.preferredEmploymentTypes().stream()
+                .distinct()
+                .toArray(String[]::new);
+        String[] employmentTypes = request.preferredEmploymentTypes().stream()
                 .map(EmploymentType::name)
-                .toList();
-        List<UUID> matchedIds = jobOfferRepository.findCandidateMatchIds(
+                .toArray(String[]::new);
+        List<JobOfferMatch> offers = jobOfferRepository.findCandidateMatches(
                 bbox[0], bbox[1], bbox[2], bbox[3],
                 request.expectedSalary(),
                 employmentTypes,
                 skillNames
         );
-        if (matchedIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<JobOfferEntity> offers = jobOfferRepository.findByIdIn(matchedIds);
         log.info("Found {} candidate-matching offers", offers.size());
 
         return offers.stream()
@@ -67,12 +60,12 @@ public class JobOfferService {
                 .toList();
     }
 
-    private double calculateScore(JobOfferEntity offer, CandidateSearchRequest request) {
-        double skillScore = scoreSkills(offer.getSkills(), request.candidateSkills());
-        double salaryScore = scoreSalary(offer.getSalaryTo(), request.expectedSalary());
-        double expScore = scoreExperience(offer.getRequiredYearsOfExperience(), request.yearsOfExperience());
-        double remoteScore = scoreRemote(offer.getRequiredOfficeDaysPercentage(), request.preferredRemoteDaysPercentage());
-        double distScore = scoreDistance(offer.getCompany(), request.geoLat(), request.geoLon(), request.radiusKm(), offer.getRequiredOfficeDaysPercentage());
+    private double calculateScore(JobOfferMatch offer, CandidateSearchRequest request) {
+        double skillScore = scoreSkills(offer.skills(), request.candidateSkills());
+        double salaryScore = scoreSalary(offer.salaryTo(), request.expectedSalary());
+        double expScore = scoreExperience(offer.requiredYearsOfExperience(), request.yearsOfExperience());
+        double remoteScore = scoreRemote(offer.requiredOfficeDaysPercentage(), request.preferredRemoteDaysPercentage());
+        double distScore = scoreDistance(offer, request.geoLat(), request.geoLon(), request.radiusKm());
         return WEIGHT_SKILLS * skillScore
                 + WEIGHT_SALARY * salaryScore
                 + WEIGHT_DISTANCE * distScore
@@ -84,7 +77,7 @@ public class JobOfferService {
      * Weighted skill coverage adjusted for seniority. Each missing mandatory skill halves the score.
      * Seniority gap: score halves per level below required (gap=1 → ×0.5, gap=2 → ×0.25, …).
      */
-    private double scoreSkills(List<JobOfferSkillEntity> offerSkills, Set<CandidateSkillRequest> candidateSkills) {
+    private double scoreSkills(List<RequiredSkill> offerSkills, Set<CandidateSkillRequest> candidateSkills) {
         if (offerSkills.isEmpty()) {
             return 0.0;
         }
@@ -93,7 +86,7 @@ public class JobOfferService {
                 .collect(Collectors.toMap(CandidateSkillRequest::skillName, CandidateSkillRequest::seniorityLevel));
 
         double totalWeight = offerSkills.stream()
-                .mapToDouble(s -> s.getWeight().doubleValue())
+                .mapToDouble(RequiredSkill::weight)
                 .sum();
         if (totalWeight == 0) {
             return 0.0;
@@ -101,18 +94,18 @@ public class JobOfferService {
 
         double weightedCoverage = offerSkills.stream()
                 .mapToDouble(offerSkill -> {
-                    SeniorityLevel candidateLevel = candidateSkillMap.get(offerSkill.getSkill().getName());
+                    SeniorityLevel candidateLevel = candidateSkillMap.get(offerSkill.name());
                     if (candidateLevel == null) {
                         return 0.0;
                     }
-                    return offerSkill.getWeight().doubleValue()
-                            * seniorityFactor(candidateLevel, offerSkill.getRequiredSeniorityLevel());
+                    return offerSkill.weight()
+                            * seniorityFactor(candidateLevel, offerSkill.requiredSeniorityLevel());
                 })
                 .sum() / totalWeight;
 
         long missedMandatory = offerSkills.stream()
-                .filter(JobOfferSkillEntity::isMandatory)
-                .filter(s -> !candidateSkillMap.containsKey(s.getSkill().getName()))
+                .filter(RequiredSkill::mandatory)
+                .filter(s -> !candidateSkillMap.containsKey(s.name()))
                 .count();
 
         return weightedCoverage * Math.pow(0.5, missedMandatory);
@@ -167,10 +160,9 @@ public class JobOfferService {
      * Fully in-office offers use pure cosine decay: score=1.0 at d=0, score=0.0 at d=radius.
      * Hybrid offers blend proportionally: officeRatio * geoScore + (1 - officeRatio).
      */
-    private double scoreDistance(CompanyEntity company, double candLat, double candLon, double radiusKm,
-                                 int requiredOfficeDaysPercentage) {
-        double officeRatio = requiredOfficeDaysPercentage / 100.0;
-        double distKm = haversineKm(candLat, candLon, company.getGeoLat(), company.getGeoLon());
+    private double scoreDistance(JobOfferMatch offer, double candLat, double candLon, double radiusKm) {
+        double officeRatio = offer.requiredOfficeDaysPercentage() / 100.0;
+        double distKm = haversineKm(candLat, candLon, offer.companyGeoLat(), offer.companyGeoLon());
         double geoScore = distKm >= radiusKm ? 0.0 : Math.cos(Math.PI / 2 * distKm / radiusKm);
         return officeRatio * geoScore + (1.0 - officeRatio);
     }
@@ -192,20 +184,19 @@ public class JobOfferService {
         return new double[]{latMin, latMax, lon - lonDelta, lon + lonDelta};
     }
 
-    private JobOfferMatchDto toMatchDto(JobOfferEntity e, double score) {
-        String companyName = e.getCompany() != null ? e.getCompany().getName() : null;
+    private JobOfferMatchDto toMatchDto(JobOfferMatch offer, double score) {
         return new JobOfferMatchDto(
-                e.getId(),
-                e.getCompanyId(),
-                companyName,
-                e.getTitle(),
-                e.getDescription(),
-                e.getSalaryFrom().setScale(2, RoundingMode.HALF_UP),
-                e.getSalaryTo().setScale(2, RoundingMode.HALF_UP),
-                e.getCurrency(),
-                e.getRequiredOfficeDaysPercentage(),
-                Set.copyOf(e.getOfferedEmploymentTypes()),
-                e.getStatus(),
+                offer.id(),
+                offer.companyId(),
+                offer.companyName(),
+                offer.title(),
+                offer.description(),
+                offer.salaryFrom().setScale(2, RoundingMode.HALF_UP),
+                offer.salaryTo().setScale(2, RoundingMode.HALF_UP),
+                offer.currency(),
+                offer.requiredOfficeDaysPercentage(),
+                offer.employmentTypes(),
+                offer.status(),
                 score
         );
     }

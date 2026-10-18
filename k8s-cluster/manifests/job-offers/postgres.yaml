@@ -64,7 +64,18 @@ spec:
           # cache, measured 2026-09-28 at >50% of active query samples waiting
           # on IO with zero disk reads. 1GB keeps the whole dataset in buffers
           # with ~1GB of the 2Gi limit left for backends.
-          args: ["-c", "max_parallel_workers_per_gather=0", "-c", "shared_buffers=1GB"]
+          # jit=off: the search query's estimated cost (planner overestimates the
+          # matched rows ~20000x) crosses jit_above_cost, and compiling it took
+          # ~450 ms of CPU on every execution against ~2 ms to run it — measured
+          # 2026-10-18. Short OLTP queries never win that back.
+          # plan_cache_mode=force_generic_plan: the search query's generic plan
+          # is as fast as a custom one (1.84 vs 1.73 ms), but its estimated cost
+          # is far above the custom plans' — so a pooled connection could settle
+          # on custom plans and pay ~1.6 ms of planning on every execution. At
+          # 375k offers that doubled Postgres CPU per request and turned 2100 rps
+          # into 35% KO, until Hikari recycled the connections (measured 2026-10-18).
+          args: ["-c", "max_parallel_workers_per_gather=0", "-c", "shared_buffers=1GB", "-c", "jit=off",
+                 "-c", "plan_cache_mode=force_generic_plan"]
           ports:
             - containerPort: 5432
           env:

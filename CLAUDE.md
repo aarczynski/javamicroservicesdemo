@@ -68,6 +68,8 @@ Within each feature package:
 - Repository handles persistence.
 - Prefer `FetchType.LAZY` and handle `LazyInitializationExceptions` by `NamedEntityGraph`s. 
 - On request hot paths, do not use JPQL/HQL queries with collection-valued parameters (`IN :list`) — Hibernate never caches the query plan for them and re-translates HQL→SQL on every call (measured at ~15% of `app-job-offers` CPU, see the native search query step in `k8s-cluster/RPS-SCALING.md`). Use a native query instead (`@NativeQuery`, typed via `@SqlResultSetMapping` when needed). An applied entity graph has the same effect — acceptable on a query that doesn't run on every request.
+- Pass lists to native hot-path queries as one array parameter (`= ANY(CAST(:names AS text[]))`, `&& CAST(:names AS text[])`, Java `String[]`), not `IN (:list)` — a list expands to one placeholder per element, so every list length is a different SQL text and Postgres plans it again instead of reusing the prepared statement's plan.
+- `app-job-offers` search filters on the domain tables from indexes alone (index-only scans, `V1_2`): keep every column the filter reads in an index, and let every data load end with `VACUUM ANALYZE` (the `*load-data` scripts do) — without it the visibility map is unset and index-only scans fall back to reading the tables.
 - DTOs are separate from entities.
 - Exceptions should stay close to the feature when possible.
 

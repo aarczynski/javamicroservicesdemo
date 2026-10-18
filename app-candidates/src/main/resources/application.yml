@@ -36,9 +36,19 @@ management:
     # for the same Tomcat pool — under load, a saturated pool makes the probe
     # time out too, and kubelet kills a pod that's merely slow, not dead.
     port: 8081
+  # HTTP and repository timings come from the OTel javaagent (http_server_request_duration_seconds, spans);
+  # Micrometer's own copies were recorded on every request (~5% of app-job-offers CPU at 2100 rps), exported
+  # through the agent's Micrometer bridge a second time and read by no dashboard.
   observations:
     annotations:
       enabled: true
+    enable:
+      http.server.requests: false
+  metrics:
+    data:
+      repository:
+        autotime:
+          enabled: false
   endpoints:
     web:
       exposure:

@@ -27,6 +27,22 @@ import_file() {
   kubectl cp "$file" "$namespace/$pod:/tmp/$(basename "$file")"
   kubectl exec -n "$namespace" "$pod" -- \
     psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -q -f "/tmp/$(basename "$file")"
+  kubectl exec -n "$namespace" "$pod" -- rm -f "/tmp/$(basename "$file")"
+}
+
+run_sql() {
+  local namespace="$1" pod_label="$2" db="$3" sql="$4"
+  kubectl exec -n "$namespace" "$(first_pod "$namespace" "$pod_label")" -- \
+    psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -c "$sql"
+}
+
+# Separate psql -c calls: VACUUM refuses to run inside the implicit transaction psql wraps around a
+# multi-statement -c. Without it, the stats are those of the empty tables and the visibility map is
+# unset, so index-only scans fall back to heap fetches.
+vacuum_analyze() {
+  local namespace="$1" pod_label="$2" db="$3"
+  echo "==> VACUUM ANALYZE $db"
+  run_sql "$namespace" "$pod_label" "$db" "VACUUM ANALYZE"
 }
 
 reload_database() {
@@ -74,6 +90,7 @@ reload_database candidates postgres-candidates app-candidates-db "candidate" \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
   "$OUT/candidates/03-candidate-skills.sql"
+vacuum_analyze candidates postgres-candidates app-candidates-db
 sync_load_background "$OUT/candidates/01-candidates.sql"
 
 reload_database job-offers postgres-job-offers app-job-offers-db "company, skill" \
@@ -83,5 +100,6 @@ reload_database job-offers postgres-job-offers app-job-offers-db "company, skill
   "$OUT/job-offers/03-job-offers.sql" \
   "$OUT/job-offers/04-job-offer-employment-types.sql" \
   "$OUT/job-offers/05-job-offer-skills.sql"
+vacuum_analyze job-offers postgres-job-offers app-job-offers-db
 
 echo "==> Load complete. Load test: candidatesDataFile=$OUT/candidates/01-candidates.sql"
