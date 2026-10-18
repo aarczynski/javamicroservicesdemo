@@ -496,7 +496,7 @@ targets.
 |---|---|
 | `make k8s-rebuild-all` | Bare metal → running cluster |
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
-| `make k8s-load-data` | Replace all data with a freshly generated dataset (same steps as `make load-data`, plus syncing `load-background`). It regenerates the data with `make generate-data`, so pass the cluster's dataset size explicitly or it falls back to the generator defaults — currently `make k8s-load-data candidates=100000 jobOffers=150000 companies=10000` |
+| `make k8s-load-data` | Replace all data with a freshly generated dataset (same steps as `make load-data`, plus syncing `load-background`). It regenerates the data with `make generate-data`, so pass the cluster's dataset size explicitly or it falls back to the generator defaults — currently `make k8s-load-data candidates=200000 jobOffers=350000 companies=10000` |
 | `make k8s-gc` | Force a full GC in every app replica — `make candidateSimulation` runs it automatically before a test against the cluster |
 | `make k8s-deploy-load-background` | Rare: rebuild+redeploy `load-background` after changing its own source (JS script, entrypoint, Dockerfile) |
 
@@ -508,10 +508,15 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current ceiling: 2100 RPS, 0% KO held for 10 minutes** on 100k candidates / 150k job offers / 10k companies
+**Current ceiling: 2100 RPS, 0% KO held for 10 minutes** on 200k candidates / 350k job offers / 10k companies
 (see [Row counts](#row-counts-on-the-home-k8s-cluster)), limited by `postgres-job-offers` CPU (~2.6 of its 3 cores):
 the search's geographic bounding box examines more offers per request as offer density grows, so Postgres, not the
 apps, sets the limit.
+
+> [!IMPORTANT]
+> **The dataset grew on 2026-10-18** — 150k → 350k job offers (2.3×), 100k → 200k candidates (2×), same 10k
+> companies — at the same 2100 RPS, thanks to a search Postgres answers from indexes alone. 350k is the largest
+> dataset that holds 2100 RPS; at 375k p99 climbs to 720 ms.
 
 **How it got there: [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md).** It starts from the untuned
 baseline (400 RPS) and adds one change at a time — Postgres `shared_buffers`, async logging, CPU limits, replicas,
@@ -519,8 +524,9 @@ query fixes — with each step's result, bottleneck, key code changes (before/af
 
 ### Row counts on the home k8s cluster
 
-Dataset loaded on the physical Raspberry Pi cluster since 2026-09-28 (`make k8s-load-data candidates=100000
-jobOffers=150000 companies=10000` — sized so that 2000rps still holds, see [Measured capacity](#measured-capacity)).
+Dataset loaded on the physical Raspberry Pi cluster since 2026-10-18 (`make k8s-load-data candidates=200000
+jobOffers=350000 companies=10000` — the largest that still holds 2100 RPS, see [Measured capacity](#measured-capacity);
+before that 100k candidates / 150k job offers).
 Each app's Flyway baseline migration (`V1_1__demo-data.sql`) seeds a handful of fixed demo rows on top of the
 bulk-generated data. Join and collection tables are estimates from the generator's distributions (1-5 skills per
 row, averaging 3; ~1.6 employment types per row), rounded to the nearest 50,000.
@@ -529,17 +535,17 @@ row, averaging 3; ~1.6 employment types per row), rounded to the nearest 50,000.
 
 | Table | Rows |
 |---|---|
-| `candidate` | ~100,000 |
-| `candidate_skill` | ~300,000 |
-| `candidate_preferred_employment_type` | ~150,000 |
+| `candidate` | ~200,000 |
+| `candidate_skill` | ~600,000 |
+| `candidate_preferred_employment_type` | ~400,000 |
 
-**`app-job-offers-db`** (~217 MB):
+**`app-job-offers-db`** (~437 MB):
 
 | Table | Rows |
 |---|---|
-| `job_offer` | ~150,000 |
-| `job_offer_skill` | ~450,000 |
-| `job_offer_employment_type` | ~250,000 |
+| `job_offer` | ~350,000 |
+| `job_offer_skill` | ~1,050,000 |
+| `job_offer_employment_type` | ~700,000 |
 | `company` | ~10,000 |
 | `skill` | 58 (53 generated + 5 demo) |
 
