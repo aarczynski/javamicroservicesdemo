@@ -8,15 +8,15 @@ stąd usuwane, nie archiwizowane w treści.
 
 12/12 node'ów fizycznych w klastrze, `kubeadm` (nie k3s, Kubernetes 1.36), Cilium 1.20.2 (CNI + Gateway API v1.6.2,
 bez kube-proxy), MetalLB (L2), `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2,
-jedna replika na node) + ich Postgresy wdrożone, dane załadowane (100k candidates / **150k job offers / 10k
-companies**, `data-generator`). Stack observability: Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze
+jedna replika na node) + ich Postgresy wdrożone, dane załadowane (**200k candidates / 350k job offers / 10k
+companies** od 2026-10-18, `data-generator`; wcześniej 100k/150k). Stack observability: Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze
 `tempo-distributed` (Kafka+RustFS). Ambient load (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w
 `CLAUDE.md` (nie duplikować tutaj).
 
 **Płytki D0/C1 rozdzielone wg ról (przebudowa 2026-10-03):** 4× D0 → `master` + `observability-1/2/3`, 8× C1 →
 `platform-1`, `db-1/2`, `worker-1..5` — wszystkie appki i Postgresy na C1 (mapowanie MAC → rola w `inventory.ini`).
 
-**Klaster stoi na `main`**, obrazy appek `23b837e` (Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
+**Klaster stoi na `main`**, obrazy appek `48b0e5d` (od 2026-10-19, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
 całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1,
 tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2
 ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Checki z
@@ -37,10 +37,19 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Skalowanie Postgresa na więcej danych (dodane 2026-10-02).** Cel: utrzymać przepustowość przy zbiorze
-   większym niż dzisiejsze 150k ofert / 10k firm. Punkt wyjścia: `postgres-job-offers` już jest sufitem przy 2100rps
-   (patrz pkt 8 — `pg_stat_statements` jako pierwszy pomiar). Kierunek (replikacja odczytów, partycjonowanie,
-   indeksy, większy node) — do ustalenia.
+1. **Następny krok: materialized view jako read model wyszukiwania (do decyzji, 2026-10-19).** Cel bez zmian: jak
+   najwięcej ofert/kandydatów przy 2100 rps; limit CPU Postgresa i appek zostaje (3), dodatkowe RPi tylko
+   w ostateczności. Na `main` (merge `perf/scale-data-volume`) model znormalizowany z wyszukiwaniem z indeksów + GiST,
+   `jit=off`, `force_generic_plan` trzyma **2100 rps przy 200k kandydatów / 350k ofert** (10 min, 0% KO, p99 157 ms,
+   Postgres 2,62/3 — sufit; 375k: p99 720 ms, 400k: 2,4% KO). Wpis w RPS-SCALING 2026-10-18.
+   - Wstępne pomiary widoku z 2026-10-17/18 (branch usunięty, kod do odtworzenia): materialized view
+     `job_offer_match` (firma + tablice skilli/typów zatrudnienia, indeks pokrywający `(company_id, salary_to)
+     INCLUDE (id, employment_types, skill_names)`) trzymał 2100 rps przy **~1,5M ofert** (8 min, 0% KO, p99 255 ms;
+     1,75M na granicy, 2M 0,6% KO) — limitem staje się CPU `app-job-offers`, nie Postgres (~630 vs ~1250 µs/req).
+   - Do rozstrzygnięcia przed wdrożeniem: jak synchronizować zapisy (oferty mają się zmieniać przez appkę, a
+     `REFRESH MATERIALIZED VIEW` przebudowuje całość) — okresowy refresh, synchroniczna aktualizacja tabeli read modelu
+     w tej samej transakcji, outbox albo CDC. Sprawdzić też `jit=off`/`force_generic_plan` na widoku.
+   - Wynik musi być 10-min runem, wpis w RPS-SCALING i README robione na branchu razem z kodem.
 
 2. **Chaos monkey (dodane 2026-10-02).** Celowe zabijanie podów/node'ów pod obciążeniem, żeby sprawdzić odporność
    klastra i appek. Narzędzie do wyboru. Pamiętać o znanych ograniczeniach: twardy `podAntiAffinity` bez wolnego
@@ -90,9 +99,8 @@ stojącym kilka godzin.
    w git history tego pliku (2026-09-24).
 
 7a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
-   `@Transactional(readOnly = true)` na całej metodzie. Krótka paczka ruchu nakręca kilkusekundową kolejkę do puli
-   (do 190 oczekujących, 2026-09-27). Na równym ruchu z Gatlinga nie przeszkadza; poprawka strukturalna (zawężenie
-   transakcji do dwóch zapytań, scoring poza nią) — do zrobienia, gdy ruch ma być realistycznie nierówny.
+   na `main` `@Transactional(readOnly = true)` na całej metodzie. Branch z pkt 1 to usuwa (jedno zapytanie w
+   transakcji repozytorium, scoring poza nią) — zamknąć po merge'u.
 
 8. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
    wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
@@ -375,6 +383,9 @@ stojącym kilka godzin.
 - Gatling: `.shareConnections()` w `httpProtocolBuilder()` jest wymagane powyżej ~300rps — bez tego klient (Mac)
   wyczerpuje własną pulę portów efemerycznych szybciej niż zwalniają się z `TIME_WAIT`, dając fałszywe błędy po
   stronie klienta, zanim klaster w ogóle zbliży się do własnego limitu.
+- **Load test tylko z generatora w VLAN 10 (Cloud), bez routera (2026-10-18).** Ruch z 192.168.0.x przez router
+  ER7406 po ~4-5 min obciążenia 2100 rps staje co ~33 s na 0,3-3 s → fala ~4k × 503 z Envoya. Mac: interfejs VLAN
+  `vlan0` z **MTU 1496** (przy 1500 pełne ramki z tagiem giną). Przed testem `route -n get 192.168.10.100` → `vlan0`.
 - **Gatling tylko z Maca na zasilaniu (`pmset -g batt` → "AC Power") (2026-09-27).** Na baterii generator wysyła ruch
   paczkami co ~30 s i daje p99 ~900 ms przy 2000rps, co wygląda jak regresja klastra (godzina diagnozy po złej stronie).
   Rozpoznanie: równość napływu `irate(http_server_request_duration_seconds_count{job="app-candidates"}[3s])` z krokiem

@@ -28,6 +28,15 @@ psql_in() {
   docker exec -i "$container" psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -q "$@"
 }
 
+# Separate psql -c calls: VACUUM refuses to run inside the implicit transaction psql wraps around a
+# multi-statement -c. Without it, the stats are those of the empty tables and the visibility map is
+# unset, so index-only scans fall back to heap fetches.
+vacuum_analyze() {
+  local container="$1" db="$2"
+  echo "==> VACUUM ANALYZE $db"
+  psql_in "$container" "$db" -c "VACUUM ANALYZE"
+}
+
 reload_database() {
   local container="$1" db="$2" root_tables="$3" demo_data_file="$4"
   shift 4
@@ -60,6 +69,7 @@ reload_database app-candidates-db app-candidates-db "candidate" \
   "$OUT/candidates/01-candidates.sql" \
   "$OUT/candidates/02-candidate-preferred-employment-types.sql" \
   "$OUT/candidates/03-candidate-skills.sql"
+vacuum_analyze app-candidates-db app-candidates-db
 echo "==> Restarting load-background so it re-reads the fresh candidates file"
 (cd "$ROOT_DIR" && docker compose restart load-background)
 
@@ -70,5 +80,6 @@ reload_database app-job-offers-db app-job-offers-db "company, skill" \
   "$OUT/job-offers/03-job-offers.sql" \
   "$OUT/job-offers/04-job-offer-employment-types.sql" \
   "$OUT/job-offers/05-job-offer-skills.sql"
+vacuum_analyze app-job-offers-db app-job-offers-db
 
 echo "==> Load complete. Load test: candidatesDataFile=$OUT/candidates/01-candidates.sql"

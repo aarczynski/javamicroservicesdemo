@@ -3,11 +3,30 @@
 Starts from the untuned baseline and adds one change at a time, in the order the current bottleneck called for. Each
 result is cumulative over everything above it.
 
+## Dataset
+
+> [!IMPORTANT]
+> **The dataset grew on 2026-10-18: 2.3× the job offers, 2× the candidates.** Every step up to and including
+> [2026-09-28 — `app-candidates` × 3](#2026-09-28--app-candidates--3) ran on the original dataset; every step from
+> [2026-10-18 — search answered from indexes, 350k job offers](#2026-10-18--search-answered-from-indexes-350k-job-offers)
+> on the current one.
+
+| Table | Original dataset | Current dataset (since 2026-10-18) | Growth |
+|---|---:|---:|---:|
+| `candidate` | 100,000 | 200,000 | 2× |
+| `job_offer` | 150,000 | 350,000 | **2.3×** |
+| `company` | 10,000 | 10,000 | 1× |
+| `skill` | 58 | 58 | 1× |
+
+The join and collection tables grow with their owners: the job offers' skills and employment types 2.3×, the
+candidates' 2×.
+
+Companies stay at 10k, so offers per company grow 2.3× (15 → 35) — and so does the number of offers inside a
+search's bounding box. 350k is the largest dataset that still holds 2100 rps: at 375k the 10-minute run keeps 0% KO,
+but p99 climbs to 720 ms with `postgres-job-offers` throttled up to 98%.
+
 ## Fixed assumptions (same for every state)
 
-- **Dataset:** 100k candidates / 150k job offers / 10k companies.
-  <sub>Join and collection tables: `candidate_skill` 300k, `candidate_preferred_employment_type` 200k,
-  `job_offer_skill` 450k, `job_offer_employment_type` 300k; `skill` 58 rows.</sub>
 - **Trace sampling in the apps, 1%** (plus every request that failed with 4xx/5xx or took >= 500 ms) — `LocalTailSamplingSpanExporter` from
   `otel-metrics-filter`, added to every state's image; app code otherwise untouched.
 - **Cluster topology:** 12 nodes, 3 observability nodes, local NTP. `worker-2` (the only node on Ubuntu 25.10 /
@@ -81,6 +100,7 @@ Each result is the best ~10-minute run at a constant rate with 0% KO.
 | [2026-09-24](#2026-09-24--native-search-query) | Native `findCandidateMatchIds` (`e38736f`) | **1800 rps** (+6%) | `app-candidates` CPU |
 | [2026-09-28](#2026-09-28--candidate-loaded-with-join-fetch) | Candidate loaded with `JOIN FETCH` (`bf8b998`) | **2000 rps** (+11%) | `app-job-offers` Hikari pool + `postgres-job-offers` CPU |
 | [2026-09-28](#2026-09-28--app-candidates--3) | `app-candidates` × 3, Hikari 40, `postgres-candidates` `max_connections=150` (`feff7ee`, `cd83f92`, `92979c4`) | **2100 rps** (+5%) | `postgres-job-offers` CPU |
+| [2026-10-18](#2026-10-18--search-answered-from-indexes-350k-job-offers) | **Dataset grown: 150k → 350k job offers, 100k → 200k candidates** ([Dataset](#dataset)); search answered from indexes with a GiST bounding box, Postgres `jit=off` + generic plans (`48b0e5d`) | **2100 rps** (+0%, on 2.3× the offers) | `postgres-job-offers` CPU |
 
 ## Results
 
@@ -1071,7 +1091,7 @@ private Set<CandidateSkillEntity> skills = new HashSet<>();
 
 **Bottleneck:** `postgres-job-offers` CPU — 2.61 of 3 cores, throttled 24%; both `app-job-offers` Hikari pools are busy
 85% of the time (up to 189 waiting), and its replicas run ~2.45 of 3 on nodes at 82% CPU. At 2200 rps Postgres reaches
-~2.7/3, the pools never empty, full GCs start mid-test and the runs don't hold (KO in two of three). This is where `main` stands too: the next step is cheaper
+~2.7/3, the pools never empty, full GCs start mid-test and the runs don't hold (KO in two of three). The next step is cheaper
 Postgres queries (e.g. measuring them with `pg_stat_statements`), not more app capacity.
 
 <details>
@@ -1174,6 +1194,158 @@ ports:
 | Heap `app-candidates` (one replica) | Heap `app-job-offers` (one replica) |
 |---|---|
 | ![](rps-history/2026-09-28-candidates-x3/grafana-heap-candidates.png) | ![](rps-history/2026-09-28-candidates-x3/grafana-heap-job-offers.png) |
+
+</details>
+
+</details>
+
+### 2026-10-18 — search answered from indexes, 350k job offers
+
+**2100 rps** — 10 min, 1,386,000 requests, 0% KO · bottleneck: `postgres-job-offers` CPU
+
+> [!IMPORTANT]
+> From this step on, every result runs on the **current dataset** — 350k job offers (2.3×), 200k candidates (2×),
+> see [Dataset](#dataset). The same rate as the previous step, on 2.3× the offers.
+
+<details>
+<summary>Details</summary>
+
+| p50 | p95 | p99 | max |
+|---|---|---|---|
+| 13 ms | 83 ms | 157 ms | 690 ms |
+
+**Change:** the search is one native query whose filter Postgres answers from indexes alone (index-only scans):
+offers of the companies inside the bounding box by salary from a partial covering index, the bounding box itself as
+one GiST lookup on the company's location (`point <@ box`) instead of a B-tree range on `geo_lat` filtering `geo_lon`
+row by row, the skill check from the `(job_offer_id, skill_id)` unique index. The matched offers come back with their
+skills and employment types aggregated into arrays — no second query, no entity graph. Lists are passed as array
+parameters, so the SQL text is the same for every candidate. Indexes the new filter doesn't need are dropped, and
+every data load ends with `VACUUM ANALYZE` (without the visibility map, index-only scans read the table anyway).
+
+Two Postgres settings came with it:
+- `jit=off` — the planner overestimates the matched rows, the query's estimated cost crosses `jit_above_cost`, and
+  JIT compiled it on every execution: ~450 ms of CPU against ~2 ms to run it.
+- `plan_cache_mode=force_generic_plan` — the generic plan is as fast as a custom one (1.84 vs 1.73 ms), but a pooled
+  connection could settle on custom plans and plan the search on every execution (~1.6 ms). At 375k offers that made
+  the same test 0% or 35% KO, depending on which connections Hikari happened to hold.
+
+| | Previous step | This step |
+|---|---:|---:|
+| Job offers | 150,000 | 350,000 (2.3×) |
+| Candidates | 100,000 | 200,000 (2×) |
+| Job offers per company | 15 | 35 |
+| Best 10-min run, 0% KO | 2100 rps | **2100 rps** |
+| `postgres-job-offers` CPU per request | ~1,240 µs | ~1,250 µs |
+| `app-job-offers` CPU per request | ~2,330 µs | **~1,770 µs** |
+| `app-candidates` CPU per request | ~2,000 µs | ~1,860 µs |
+
+For comparison, `main` (the previous step's code) on 1M job offers holds only 550 rps, with Postgres pinned at its 3
+cores — each offer in the bounding box costs it a probe into the table.
+
+**Bottleneck:** `postgres-job-offers` CPU — 2.62 of 3 cores, throttled up to 64%. At 375k offers: 2.79 of 3, throttled
+up to 98%, p99 720 ms; at 400k: 2.4% KO. The apps have room (`app-job-offers` ~1.9 of 3 cores per replica).
+
+<details>
+<summary>Key code changes</summary>
+
+`app-job-offers/.../offer/JobOfferRepository.java`
+
+<table>
+<tr><th>Before</th><th>After</th></tr>
+<tr>
+<td>
+
+```sql
+SELECT DISTINCT o.id FROM job_offer o
+JOIN job_offer_employment_type t
+  ON t.job_offer_id = o.id
+JOIN company c ON c.id = o.company_id
+WHERE o.status = 'ACTIVE'
+AND c.geo_lat BETWEEN :latMin AND :latMax
+AND c.geo_lon BETWEEN :lonMin AND :lonMax
+AND o.salary_to >= :expectedSalary
+AND t.employment_type IN (:employmentTypes)
+AND EXISTS (
+    SELECT 1 FROM job_offer_skill jos
+    JOIN skill s ON s.id = jos.skill_id
+    WHERE jos.job_offer_id = o.id
+    AND s.name IN (:skillNames)
+)
+-- then findByIdIn(ids) with an entity graph
+```
+
+</td>
+<td>
+
+```sql
+SELECT o.*, c.name, c.geo_lat, c.geo_lon,
+       et.employment_types, sk.skill_names, ...
+FROM job_offer o
+JOIN company c ON c.id = o.company_id
+CROSS JOIN LATERAL (array_agg employment types) et
+CROSS JOIN LATERAL (array_agg skills) sk
+WHERE o.id IN (
+    SELECT f.id FROM job_offer f
+    JOIN company fc ON fc.id = f.company_id
+    WHERE f.status = 'ACTIVE'
+    AND point(fc.geo_lon, fc.geo_lat)
+        <@ box(point(:lonMin, :latMin),
+               point(:lonMax, :latMax))
+    AND f.salary_to >= :expectedSalary
+    AND EXISTS (
+        SELECT 1 FROM job_offer_skill fs
+        WHERE fs.job_offer_id = f.id
+        AND fs.skill_id = ANY(ARRAY(
+            SELECT s.id FROM skill s WHERE s.name
+            = ANY(CAST(:skillNames AS text[]))))
+    )
+)
+AND et.employment_types
+    && CAST(:employmentTypes AS text[])
+```
+
+</td>
+</tr>
+</table>
+
+`app-job-offers/.../db/migration/postgres/V1_2__search_indexes.sql`
+
+```sql
+CREATE INDEX idx_job_offer_active_company_salary ON job_offer (company_id, salary_to) INCLUDE (id)
+    WHERE status = 'ACTIVE';
+CREATE INDEX idx_company_location ON company USING gist (point(geo_lon, geo_lat));
+DROP INDEX idx_job_offer_status_salary;
+DROP INDEX idx_company_geo;
+DROP INDEX idx_job_offer_employment_type_job_offer_id;
+DROP INDEX idx_job_offer_skill_job_offer_id;
+DROP INDEX idx_skill_name;
+DROP INDEX idx_job_offer_employment_type;
+```
+
+`k8s-cluster/manifests/job-offers/postgres.yaml`
+
+<table>
+<tr><th>Before</th><th>After</th></tr>
+<tr>
+<td>
+
+```yaml
+args: ["-c", "max_parallel_workers_per_gather=0",
+       "-c", "shared_buffers=1GB"]
+```
+
+</td>
+<td>
+
+```yaml
+args: ["-c", "max_parallel_workers_per_gather=0",
+       "-c", "shared_buffers=1GB", "-c", "jit=off",
+       "-c", "plan_cache_mode=force_generic_plan"]
+```
+
+</td>
+</tr>
+</table>
 
 </details>
 
