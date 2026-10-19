@@ -16,8 +16,7 @@ companies** od 2026-10-18, `data-generator`; wcześniej 100k/150k). Stack observ
 **Płytki D0/C1 rozdzielone wg ról (przebudowa 2026-10-03):** 4× D0 → `master` + `observability-1/2/3`, 8× C1 →
 `platform-1`, `db-1/2`, `worker-1..5` — wszystkie appki i Postgresy na C1 (mapowanie MAC → rola w `inventory.ini`).
 
-**Klaster stoi na branchu `perf/scale-data-volume`** (obrazy `48b0e5d`, od 2026-10-18; `main` = obrazy `23b837e`,
-Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
+**Klaster stoi na `main`**, obrazy appek `48b0e5d` (od 2026-10-19, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
 całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1,
 tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2
 ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Checki z
@@ -38,26 +37,19 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Więcej danych przy 2100 rps (W TOKU, branch `perf/scale-data-volume`, 2026-10-18).** Cel od użytkownika: jak
-   najwięcej ofert/kandydatów bez utraty przepustowości; limit CPU Postgresa i appek zostaje (3), dodatkowe RPi tylko
-   w ostateczności. Branch (od `main`, bez materialized view, jeden commit `48b0e5d` + docs):
-   - Wyłączone timery Micrometera (`http.server.requests`, repozytoria) dublujące agenta OTel.
-   - Wyszukiwanie jednym natywnym zapytaniem z parametrami-tablicami, filtr z samych indeksów (index-only
-     scans): `V1_2__search_indexes` — częściowy indeks pokrywający `job_offer (company_id, salary_to) INCLUDE (id)
-     WHERE status='ACTIVE'`, GiST `point(geo_lon, geo_lat)` na `company` (`<@ box`), drop indeksów zbędnych/
-     duplikatów. `*load-data` kończą się `VACUUM ANALYZE` (bez tego visibility map pusta → heap fetches). Testy
-     repozytorium na Testcontainers (Postgres 18.6).
-   - `postgres-job-offers` z `jit=off` (JIT kompilował wyszukiwanie przy każdym wykonaniu, ~450 ms CPU) i
-     `plan_cache_mode=force_generic_plan` (loteria custom planów: połączenie z puli planowało przy każdym wykonaniu,
-     ~1,6 ms; przy 375k dawało 35-44% KO zaraz po przeładowaniu danych).
-   - **Wynik (10 min, 2100 rps, 200k kandydatów): 350k ofert — 0% KO, p50 13 / p95 83 / p99 157 / max 690 ms**,
-     Postgres 2,62/3 (~1250 µs/req), `app-job-offers` ~1770 µs/req, `app-candidates` ~1860 µs/req. 375k: 0% KO, ale
-     p99 720 ms i throttling Postgresa do 98% — granica. 400k: 2,4% KO. `main` przy 1M: 550 rps.
-   - Dane na klastrze: pierwsze 350k ofert (po `id`) z wygenerowanego zbioru 1M, kandydaci 200k. `make k8s-load-data`
-     przy `jobOffers=350000` da ten sam rozmiar. Kopie `bak_*` usunięte.
-   - Wpis w RPS-SCALING (z sekcją Dataset) i README zaktualizowane na branchu — wchodzą razem z merge'em.
-   - Odrzucone 2026-10-17/18: materialized view jako read model (trzymał 2100 przy ~1,5M ofert, ale offers mają się
-     zmieniać przez appkę, a widok odświeża się tylko w całości) — jeśli wróci, to jako osobny etap.
+1. **Następny krok: materialized view jako read model wyszukiwania (do decyzji, 2026-10-19).** Cel bez zmian: jak
+   najwięcej ofert/kandydatów przy 2100 rps; limit CPU Postgresa i appek zostaje (3), dodatkowe RPi tylko
+   w ostateczności. Na `main` (merge `perf/scale-data-volume`) model znormalizowany z wyszukiwaniem z indeksów + GiST,
+   `jit=off`, `force_generic_plan` trzyma **2100 rps przy 200k kandydatów / 350k ofert** (10 min, 0% KO, p99 157 ms,
+   Postgres 2,62/3 — sufit; 375k: p99 720 ms, 400k: 2,4% KO). Wpis w RPS-SCALING 2026-10-18.
+   - Wstępne pomiary widoku z 2026-10-17/18 (branch usunięty, kod do odtworzenia): materialized view
+     `job_offer_match` (firma + tablice skilli/typów zatrudnienia, indeks pokrywający `(company_id, salary_to)
+     INCLUDE (id, employment_types, skill_names)`) trzymał 2100 rps przy **~1,5M ofert** (8 min, 0% KO, p99 255 ms;
+     1,75M na granicy, 2M 0,6% KO) — limitem staje się CPU `app-job-offers`, nie Postgres (~630 vs ~1250 µs/req).
+   - Do rozstrzygnięcia przed wdrożeniem: jak synchronizować zapisy (oferty mają się zmieniać przez appkę, a
+     `REFRESH MATERIALIZED VIEW` przebudowuje całość) — okresowy refresh, synchroniczna aktualizacja tabeli read modelu
+     w tej samej transakcji, outbox albo CDC. Sprawdzić też `jit=off`/`force_generic_plan` na widoku.
+   - Wynik musi być 10-min runem, wpis w RPS-SCALING i README robione na branchu razem z kodem.
 
 2. **Chaos monkey (dodane 2026-10-02).** Celowe zabijanie podów/node'ów pod obciążeniem, żeby sprawdzić odporność
    klastra i appek. Narzędzie do wyboru. Pamiętać o znanych ograniczeniach: twardy `podAntiAffinity` bez wolnego
