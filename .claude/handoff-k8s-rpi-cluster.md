@@ -1,6 +1,6 @@
 # Handoff: klaster k8s na RPi5
 
-Skondensowany handoff — stan na 2026-10-17. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
+Skondensowany handoff — stan na 2026-10-22. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
 żyje w historii gita tego pliku (`git log -p -- .claude/handoff-k8s-rpi-cluster.md`) — zakończone punkty są
 stąd usuwane, nie archiwizowane w treści.
 
@@ -16,7 +16,7 @@ companies** od 2026-10-18, `data-generator`; wcześniej 100k/150k). Stack observ
 **Płytki D0/C1 rozdzielone wg ról (przebudowa 2026-10-03):** 4× D0 → `master` + `observability-1/2/3`, 8× C1 →
 `platform-1`, `db-1/2`, `worker-1..5` — wszystkie appki i Postgresy na C1 (mapowanie MAC → rola w `inventory.ini`).
 
-**Klaster stoi na `main`**, obrazy appek `48b0e5d` (od 2026-10-19, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
+**Klaster stoi na branchu `perf/job-offer-read-model`**, obrazy appek `50ae17e` (od 2026-10-22; wcześniej `main` `48b0e5d`, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
 całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1,
 tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2
 ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Checki z
@@ -37,19 +37,25 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Następny krok: materialized view jako read model wyszukiwania (do decyzji, 2026-10-19).** Cel bez zmian: jak
-   najwięcej ofert/kandydatów przy 2100 rps; limit CPU Postgresa i appek zostaje (3), dodatkowe RPi tylko
-   w ostateczności. Na `main` (merge `perf/scale-data-volume`) model znormalizowany z wyszukiwaniem z indeksów + GiST,
-   `jit=off`, `force_generic_plan` trzyma **2100 rps przy 200k kandydatów / 350k ofert** (10 min, 0% KO, p99 157 ms,
-   Postgres 2,62/3 — sufit; 375k: p99 720 ms, 400k: 2,4% KO). Wpis w RPS-SCALING 2026-10-18.
-   - Wstępne pomiary widoku z 2026-10-17/18 (branch usunięty, kod do odtworzenia): materialized view
-     `job_offer_match` (firma + tablice skilli/typów zatrudnienia, indeks pokrywający `(company_id, salary_to)
-     INCLUDE (id, employment_types, skill_names)`) trzymał 2100 rps przy **~1,5M ofert** (8 min, 0% KO, p99 255 ms;
-     1,75M na granicy, 2M 0,6% KO) — limitem staje się CPU `app-job-offers`, nie Postgres (~630 vs ~1250 µs/req).
-   - Do rozstrzygnięcia przed wdrożeniem: jak synchronizować zapisy (oferty mają się zmieniać przez appkę, a
-     `REFRESH MATERIALIZED VIEW` przebudowuje całość) — okresowy refresh, synchroniczna aktualizacja tabeli read modelu
-     w tej samej transakcji, outbox albo CDC. Sprawdzić też `jit=off`/`force_generic_plan` na widoku.
-   - Wynik musi być 10-min runem, wpis w RPS-SCALING i README robione na branchu razem z kodem.
+1. **Read model `job_offer_match` wdrożony na klaster, czeka na load test (2026-10-22).** Branch
+   `perf/job-offer-read-model` (niezmergowany, niewypchnięty): zwykła tabela `job_offer_match` (`V1_3`) zamiast
+   materialized view, utrzymywana triggerami na `job_offer`, `job_offer_skill`, `job_offer_employment_type`, `company`,
+   `skill` w transakcji zapisu, więc dane nigdy nie są nieaktualne. Masowy import idzie z
+   `PGOPTIONS='-c job_offer_match.sync=off'` i jednym `rebuild_job_offer_match()` na końcu (oba `*load-data`).
+   Zweryfikowane: testy (w tym 7 na synchronizację), Compose i minikube (pełny load + checki observability z linkami
+   logi ↔ trace), na klastrze migracja 8,4 s, read model = źródło (244 969 wierszy), index-only scan bez heap fetches,
+   checki observability zielone. 8 równoległych transakcji na tej samej ofercie zostawia read model zgodny ze źródłem
+   (lock `FOR NO KEY UPDATE` w `refresh_job_offer_match`).
+   - **Do zrobienia: load test** (nie robiony 2026-10-22 — Mac na Wi-Fi i słabej ładowarce). 10-min run przy 2100 rps
+     na obecnych 350k ofert, potem rosnąco jak przy widoku. Dopiero z wynikiem: wpis w RPS-SCALING + README na branchu,
+     merge. Sprawdzić też, czy `jit=off`/`force_generic_plan` nadal pomagają.
+   - Punkt odniesienia — materialized view z 2026-10-17/18 (`jit=on`, `plan_cache_mode=auto`, dane >1M to kopie 1M):
+     1M — Postgres ~1,3/3 (~630 µs/req), `app-job-offers` ~4,4/6; 1,5M — 0% KO, p99 255 ms, Postgres 1,8/3,
+     `app-job-offers` 4,8/6; 1,75M — p99 910 ms (granica); 2M — 0,62% KO. Limitem było CPU `app-job-offers`.
+     Model znormalizowany (`main`) przy 350k: Postgres 2,62/3 (~1250 µs/req).
+   - Read model pod ciągłymi zapisami nie był mierzony — update czyści bity visibility map, index-only scan wtedy
+     sięga do tabeli do następnego autovacuum. Przy dodawaniu zapisów ofert: test z zapisami w tle, ew. tuning
+     autovacuum dla `job_offer_match`.
 
 2. **Chaos monkey (dodane 2026-10-02).** Celowe zabijanie podów/node'ów pod obciążeniem, żeby sprawdzić odporność
    klastra i appek. Narzędzie do wyboru. Pamiętać o znanych ograniczeniach: twardy `podAntiAffinity` bez wolnego
@@ -97,10 +103,6 @@ stojącym kilka godzin.
    i nadrabia, cykl ~30 s z fazą zależną od startu Gatlinga) okazał się pracą generatora na baterii — po podłączeniu
    zasilania zniknął. Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
    w git history tego pliku (2026-09-24).
-
-7a. **`app-job-offers`: `search()` trzyma połączenie z puli (10) przez cały request, łącznie ze scoringiem** —
-   na `main` `@Transactional(readOnly = true)` na całej metodzie. Branch z pkt 1 to usuwa (jedno zapytanie w
-   transakcji repozytorium, scoring poza nią) — zamknąć po merge'u.
 
 8. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
    wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
@@ -185,6 +187,11 @@ stojącym kilka godzin.
   kandydaci też dostają nowe UUID.
 
 ### minikube
+- **Pełny dysk Docker Desktop wrócił 2026-10-22** (99%, Loki w Compose i na minikube „Ingester is shutting down”;
+  Loki dławi WAL już od 90% zajętości dysku). Główny zjadacz: anonimowe wolumeny po starych `docker compose up`
+  (~11,5 GB, `docker volume prune` — nazwane, w tym `minikube`, zostają). Po zwolnieniu miejsca Loki trzeba
+  zrestartować (`docker compose restart loki` / `kubectl delete pod loki-0`), sam nie wraca. Lokalne obrazy
+  `192.168.10.190:5000/*` celowo nieruszane (tagi bez SHA, np. `exp-*`, mogą być jedyną kopią).
 - **Pełny dysk Docker Desktop zatrzymuje Loki po cichu (2026-10-04).** Dysk minikube (sterownik docker) to dysk VM
   Docker Desktop — przy 99% Loki odrzucał wszystkie pushe z Alloy komunikatem „Ingester is shutting down”, a
   wyglądał na zdrowy. Puste panele „by Pod”/dyskowe na minikube to z kolei stałe ograniczenie cAdvisora/node-exportera
