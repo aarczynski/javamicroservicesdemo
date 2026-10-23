@@ -6,24 +6,31 @@ result is cumulative over everything above it.
 ## Dataset
 
 > [!IMPORTANT]
-> **The dataset grew on 2026-10-18: 2.3× the job offers, 2× the candidates.** Every step up to and including
-> [2026-09-28 — `app-candidates` × 3](#2026-09-28--app-candidates--3) ran on the original dataset; every step from
+> **The dataset grew twice — on 2026-10-18 (2.3× the job offers, 2× the candidates) and again on 2026-10-23 (4.3×
+> the job offers, 10× the original).** Every step up to and including
+> [2026-09-28 — `app-candidates` × 3](#2026-09-28--app-candidates--3) ran on the original dataset;
 > [2026-10-18 — search answered from indexes, 350k job offers](#2026-10-18--search-answered-from-indexes-350k-job-offers)
-> on the current one.
+> on the second one; every step from
+> [2026-10-23 — search reads a trigger-maintained read model, 1.5M job offers](#2026-10-23--search-reads-a-trigger-maintained-read-model-15m-job-offers) on the current one.
 
-| Table | Original dataset | Current dataset (since 2026-10-18) | Growth |
-|---|---:|---:|---:|
-| `candidate` | 100,000 | 200,000 | 2× |
-| `job_offer` | 150,000 | 350,000 | **2.3×** |
-| `company` | 10,000 | 10,000 | 1× |
-| `skill` | 58 | 58 | 1× |
+| Table | Original dataset | 2026-10-18 | Current dataset (since 2026-10-23) | Growth vs 2026-10-18 |
+|---|---:|---:|---:|---:|
+| `candidate` | 100,000 | 200,000 | 200,000 | 1× |
+| `job_offer` | 150,000 | 350,000 | **1,500,000** | **4.3×** |
+| `company` | 10,000 | 10,000 | 10,000 | 1× |
+| `skill` | 58 | 58 | 58 | 1× |
 
-The join and collection tables grow with their owners: the job offers' skills and employment types 2.3×, the
-candidates' 2×.
+The join and collection tables grow with their owners: on 2026-10-18 the job offers' skills and employment types
+2.3×, the candidates' 2×; on 2026-10-23 the job offers' 4.3× (~4.5M skills, ~3M employment types), the candidates'
+not at all.
 
-Companies stay at 10k, so offers per company grow 2.3× (15 → 35) — and so does the number of offers inside a
-search's bounding box. 350k is the largest dataset that still holds 2100 rps: at 375k the 10-minute run keeps 0% KO,
-but p99 climbs to 720 ms with `postgres-job-offers` throttled up to 98%.
+Companies stay at 10k, so offers per company grow with the offers (15 → 35 → 150) — and so does the number of offers
+inside a search's bounding box. About 70% of the offers are active (1,049,687 of the 1.5M).
+
+The 1.5M dataset is the generator's 1M (`make k8s-load-data candidates=200000 jobOffers=1000000 companies=10000`)
+plus 500k copies of generated offers under new ids — same company, title, salary, skills and employment types —
+inserted with the read model's triggers off, then one `rebuild_job_offer_match()` and `VACUUM ANALYZE`. A copy
+lands in the same bounding boxes as its original, so it adds work per search the same way a generated offer would.
 
 ## Fixed assumptions (same for every state)
 
@@ -101,6 +108,7 @@ Each result is the best ~10-minute run at a constant rate with 0% KO.
 | [2026-09-28](#2026-09-28--candidate-loaded-with-join-fetch) | Candidate loaded with `JOIN FETCH` (`bf8b998`) | **2000 rps** (+11%) | `app-job-offers` Hikari pool + `postgres-job-offers` CPU |
 | [2026-09-28](#2026-09-28--app-candidates--3) | `app-candidates` × 3, Hikari 40, `postgres-candidates` `max_connections=150` (`feff7ee`, `cd83f92`, `92979c4`) | **2100 rps** (+5%) | `postgres-job-offers` CPU |
 | [2026-10-18](#2026-10-18--search-answered-from-indexes-350k-job-offers) | **Dataset grown: 150k → 350k job offers, 100k → 200k candidates** ([Dataset](#dataset)); search answered from indexes with a GiST bounding box, Postgres `jit=off` + generic plans (`48b0e5d`) | **2100 rps** (+0%, on 2.3× the offers) | `postgres-job-offers` CPU |
+| [2026-10-23](#2026-10-23--search-reads-a-trigger-maintained-read-model-15m-job-offers) | **Dataset grown: 350k → 1.5M job offers** ([Dataset](#dataset)); search reads `job_offer_match`, a read model kept in sync by triggers, filtered from one covering index (`50ae17e`) | **2100 rps** (+0%, on 4.3× the offers) | `app-job-offers` Hikari pool + CPU |
 
 ## Results
 
@@ -1204,7 +1212,7 @@ ports:
 **2100 rps** — 10 min, 1,386,000 requests, 0% KO · bottleneck: `postgres-job-offers` CPU
 
 > [!IMPORTANT]
-> From this step on, every result runs on the **current dataset** — 350k job offers (2.3×), 200k candidates (2×),
+> From this step on, every result runs on the **2026-10-18 dataset** — 350k job offers (2.3×), 200k candidates (2×),
 > see [Dataset](#dataset). The same rate as the previous step, on 2.3× the offers.
 
 <details>
@@ -1346,6 +1354,162 @@ args: ["-c", "max_parallel_workers_per_gather=0",
 </td>
 </tr>
 </table>
+
+</details>
+
+</details>
+
+### 2026-10-23 — search reads a trigger-maintained read model, 1.5M job offers
+
+**2100 rps** — 10 min, 1,386,000 requests, 0% KO · bottleneck: `app-job-offers` Hikari pool + CPU
+
+> [!IMPORTANT]
+> From this step on, every result runs on the **current dataset** — 1.5M job offers (4.3× the previous step), 200k
+> candidates (unchanged), see [Dataset](#dataset). The same rate as the previous step, on 4.3× the offers.
+
+<details>
+<summary>Details</summary>
+
+| p50 | p95 | p99 | max |
+|---|---|---|---|
+| 21 ms | 89 ms | 167 ms | 947 ms |
+
+**Change:** the search reads `job_offer_match` — a table with one row per active offer, its company's name and
+location, and its skills and employment types already aggregated into arrays. Triggers on `job_offer`,
+`job_offer_skill`, `job_offer_employment_type`, `company` and `skill` rebuild an offer's row in the writing
+transaction, so the read model is never stale (a materialized view is stale between full refreshes). The filter —
+companies inside the bounding box, salary, employment types, skills — runs from one covering index,
+`(company_id, salary_to) INCLUDE (id, employment_types, skill_names)`, as an index-only scan; Postgres no longer
+probes the skill table for every offer in the bounding box, and no longer aggregates skills and employment types for
+every match on every request. Bulk loads import with the triggers off (`PGOPTIONS='-c job_offer_match.sync=off'`),
+then rebuild the read model once and vacuum.
+
+| | Previous step | This step |
+|---|---:|---:|
+| Job offers | 350,000 | 1,500,000 (4.3×) |
+| Active job offers | ~245,000 | 1,049,687 |
+| Job offers per company | 35 | 150 |
+| Best 10-min run, 0% KO | 2100 rps | **2100 rps** |
+| `postgres-job-offers` CPU | 2.62 of 3 cores | **1.82 of 3** |
+| `postgres-job-offers` CPU per request | ~1,250 µs | **~865 µs** |
+| `app-job-offers` CPU per request | ~1,770 µs | ~2,250 µs |
+| `app-candidates` CPU per request | ~1,860 µs | ~2,250 µs |
+
+Same code, 10-minute runs at 2100 rps on other dataset sizes:
+
+| Job offers (active) | KO | p50 / p95 / p99 | Connection held per search |
+|---|---:|---|---:|
+| 1M (700k) | 0% | 13 / 52 / 85 ms | 3.1 ms |
+| **1.5M (1.05M)** | **0%** | **21 / 89 / 167 ms** | **4.8 ms** |
+| 2M (1.4M) | 5.43% | 675 / 2,326 / 3,041 ms | 7.9 ms |
+
+1.5M is the edge: an earlier 10-minute run on the same data, with JVMs up for 9 hours, had 124 KO (0.01%) and p99
+1,237 ms, with the same Postgres CPU per request.
+
+**Bottleneck:** `app-job-offers` — not its CPU per row (reading rows ~7%, scoring ~5% in a JFR profile at 2M), but how
+long each search holds a pooled connection, which grows with the offers in the bounding box (1M 3.1 ms → 1.5M 4.8 →
+2M 7.9). Hikari (2 × 10 connections): on average 15 of 20 busy, 14.5 requests waiting for one (peak 82), 6.5 ms
+average wait. CPU 2.35 of 3 per replica, throttled up to 12%. Postgres (1.82 of 3) and `app-candidates` (~1.57 of 3
+per replica, nothing waiting for its pool) have room.
+
+<details>
+<summary>Key code changes</summary>
+
+`app-job-offers/.../db/migration/postgres/V1_3__job-offer-match-read-model.sql` (abridged)
+
+```sql
+CREATE VIEW job_offer_match_source AS
+SELECT o.id, o.company_id, c.name AS company_name, c.geo_lat AS company_geo_lat, c.geo_lon AS company_geo_lon,
+       o.title, o.description, o.salary_from, o.salary_to, ...,
+       et.employment_types, sk.skill_names, sk.skill_seniority_levels, sk.skill_mandatory, sk.skill_weights
+FROM job_offer o
+JOIN company c ON c.id = o.company_id
+CROSS JOIN LATERAL (array_agg employment types) et
+CROSS JOIN LATERAL (array_agg skills) sk
+WHERE o.status = 'ACTIVE';
+
+CREATE TABLE job_offer_match AS SELECT * FROM job_offer_match_source;
+ALTER TABLE job_offer_match ADD PRIMARY KEY (id);
+CREATE INDEX idx_job_offer_match_search ON job_offer_match (company_id, salary_to)
+    INCLUDE (id, employment_types, skill_names);
+
+-- one per source table: job_offer, job_offer_employment_type, job_offer_skill, company, skill
+CREATE TRIGGER job_offer_match_sync
+    AFTER INSERT OR UPDATE OR DELETE ON job_offer_skill
+    FOR EACH ROW WHEN (current_setting('job_offer_match.sync', true) IS DISTINCT FROM 'off')
+EXECUTE FUNCTION sync_job_offer_match_from_offer_detail();  -- refresh_job_offer_match(job_offer_id)
+
+DROP INDEX idx_job_offer_active_company_salary;
+```
+
+`app-job-offers/.../offer/JobOfferRepository.java`
+
+<table>
+<tr><th>Before</th><th>After</th></tr>
+<tr>
+<td>
+
+```sql
+SELECT o.*, c.name, c.geo_lat, c.geo_lon,
+       et.employment_types, sk.skill_names, ...
+FROM job_offer o
+JOIN company c ON c.id = o.company_id
+CROSS JOIN LATERAL (array_agg employment types) et
+CROSS JOIN LATERAL (array_agg skills) sk
+WHERE o.id IN (
+    SELECT f.id FROM job_offer f
+    JOIN company fc ON fc.id = f.company_id
+    WHERE f.status = 'ACTIVE'
+    AND point(fc.geo_lon, fc.geo_lat)
+        <@ box(point(:lonMin, :latMin),
+               point(:lonMax, :latMax))
+    AND f.salary_to >= :expectedSalary
+    AND EXISTS (
+        SELECT 1 FROM job_offer_skill fs
+        WHERE fs.job_offer_id = f.id
+        AND fs.skill_id = ANY(ARRAY(
+            SELECT s.id FROM skill s WHERE s.name
+            = ANY(CAST(:skillNames AS text[]))))
+    )
+)
+AND et.employment_types
+    && CAST(:employmentTypes AS text[])
+```
+
+</td>
+<td>
+
+```sql
+SELECT m.id, m.company_id, m.company_name, ...,
+       m.employment_types, m.skill_names,
+       m.skill_seniority_levels, m.skill_mandatory,
+       m.skill_weights
+FROM job_offer_match m
+WHERE m.id IN (
+    SELECT f.id FROM job_offer_match f
+    JOIN company c ON c.id = f.company_id
+    WHERE point(c.geo_lon, c.geo_lat)
+        <@ box(point(:lonMin, :latMin),
+               point(:lonMax, :latMax))
+    AND f.salary_to >= :expectedSalary
+    AND f.employment_types
+        && CAST(:employmentTypes AS text[])
+    AND f.skill_names
+        && CAST(:skillNames AS text[])
+)
+```
+
+</td>
+</tr>
+</table>
+
+`scripts/load-data.sh`, `k8s-cluster/scripts/load-data.sh`
+
+```bash
+PGOPTIONS='-c job_offer_match.sync=off' psql ... -f 03-job-offers.sql   # every import, triggers off
+psql ... -c "SELECT rebuild_job_offer_match()"                          # once, after the import
+psql ... -c "VACUUM ANALYZE"
+```
 
 </details>
 

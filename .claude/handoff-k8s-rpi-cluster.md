@@ -8,15 +8,16 @@ stąd usuwane, nie archiwizowane w treści.
 
 12/12 node'ów fizycznych w klastrze, `kubeadm` (nie k3s, Kubernetes 1.36), Cilium 1.20.2 (CNI + Gateway API v1.6.2,
 bez kube-proxy), MetalLB (L2), `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2,
-jedna replika na node) + ich Postgresy wdrożone, dane załadowane (**200k candidates / 350k job offers / 10k
-companies** od 2026-10-18, `data-generator`; wcześniej 100k/150k). Stack observability: Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze
+jedna replika na node) + ich Postgresy wdrożone, dane załadowane (**200k candidates / 1,5M job offers / 10k
+companies** od 2026-10-23: 1M z `data-generator` + 500k kopii z nowymi id, opis w README „Row counts”; wcześniej 200k/350k od
+2026-10-18, 100k/150k). Stack observability: Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze
 `tempo-distributed` (Kafka+RustFS). Ambient load (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w
 `CLAUDE.md` (nie duplikować tutaj).
 
 **Płytki D0/C1 rozdzielone wg ról (przebudowa 2026-10-03):** 4× D0 → `master` + `observability-1/2/3`, 8× C1 →
 `platform-1`, `db-1/2`, `worker-1..5` — wszystkie appki i Postgresy na C1 (mapowanie MAC → rola w `inventory.ini`).
 
-**Klaster stoi na branchu `perf/job-offer-read-model`**, obrazy appek `50ae17e` (od 2026-10-22; wcześniej `main` `48b0e5d`, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
+**Klaster stoi na `main`** (read model zmergowany 2026-10-23), obrazy appek `50ae17e` (wdrożone ponownie 2026-10-23 18:15 po teście top 50 `771f80c` z lokalnego brancha `perf/job-offer-top50`; wcześniej `main` `48b0e5d`, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
 całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1,
 tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2
 ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Checki z
@@ -37,8 +38,13 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Read model `job_offer_match` wdrożony na klaster, czeka na load test (2026-10-22).** Branch
-   `perf/job-offer-read-model` (niezmergowany, niewypchnięty): zwykła tabela `job_offer_match` (`V1_3`) zamiast
+1. **Read model `job_offer_match` — zmergowany do `main` 2026-10-23, wpis w RPS-SCALING (2100 rps przy 1,5M).**
+   **Wynik do RPS-SCALING (2026-10-23 21:02, `50ae17e`, 1,5M, JVM-y ~45 min po deployu + 5 min rozgrzewki): 2100 rps,
+   10 min, 0% KO, p50/p95/p99 21/89/167 ms, max 947.** Hikari `app-job-offers` śr. 15/20 zajętych, śr. 14,5
+   czekających (max 82), czekanie śr. 6,5 ms, trzymanie 4,8 ms; CPU `app-job-offers` 2,35/3 na replikę (throttling do
+   12%), Postgres 1,82/3 (~865 µs/req), `app-candidates` ~1,57/3 na replikę, `postgres-candidates` 0,54/3. GC
+   `app-job-offers` z metryk: ~2,6 pauzy/s po ~8,7 ms (~2,3% czasu) — mniej niż w JFR przy 2M (niżej).
+   Dawny opis brancha `perf/job-offer-read-model`: zwykła tabela `job_offer_match` (`V1_3`) zamiast
    materialized view, utrzymywana triggerami na `job_offer`, `job_offer_skill`, `job_offer_employment_type`, `company`,
    `skill` w transakcji zapisu, więc dane nigdy nie są nieaktualne. Masowy import idzie z
    `PGOPTIONS='-c job_offer_match.sync=off'` i jednym `rebuild_job_offer_match()` na końcu (oba `*load-data`).
@@ -46,9 +52,52 @@ stojącym kilka godzin.
    logi ↔ trace), na klastrze migracja 8,4 s, read model = źródło (244 969 wierszy), index-only scan bez heap fetches,
    checki observability zielone. 8 równoległych transakcji na tej samej ofercie zostawia read model zgodny ze źródłem
    (lock `FOR NO KEY UPDATE` w `refresh_job_offer_match`).
-   - **Do zrobienia: load test** (nie robiony 2026-10-22 — Mac na Wi-Fi i słabej ładowarce). 10-min run przy 2100 rps
-     na obecnych 350k ofert, potem rosnąco jak przy widoku. Dopiero z wynikiem: wpis w RPS-SCALING + README na branchu,
-     merge. Sprawdzić też, czy `jit=off`/`force_generic_plan` nadal pomagają.
+   - **Load testy 2026-10-22 wieczorem** (10 min stałej fazy, Mac na LAN w VLAN 10 i zasilaniu, appki rozgrzane 9 h;
+     1M = pełny zbiór z `data-generator`, 1,5M/2M = 1M + kopie 500k/1M ofert z nowymi id, jak przy widoku):
+
+     | Oferty (aktywne) | rps | KO | p50/p95/p99 | `postgres-job-offers` | `app-job-offers` (2×3) | Hikari `app-job-offers` (10) |
+     |---|---:|---:|---|---|---|---|
+     | 1M (700k) | 2100 | 0% | 13/52/85 ms | 1,42/3, ~680 µs/req | 4,10, ~1950 µs/req | śr. 5,4 aktywnych, ~1 czekający |
+     | 1,5M (1,05M) | 2100 | 0,01% (124×503) | 42/747/1237 ms | 1,79/3, ~850 µs/req | 4,97, throttling 19% | pełna, śr. ~100 czekających |
+     | 2M (1,4M) | 2100 | 5,43% (503) | 675/2326/3041 ms | 2,44/3, throttling 26% | 5,14, throttling 30% | pełna, ~185 czekających |
+     | 2M (1,4M) | 1800 | 0% | 29/207/473 ms | 2,20/3, ~1220 µs/req | 4,74, ~2630 µs/req | śr. 8,8 aktywnych, ~50 czekających |
+
+     Przy 1M lepiej niż `main` przy 350k (p99 85 vs 157 ms, Postgres ~680 vs ~1250 µs/req). Limit od 1,5M:
+     `app-job-offers` — pula Hikari pełna, CPU blisko limitu z throttlingiem; Postgres ma zapas do 2M. Kopie podwajają
+     dopasowania na kandydata, więc rośnie też praca appki (scoring, serializacja) — nie tylko bazy.
+     Dane na klastrze (od 2026-10-23 18:10): **1,5M ofert (1M + 500k kopii, 1 049 687 aktywnych) + tabela pomocnicza
+     `bench_original_offer`** (id oryginałów; kopie dokłada/usuwa skrypt z `job_offer_match.sync=off` + rebuild + vacuum)
+     — przed kolejnym pomiarem na realnym zbiorze przeładować (`make k8s-load-data` albo import samego job-offers bez generowania).
+   - **Top 50 (2026-10-23, `771f80c`) — odłożone, nie na tym branchu.** Commity `b368387` + `771f80c` (+ pin
+     manifestów i ten opis w `e3e8eeb`) leżą na lokalnym branchu `perf/job-offer-top50`; `perf/job-offer-read-model` ma
+     tylko read model. Zamiast sztywnego limitu ma być paginacja (osobny punkt niżej). Odpowiedź to 50 najlepszych ofert (wcześniej wszystkie dopasowane; przy 2M
+     średnio 33, max 830, teraz średnio 14, 15% kandydatów trafia w limit). Najpierw zrobione jako dwa zapytania
+     (scoring + szczegóły dla 50, `b368387`) — gorzej: 2M/2100 7,98% KO, 2M/1800 4,64% KO. JFR: wiersze i scoring to
+     mały udział CPU `app-job-offers`, każde native query ma stały narzut Hibernate/Spring Data + osobny checkout z puli
+     (drugie zapytanie samo 13% CPU). Wrócone do jednego zapytania z limitem w pamięci. Wyniki na 2M, świeże JVM-y
+     (~40 min po deployu, 5 min rozgrzewki):
+
+     | Wersja | rps | KO | p50/p95/p99 | CPU/req `app-job-offers` | CPU/req `app-candidates` | czas trzymania połączenia |
+     |---|---:|---:|---|---|---|---|
+     | wszystkie oferty | 2100 | 5,43% | 675/2326/3041 ms | ~2450 µs | ~2300 µs | 7,9 ms |
+     | top 50 | 2100 | 2,13% | 556/2189/2945 ms | ~2490 µs | ~2130 µs | 7,6 ms |
+     | wszystkie oferty | 1800 | 0% | 29/207/473 ms | ~2630 µs | ~2430 µs | 6,7 ms |
+     | top 50 | 1800 | 0% | 17/117/710 ms | ~2500 µs | ~2110 µs | 5,6 ms |
+
+     Prawdziwy limit przy rosnących danych to **czas trzymania połączenia** przez zapytanie (1M 3,1 ms → 1,5M 5,9 →
+     2M 7,9 ms przy 2×10 połączeniach), nie CPU per wiersz w appce — rośnie praca Postgresa na zapytanie (więcej ofert
+     w bounding boxie), Postgres ma 2,5/3 rdzenia z throttlingiem przy 2M/2100. Kolejne dźwignie: mniej pracy Postgresa
+     na zapytanie, ew. pula Hikari, GC (niżej).
+     Sprawdzić też, czy `jit=off`/`force_generic_plan` nadal pomagają.
+   - **Pauzy GC w `app-job-offers` (JFR 2026-10-23, 2M, 120 s pod obciążeniem)** — JVM jedzie na **Serial GC**
+     (`DefNew` + `SerialOld`, 0 wątków GC): ergonomia wybiera G1 dopiero od ≥2 CPU **i ≥1792 MB** pamięci, a kontener
+     ma limit 1536Mi, a we flagach `java` nie ma wyboru GC. Heap `-Xms384m -Xmx384m`, młoda generacja ~100 MB
+     (heapUsed 94→196 MB). Wynik: 227 young GC w 120 s (~1,9/s), mediana pauzy 28,7 ms, p99 38,9, max 40 ms — razem
+     6,7 s, czyli **5,6% czasu cała JVM stoi** (stop-the-world, jednym wątkiem). W trakcie pauzy wszystkie żądania w
+     locie trzymają połączenia z puli, więc pauzy dokładają się do czasu trzymania połączenia i do ogona p99.
+     `app-candidates` ma ten sam heap i limit → prawdopodobnie też Serial (niesprawdzone). Nieruszane. Kandydaci do
+     sprawdzenia: `-XX:+UseParallelGC` albo `-XX:+UseG1GC` (3 CPU, wielowątkowe young GC) i/lub większy heap
+     (limit 1536Mi daje miejsce, młoda generacja rzadziej) — mierzyć osobno, 10-min run.
    - Punkt odniesienia — materialized view z 2026-10-17/18 (`jit=on`, `plan_cache_mode=auto`, dane >1M to kopie 1M):
      1M — Postgres ~1,3/3 (~630 µs/req), `app-job-offers` ~4,4/6; 1,5M — 0% KO, p99 255 ms, Postgres 1,8/3,
      `app-job-offers` 4,8/6; 1,75M — p99 910 ms (granica); 2M — 0,62% KO. Limitem było CPU `app-job-offers`.
@@ -57,11 +106,27 @@ stojącym kilka godzin.
      sięga do tabeli do następnego autovacuum. Przy dodawaniu zapisów ofert: test z zapisami w tle, ew. tuning
      autovacuum dla `job_offer_match`.
 
-2. **Chaos monkey (dodane 2026-10-02).** Celowe zabijanie podów/node'ów pod obciążeniem, żeby sprawdzić odporność
+2. **Paginacja wyników wyszukiwania zamiast sztywnego top 50 (dodane 2026-10-23).** Top 50 tylko ucina listę i nie
+   da się dojść do dalszych ofert. Do zrobienia `page`/`size` w `POST /job-offers/search`, przekazywane z endpointu
+   `app-candidates` przez Feign, w odpowiedzi strona + `totalElements`; ranking stabilny (`score` malejąco, potem
+   `id`). Dwa warianty:
+   - **W aplikacji** (sortowanie w pamięci, skip + limit) — prosta poprawka API, ale każda strona kosztuje tyle co
+     pełne wyszukiwanie (żeby wiedzieć, co jest na stronie 3, trzeba wczytać i ocenić wszystkie dopasowania), więc
+     wydajnościowo = top 50.
+   - **W bazie** (score w SQL, `ORDER BY score DESC, id LIMIT/OFFSET`) — ma sens tylko, gdy kolumny potrzebne do
+     score są w indeksie pokrywającym: ranking z samego indeksu, całe wiersze (z `description`) tylko dla jednej strony
+     zamiast dla wszystkich dopasowań → krótszy czas trzymania połączenia. Koszt: scoring umiejętności (różnica
+     seniority, kara za brak obowiązkowych) w SQL na tablicach, a CPU idzie do Postgresa, który przy 2M/2100 ma już
+     2,5/3. Osobny eksperyment z pomiarem.
+   Nie dzielić na dwa zapytania (ranking + szczegóły strony) — zmierzone na top 50 (`b368387`): każde native query to
+   checkout z puli + stały narzut Hibernate/Spring Data, drugie zapytanie samo 13% CPU `app-job-offers`, KO 2M/2100
+   7,98% vs 5,43% bez limitu. Pomiar top 50 (wariant „w aplikacji”, `771f80c`) jest w punkcie 1.
+
+3. **Chaos monkey (dodane 2026-10-02).** Celowe zabijanie podów/node'ów pod obciążeniem, żeby sprawdzić odporność
    klastra i appek. Narzędzie do wyboru. Pamiętać o znanych ograniczeniach: twardy `podAntiAffinity` bez wolnego
    node'a (zastępczy pod zostaje `Pending`), Gatling po awarii node'a potrafi wisieć bez wysyłania ruchu.
 
-3. **Autoscaling rozwala klaster — duży ruch od razu idzie na nierozgrzany JVM.** `app-candidates` HPA jest dlatego
+4. **Autoscaling rozwala klaster — duży ruch od razu idzie na nierozgrzany JVM.** `app-candidates` HPA jest dlatego
    przypięty na sztywno 3 repliki. Świeży pod po scale-upie dostaje pełny udział ruchu od razu (brak LB slow-startu
    w Gateway API Cilium) i zimny JVM zapycha pulę Hikari / wybija circuit breaker Envoya. `prometheus-adapter` +
    metryka RPS zostają żywe, odblokowanie to zmiana jednej linijki w `k8s-cluster/manifests/candidates/hpa.yaml`.
@@ -70,11 +135,11 @@ stojącym kilka godzin.
    przed przyjęciem ruchu (np. warmup w `startupProbe`/readiness, CDS/AOT cache). Ten sam mechanizm zimnego startu
    dotyczy każdego rolloutu — po deployu zawsze rozgrzewka przed pomiarem.
 
-4. **Flamegraph `app-candidates` — co zjada tyle CPU (dodane 2026-10-02).** Appka tylko pobiera kandydata z bazy,
+5. **Flamegraph `app-candidates` — co zjada tyle CPU (dodane 2026-10-02).** Appka tylko pobiera kandydata z bazy,
    woła `app-job-offers` przez Feign i zwraca wynik, a mimo to zużywa dużo CPU na request. Zdjąć flamegraph pod
    obciążeniem (np. async-profiler / JFR) i znaleźć gorące miejsca.
 
-5. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
+6. **Odporność na power cycle — nadal wymaga ręcznej interwencji.** Stan na 2026-09-24:
    - **Naprawione i potwierdzone po power cyclach 2026-09-23**: wyścig metryki JVM CPU (flat 0) — `MeterFilter.deny`
      (`60cdd0b`) działa, wszystkie 5 instancji raportuje poprawnie po restarcie; CoreDNS obie repliki na jednym
      node'zie (`257dbc8`, twardy anti-affinity).
@@ -96,36 +161,36 @@ stojącym kilka godzin.
    - Po każdym restarcie: `kubectl get pods -A | grep -v Running`, i pamiętać o rozgrzewce (patrz „Obecny stan”) —
      nie mierzyć wtedy capacity.
 
-6. **Niezbadany pad sieciowy `worker-2` z 2026-09-23** (`journalctl -b -1`). Niskopriorytetowe, nie powtórzył się.
+7. **Niezbadany pad sieciowy `worker-2` z 2026-09-23** (`journalctl -b -1`). Niskopriorytetowe, nie powtórzył się.
 
-7. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
+8. **Skoki opóźnień co ~40 s przy ~1500rps (zgłoszone 2026-09-23) — najpewniej Mac na baterii.** Nie odtworzyły się
    w sondzie w klastrze (2026-09-24), a 2026-09-27 identyczny objaw (wszystkie repliki naraz, RPS na serwerze spada
    i nadrabia, cykl ~30 s z fazą zależną od startu Gatlinga) okazał się pracą generatora na baterii — po podłączeniu
    zasilania zniknął. Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
    w git history tego pliku (2026-09-24).
 
-8. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
+9. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
    wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
    (listy `IN` o zmiennej długości → różny tekst SQL) faktycznie omijają planowanie. `pg_stat_statements` da realny
    koszt i liczbę wywołań każdego zapytania zamiast próbkowania `pg_stat_activity`. Kandydaci do
    odciążenia: `findByIdIn` (entity graph + `IN`, ~26% próbek aktywnych), doładowania employment types (~6%).
    Niedokładne p99 w Grafanie (`README.md` Known issues) nadal otwarte; Keycloak/SSO świadomie za nimi, bez node'a.
 
-9. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — od 2026-09-30 każdy
+10. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — od 2026-09-30 każdy
    `*load-data` (Compose/k8s/minikube) zawsze przeładowuje bazę, więc `data-generator/output/candidates/01-candidates.sql`
    po ostatnim uruchomieniu zawsze pasuje do bazy, na którą je załadowano. Ryzyko zostaje przy przełączaniu między
    środowiskami (plik z minikube vs. baza na RPi). Do rozważenia: krok w symulacji weryfikujący próbkę ID przed testem.
 
-9a. **`CandidateGeneratorSpec` jest niestabilny** — nazwisko z apostrofem (np. `O'Hara`) generator zapisuje w mailu
+10a. **`CandidateGeneratorSpec` jest niestabilny** — nazwisko z apostrofem (np. `O'Hara`) generator zapisuje w mailu
    bez apostrofu, test tego nie uwzględnia. Losowo wywala `make generate-data`, a więc i `make k8s-load-data`
    (2026-09-28, jedno z pięciu przeładowań). Ponowne uruchomienie przechodzi.
 
-10a. **Dashboardy Grafany na klastrze ładują się za wolno (zgłoszone 2026-10-04, problem „od dawna”).** Wykresy długo
+11a. **Dashboardy Grafany na klastrze ładują się za wolno (zgłoszone 2026-10-04, problem „od dawna”).** Wykresy długo
    się wczytują. Nie badane — przyczyna nieznana. Na start: zmierzyć czas pojedynczych zapytań paneli (Query
    inspector w Grafanie albo `/api/ds/query` z pomiarem czasu) i porównać z obciążeniem Prometheusa/Loki
    (`prometheus-server`, `loki-0` — oba na `observability-2`, płytka D0).
 
-11. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
+12. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
    (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
 
