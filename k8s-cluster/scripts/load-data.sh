@@ -22,10 +22,12 @@ first_pod() {
   kubectl get pod -n "$namespace" -l "app=$pod_label" -o jsonpath='{.items[0].metadata.name}'
 }
 
+# job_offer_match.sync=off: app-job-offers' read model triggers skip the bulk import, rebuild_read_model fills it
+# once afterwards. A session setting, so a failed import can't leave the triggers off. The candidates db ignores it.
 import_file() {
   local namespace="$1" pod="$2" db="$3" file="$4"
   kubectl cp "$file" "$namespace/$pod:/tmp/$(basename "$file")"
-  kubectl exec -n "$namespace" "$pod" -- \
+  kubectl exec -n "$namespace" "$pod" -- env PGOPTIONS='-c job_offer_match.sync=off' \
     psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -q -f "/tmp/$(basename "$file")"
   kubectl exec -n "$namespace" "$pod" -- rm -f "/tmp/$(basename "$file")"
 }
@@ -34,6 +36,12 @@ run_sql() {
   local namespace="$1" pod_label="$2" db="$3" sql="$4"
   kubectl exec -n "$namespace" "$(first_pod "$namespace" "$pod_label")" -- \
     psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -c "$sql"
+}
+
+rebuild_read_model() {
+  local namespace="$1" pod_label="$2" db="$3"
+  echo "==> Rebuilding job_offer_match in $db"
+  run_sql "$namespace" "$pod_label" "$db" "SELECT rebuild_job_offer_match()"
 }
 
 # Separate psql -c calls: VACUUM refuses to run inside the implicit transaction psql wraps around a
@@ -100,6 +108,7 @@ reload_database job-offers postgres-job-offers app-job-offers-db "company, skill
   "$OUT/job-offers/03-job-offers.sql" \
   "$OUT/job-offers/04-job-offer-employment-types.sql" \
   "$OUT/job-offers/05-job-offer-skills.sql"
+rebuild_read_model job-offers postgres-job-offers app-job-offers-db
 vacuum_analyze job-offers postgres-job-offers app-job-offers-db
 
 echo "==> Load complete. Load test: candidatesDataFile=$OUT/candidates/01-candidates.sql"

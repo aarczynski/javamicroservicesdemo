@@ -22,10 +22,19 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# job_offer_match.sync=off: app-job-offers' read model triggers skip the bulk import, rebuild_read_model fills it
+# once afterwards. A session setting, so a failed import can't leave the triggers off. The candidates db ignores it.
 psql_in() {
   local container="$1" db="$2"
   shift 2
-  docker exec -i "$container" psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -q "$@"
+  docker exec -i -e PGOPTIONS='-c job_offer_match.sync=off' "$container" \
+    psql -U postgres -d "$db" -v ON_ERROR_STOP=1 -q "$@"
+}
+
+rebuild_read_model() {
+  local container="$1" db="$2"
+  echo "==> Rebuilding job_offer_match in $db"
+  psql_in "$container" "$db" -c "SELECT rebuild_job_offer_match()"
 }
 
 # Separate psql -c calls: VACUUM refuses to run inside the implicit transaction psql wraps around a
@@ -80,6 +89,7 @@ reload_database app-job-offers-db app-job-offers-db "company, skill" \
   "$OUT/job-offers/03-job-offers.sql" \
   "$OUT/job-offers/04-job-offer-employment-types.sql" \
   "$OUT/job-offers/05-job-offer-skills.sql"
+rebuild_read_model app-job-offers-db app-job-offers-db
 vacuum_analyze app-job-offers-db app-job-offers-db
 
 echo "==> Load complete. Load test: candidatesDataFile=$OUT/candidates/01-candidates.sql"

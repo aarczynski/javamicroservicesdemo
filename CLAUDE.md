@@ -69,7 +69,7 @@ Within each feature package:
 - Prefer `FetchType.LAZY` and handle `LazyInitializationExceptions` by `NamedEntityGraph`s. 
 - On request hot paths, do not use JPQL/HQL queries with collection-valued parameters (`IN :list`) — Hibernate never caches the query plan for them and re-translates HQL→SQL on every call (measured at ~15% of `app-job-offers` CPU, see the native search query step in `k8s-cluster/RPS-SCALING.md`). Use a native query instead (`@NativeQuery`, typed via `@SqlResultSetMapping` when needed). An applied entity graph has the same effect — acceptable on a query that doesn't run on every request.
 - Pass lists to native hot-path queries as one array parameter (`= ANY(CAST(:names AS text[]))`, `&& CAST(:names AS text[])`, Java `String[]`), not `IN (:list)` — a list expands to one placeholder per element, so every list length is a different SQL text and Postgres plans it again instead of reusing the prepared statement's plan.
-- `app-job-offers` search filters on the domain tables from indexes alone (index-only scans, `V1_2`): keep every column the filter reads in an index, and let every data load end with `VACUUM ANALYZE` (the `*load-data` scripts do) — without it the visibility map is unset and index-only scans fall back to reading the tables.
+- `app-job-offers` search reads the `job_offer_match` read model (`V1_3`): a table with one row per active offer, kept in sync by triggers on `job_offer`, `job_offer_skill`, `job_offer_employment_type`, `company` and `skill` in the writing transaction — not a materialized view, which is stale between full refreshes. Its filter runs from `idx_job_offer_match_search` alone (index-only scan): keep every column the filter reads in that index. Bulk loads import with `PGOPTIONS='-c job_offer_match.sync=off'`, then `SELECT rebuild_job_offer_match()` and `VACUUM ANALYZE` (the `*load-data` scripts do) — without the vacuum the visibility map is unset and index-only scans fall back to reading the table. Anything else writing those tables in bulk must do the same, or leave sync on.
 - DTOs are separate from entities.
 - Exceptions should stay close to the feature when possible.
 
@@ -494,9 +494,12 @@ When upgrading Docker image versions, always use standard release tags in the fo
 Do not use tags with suffixes such as `-security-XX`, `-rc`, `-beta`, or `-ubuntu` unless explicitly required.
 If only non-standard tags are available for a given version, stay on the previous stable release.
 
-## After dependency upgrades — observability verification
+## After dependency upgrades and app changes — observability verification
 
-After every dependency upgrade, verify the observability stack is intact by running the app locally and querying the APIs directly (no browser needed):
+After every dependency upgrade, and after every change to the apps, their database or their deployment, verify the
+observability stack is intact by running the app locally and querying the APIs directly (no browser needed). The
+links between logs and traces (step 5, last item) are always part of it — they break silently, with every datasource
+config still looking right:
 
 1. `docker compose up -d --build` — start the full stack
 2. Wait for both services to be healthy (`/actuator/health` returns `UP`)
