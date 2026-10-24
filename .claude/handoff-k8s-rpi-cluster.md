@@ -190,6 +190,19 @@ stojącym kilka godzin.
    inspector w Grafanie albo `/api/ds/query` z pomiarem czasu) i porównać z obciążeniem Prometheusa/Loki
    (`prometheus-server`, `loki-0` — oba na `observability-2`, płytka D0).
 
+11b. **Rozbudowa o nowe płytki i przetasowanie ról (dodane 2026-10-24).** Dwie nowe Pi 5 8 GB czekają poza
+   klastrem (wyłączone, bez rezerwacji DHCP, nie w `inventory.ini`): obie **Rev 1.1 / D0** (`d04171`), Ubuntu 26.04.1,
+   NVMe Lexar NM620 256 GB, `throttled=0x0`, SMART OK, passwordless sudo dodane ręcznie
+   (`/etc/sudoers.d/90-aarczynski`, playbook tego nie robi). `98:fe:54:45:45:01` miała gorsze i dużo głośniejsze
+   chłodzenie (przy 65 °C ~7300 rpm vs ~4500 rpm; ~3-4 °C cieplej na tym samym biegu) — user podmienia wentylator na
+   fabryczny z obudowy, jak w `98:fe:54:45:3a:73`. User dokupuje trzecią płytkę; wtedy:
+   - zlistować na nowo wszystkie płytki (rewizja, `bcm2712d0/c1-pinctrl`, MAC) i ułożyć role od zera,
+   - `platform-1` (i coś jeszcze) przenieść na wolniejsze płytki D0, zwalniając C1 — Gateway jest na ścieżce
+     każdego requestu, więc po przenosinach powtórzyć 10-min load test i sprawdzić, czy sufit 2100 rps się trzyma,
+   - może spróbować SSO (Keycloak) na zwolnionym node'zie (dotąd odłożone „bez node'a”, patrz pkt 9),
+   - nowe wartości taintów → tolerancje w pięciu DaemonSetach (`CLAUDE.md`), rezerwacje DHCP w Omadzie (wymagają
+     restartu płytki), `known_hosts` po zmianie IP.
+
 12. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
    (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
