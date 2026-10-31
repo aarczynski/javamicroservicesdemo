@@ -6,6 +6,7 @@ import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 
 import java.time.Duration;
+import java.util.Set;
 
 /**
  * Plain head sampling (OTEL_TRACES_SAMPLER=traceidratio) can't keep errors and slow requests: it decides
@@ -16,6 +17,7 @@ public class LocalTailSamplingCustomizer implements AutoConfigurationCustomizerP
 
     private static final String RATIO_PROPERTY = "otel.demo.traces.sampling.ratio";
     private static final String SLOW_THRESHOLD_PROPERTY = "otel.demo.traces.sampling.slow-threshold";
+    private static final String ALWAYS_KEPT_HOSTS_PROPERTY = "otel.demo.traces.sampling.always-kept-hosts";
     private static final double DEFAULT_RATIO = 0.01;
     private static final Duration DEFAULT_SLOW_THRESHOLD = Duration.ofMillis(500);
 
@@ -29,6 +31,7 @@ public class LocalTailSamplingCustomizer implements AutoConfigurationCustomizerP
                 delegate,
                 config.getDouble(RATIO_PROPERTY, DEFAULT_RATIO),
                 config.getDuration(SLOW_THRESHOLD_PROPERTY, DEFAULT_SLOW_THRESHOLD),
+                Set.copyOf(config.getList(ALWAYS_KEPT_HOSTS_PROPERTY)),
                 System::nanoTime
         );
     }

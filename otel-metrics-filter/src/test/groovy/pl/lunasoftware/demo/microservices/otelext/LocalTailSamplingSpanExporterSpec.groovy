@@ -15,6 +15,8 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 import static io.opentelemetry.api.common.AttributeKey.longKey
+import static io.opentelemetry.api.common.AttributeKey.stringArrayKey
+import static io.opentelemetry.api.common.AttributeKey.stringKey
 
 class LocalTailSamplingSpanExporterSpec extends Specification {
 
@@ -24,11 +26,12 @@ class LocalTailSamplingSpanExporterSpec extends Specification {
     private static final String CHILD_SPAN_ID = 'c8be7c8270314442'
     private static final long FAST_NANOS = TimeUnit.MILLISECONDS.toNanos(20)
     private static final long SLOW_NANOS = TimeUnit.MILLISECONDS.toNanos(500)
+    private static final String ALWAYS_KEPT_HOST = 'hydra.sso.svc.cluster.local'
 
     private InMemorySpanExporter delegate = InMemorySpanExporter.create()
     private long nowNanos = 0
     private LocalTailSamplingSpanExporter exporter = new LocalTailSamplingSpanExporter(
-            delegate, 0.01, Duration.ofMillis(500), { nowNanos })
+            delegate, 0.01, Duration.ofMillis(500), [ALWAYS_KEPT_HOST] as Set, { nowNanos })
 
     def "should drop fast successful trace outside the ratio"() {
         when:
@@ -147,6 +150,55 @@ class LocalTailSamplingSpanExporterSpec extends Specification {
 
         then:
         delegate.finishedSpanItems.isEmpty()
+    }
+
+    def "should keep whole trace when it called an always kept host"() {
+        when:
+        exporter.export([clientCall(SAMPLED_OUT_TRACE_ID, ALWAYS_KEPT_HOST), root(SAMPLED_OUT_TRACE_ID, FAST_NANOS, 200)])
+
+        then:
+        delegate.finishedSpanItems*.spanId == [CHILD_SPAN_ID, ROOT_SPAN_ID]
+    }
+
+    def "should drop fast successful trace calling any other host"() {
+        when:
+        exporter.export([clientCall(SAMPLED_OUT_TRACE_ID, 'app-job-offers'), root(SAMPLED_OUT_TRACE_ID, FAST_NANOS, 200)])
+
+        then:
+        delegate.finishedSpanItems.isEmpty()
+    }
+
+    def "should keep whole trace when a called service asked to keep it"() {
+        when:
+        exporter.export([clientCall(SAMPLED_OUT_TRACE_ID, Attributes.builder()
+                .put(stringKey('server.address'), 'app-job-offers')
+                .put(stringArrayKey('http.response.header.x-keep-trace'), ['true'])
+                .build()), root(SAMPLED_OUT_TRACE_ID, FAST_NANOS, 200)])
+
+        then:
+        delegate.finishedSpanItems*.spanId == [CHILD_SPAN_ID, ROOT_SPAN_ID]
+    }
+
+    private static SpanData clientCall(String traceId, String serverAddress) {
+        clientCall(traceId, Attributes.of(stringKey('server.address'), serverAddress, longKey('http.response.status_code'), 200L))
+    }
+
+    private static SpanData clientCall(String traceId, Attributes attributes) {
+        def parent = SpanContext.create(traceId, ROOT_SPAN_ID, TraceFlags.sampled, TraceState.default)
+        TestSpanData.builder()
+                .setName('POST')
+                .setKind(SpanKind.CLIENT)
+                .setSpanContext(SpanContext.create(traceId, CHILD_SPAN_ID, TraceFlags.sampled, TraceState.default))
+                .setParentSpanContext(parent)
+                .setStartEpochNanos(0)
+                .setEndEpochNanos(FAST_NANOS)
+                .setHasEnded(true)
+                .setStatus(StatusData.unset())
+                .setAttributes(attributes)
+                .setTotalRecordedEvents(0)
+                .setTotalRecordedLinks(0)
+                .setTotalAttributeCount(attributes.size())
+                .build()
     }
 
     private static SpanData root(String traceId, long durationNanos, long statusCode) {

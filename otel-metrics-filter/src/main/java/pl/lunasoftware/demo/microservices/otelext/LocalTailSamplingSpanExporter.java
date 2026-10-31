@@ -2,6 +2,7 @@ package pl.lunasoftware.demo.microservices.otelext;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
@@ -13,6 +14,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 
@@ -20,7 +22,11 @@ import java.util.stream.Stream;
  * Keeps a trace if its trace id falls into {@code ratio}, if any of its spans carries an HTTP 4xx/5xx
  * status code, or if its local root span took at least {@code slowThreshold} - the same policies the
  * collector's tail_sampling processor used to apply, decided here so the other ~99% is never serialized
- * or sent. Spans are buffered per trace until the local root span (no parent, or a remote one) ends.
+ * or sent. A trace that called one of {@code alwaysKeptHosts} is kept too: that service exports every span it
+ * receives a parent for (Ory Hydra), so without it most of its spans would hang off a dropped parent. So is a trace in
+ * which a called service answered with {@code X-Keep-Trace} (captured by the agent as
+ * {@code http.response.header.x-keep-trace}): app-job-offers sends it when it asked Hydra on its own, while the caller
+ * took its token from its cache. Spans are buffered per trace until the local root span (no parent, or a remote one) ends.
  * The decision is per service: a trace slow only in app-candidates keeps just app-candidates' spans.
  * The ratio part is derived from the trace id alone, so every service keeps the same traces for it.
  * <p>
@@ -30,18 +36,24 @@ import java.util.stream.Stream;
 final class LocalTailSamplingSpanExporter implements SpanExporter {
 
     private static final AttributeKey<Long> HTTP_STATUS_CODE = AttributeKey.longKey("http.response.status_code");
+    private static final AttributeKey<String> SERVER_ADDRESS = AttributeKey.stringKey("server.address");
+    private static final AttributeKey<List<String>> KEEP_TRACE_RESPONSE_HEADER =
+            AttributeKey.stringArrayKey("http.response.header.x-keep-trace");
     private static final Duration PENDING_TRACE_TTL = Duration.ofSeconds(30);
 
     private final SpanExporter delegate;
     private final long ratioUpperBound;
     private final long slowThresholdNanos;
+    private final Set<String> alwaysKeptHosts;
     private final LongSupplier nanoClock;
     private final Map<String, PendingTrace> pendingTraces = new LinkedHashMap<>();
 
-    LocalTailSamplingSpanExporter(SpanExporter delegate, double ratio, Duration slowThreshold, LongSupplier nanoClock) {
+    LocalTailSamplingSpanExporter(SpanExporter delegate, double ratio, Duration slowThreshold, Set<String> alwaysKeptHosts,
+                                  LongSupplier nanoClock) {
         this.delegate = delegate;
         this.ratioUpperBound = (long) (ratio * Long.MAX_VALUE);
         this.slowThresholdNanos = slowThreshold.toNanos();
+        this.alwaysKeptHosts = alwaysKeptHosts;
         this.nanoClock = nanoClock;
     }
 
@@ -102,7 +114,17 @@ final class LocalTailSamplingSpanExporter implements SpanExporter {
         return isInRatio(localRoot.getTraceId())
                 || hasHttpErrorStatus(localRoot)
                 || children.stream().anyMatch(LocalTailSamplingSpanExporter::hasHttpErrorStatus)
-                || isSlow(localRoot);
+                || isSlow(localRoot)
+                || children.stream().anyMatch(this::callsAlwaysKeptHost)
+                || children.stream().anyMatch(LocalTailSamplingSpanExporter::wasAskedToKeepTrace);
+    }
+
+    private static boolean wasAskedToKeepTrace(SpanData span) {
+        return span.getKind() == SpanKind.CLIENT && span.getAttributes().get(KEEP_TRACE_RESPONSE_HEADER) != null;
+    }
+
+    private boolean callsAlwaysKeptHost(SpanData span) {
+        return span.getKind() == SpanKind.CLIENT && alwaysKeptHosts.contains(span.getAttributes().get(SERVER_ADDRESS));
     }
 
     private boolean isInRatio(String traceId) {
