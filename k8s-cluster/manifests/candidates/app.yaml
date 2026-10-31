@@ -20,6 +20,15 @@ data:
             config:
               job-offers:
                 url: http://app-job-offers.job-offers.svc.cluster.local:8080
+      security:
+        oauth2:
+          client:
+            registration:
+              job-offers:
+                client-secret: app-candidates-secret
+            provider:
+              hydra:
+                token-uri: http://hydra.sso.svc.cluster.local:4444/oauth2/token
 
 ---
 apiVersion: apps/v1
@@ -161,6 +170,14 @@ spec:
               value: "false"
             - name: OTEL_JAVAAGENT_EXTENSIONS
               value: "./otel-metrics-filter.jar"
+            # Traces that called Hydra are always kept (otel-metrics-filter's LocalTailSamplingSpanExporter):
+            # Hydra exports every span it gets a parent for, so dropping the app's side leaves them orphaned.
+            - name: OTEL_DEMO_TRACES_SAMPLING_ALWAYS_KEPT_HOSTS
+              value: hydra.sso.svc.cluster.local
+            # app-job-offers answers with X-Keep-Trace when it asked Hydra about our token on its own; the
+            # captured header makes LocalTailSamplingSpanExporter keep our part of that trace too.
+            - name: OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_RESPONSE_HEADERS
+              value: X-Keep-Trace
             - name: OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
             # Emits the db.client.operation.duration histogram behind the DB panels

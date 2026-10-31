@@ -63,6 +63,11 @@ k8s-gc:
 k8s-deploy-load-background: ensure-insecure-registry
 	./k8s-cluster/scripts/deploy-load-background.sh
 
+# SSO (Ory Hydra) on the sso nodes. Must be up before app-candidates/app-job-offers:
+# every call between them carries a token from it.
+k8s-deploy-sso:
+	./k8s-cluster/scripts/deploy-sso.sh
+
 # --- minikube (local dev cluster, no RPi hardware needed) ---
 # Project-local, not ~/.kube or ~/.minikube — see minikube-start.sh. Same
 # shape as the RPi cluster above: two commands to remember day-to-day —

@@ -6,6 +6,9 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      # Ory Hydra only exports over OTLP/HTTP.
+      http:
+        endpoint: 0.0.0.0:4318
   # Native Postgres metrics (postgres_exporter, one per DB instance) - pulled
   # here rather than adding a scrape config to Prometheus itself, keeping
   # Prometheus config-free and everything flowing through this one collector

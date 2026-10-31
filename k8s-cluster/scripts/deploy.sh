@@ -10,6 +10,9 @@
 # Docker needs to trust it explicitly first; `make k8s-deploy` handles that
 # via ensure-insecure-registry (scripts/ensure-insecure-registry.sh) before
 # this script ever runs.
+#
+# IMAGE_TAG overrides the sha tag — for uncommitted experiments, give each
+# build a new tag (e.g. IMAGE_TAG=sso-test-2), or nodes keep the cached image.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,7 +25,7 @@ REGISTRY_RE='192\.168\.10\.190:5000'
 
 cd "$ROOT_DIR"
 
-SHA="$(git rev-parse --short HEAD)"
+SHA="${IMAGE_TAG:-$(git rev-parse --short HEAD)}"
 echo "==> Building images for sha $SHA"
 ./gradlew :app-job-offers:clean :app-candidates:clean :app-job-offers:build :app-candidates:build
 

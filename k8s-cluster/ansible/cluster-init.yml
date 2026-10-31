@@ -61,7 +61,7 @@
         kubeadm_join_command: "{{ join_command_raw.stdout }}"
 
 - name: Join the rest of the cluster
-  hosts: k8s_database:k8s_observability:k8s_platform:k8s_workers
+  hosts: k8s_database:k8s_observability:k8s_platform:k8s_sso:k8s_workers
   become: true
   tasks:
     - name: Check whether this node already joined the cluster
@@ -100,3 +100,11 @@
         taint node {{ item }} role=platform:NoSchedule --overwrite
       loop: "{{ groups['k8s_platform'] }}"
       changed_when: true
+
+    - name: Taint SSO nodes (role=sso:NoSchedule)
+      ansible.builtin.command: >
+        kubectl --kubeconfig={{ kubeconfig_path }}
+        taint node {{ item }} role=sso:NoSchedule --overwrite
+      loop: "{{ groups['k8s_sso'] }}"
+      changed_when: true
+

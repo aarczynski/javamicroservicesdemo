@@ -1,0 +1,14 @@
+# Applied with `kubectl apply -k` (deploy-sso.sh, bootstrap.sh) — unlike the app directories, because the
+# hydra-clients Job needs the ConfigMap generated from hydra-clients.sh below.
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - hydra.yaml
+
+configMapGenerator:
+  - name: hydra-clients-script
+    namespace: sso
+    files:
+      - hydra-clients.sh
+    options:
+      disableNameSuffixHash: true

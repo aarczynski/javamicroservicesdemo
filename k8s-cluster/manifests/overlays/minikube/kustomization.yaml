@@ -7,6 +7,7 @@ resources:
   - nodeport-candidates.yaml
   - ../../job-offers
   - ../../load-background
+  - ../../sso
 
 # The base app.yaml files point at 192.168.10.190:5000 — the RPi cluster's
 # self-hosted image registry (k8s-cluster/manifests/registry/registry.yaml),
@@ -82,3 +83,29 @@ patches:
     patch: |-
       - op: remove
         path: /spec/template/spec/affinity
+  # Hydra, its Postgres and the client registration Job are pinned to the RPi sso node (taint role=sso,
+  # nodeSelector on k8s-rpi-sso-1) — same stripping as the other pinned workloads above.
+  - target:
+      kind: Deployment
+      name: postgres-hydra
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations
+  - target:
+      kind: Deployment
+      name: hydra
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations
+  - target:
+      kind: Job
+      name: hydra-clients
+    patch: |-
+      - op: remove
+        path: /spec/template/spec/nodeSelector
+      - op: remove
+        path: /spec/template/spec/tolerations

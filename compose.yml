@@ -39,6 +39,10 @@ services:
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
       OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
+      # Traces that called Hydra are always kept - it exports every span it gets a parent for.
+      OTEL_DEMO_TRACES_SAMPLING_ALWAYS_KEPT_HOSTS: "hydra"
+      # app-job-offers answers with X-Keep-Trace when it asked Hydra on its own - keeps our part of that trace.
+      OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_RESPONSE_HEADERS: "X-Keep-Trace"
       OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED: true
       OTEL_SEMCONV_STABILITY_OPT_IN: "database"
       JOB_OFFERS_URL: "http://app-job-offers:8080"
@@ -50,6 +54,8 @@ services:
         condition: service_healthy
       app-job-offers:
         condition: service_started
+      hydra-clients:
+        condition: service_completed_successfully
       otel-collector:
         condition: service_healthy
     healthcheck:
@@ -83,6 +89,8 @@ services:
       OTEL_INSTRUMENTATION_SPRING_BOOT_ACTUATOR_AUTOCONFIGURE_ENABLED: true
       OTEL_INSTRUMENTATION_MICROMETER_ENABLED: false
       OTEL_JAVAAGENT_EXTENSIONS: "./otel-metrics-filter.jar"
+      # Traces that called Hydra are always kept - it exports every span it gets a parent for.
+      OTEL_DEMO_TRACES_SAMPLING_ALWAYS_KEPT_HOSTS: "hydra"
       OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED: true
       OTEL_SEMCONV_STABILITY_OPT_IN: "database"
     ports:
@@ -90,6 +98,8 @@ services:
       - "5006:5005"
     depends_on:
       postgres-job-offers:
+        condition: service_healthy
+      hydra:
         condition: service_healthy
       otel-collector:
         condition: service_healthy
@@ -132,6 +142,77 @@ services:
       - POSTGRES_DB=app-job-offers-db
     ports:
       - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+
+  # SSO (Ory Hydra): app-candidates gets a client_credentials token from the public port (4444),
+  # app-job-offers checks every incoming token against the admin port's introspection endpoint (4445).
+  # --dev only allows the plain-HTTP issuer URL; the admin port has no auth of its own, so it must stay
+  # internal (it is not published here).
+  hydra:
+    container_name: hydra
+    image: oryd/hydra:v26.2.0
+    command: [ "serve", "all", "--dev", "--sqa-opt-out" ]
+    environment:
+      DSN: "postgres://postgres:password@postgres-hydra:5432/hydra-db?sslmode=disable"
+      URLS_SELF_ISSUER: "http://hydra:4444"
+      SECRETS_SYSTEM: "local-compose-hydra-system-secret"
+      # Same tracing setup as k8s-cluster/manifests/sso/hydra.yaml.
+      TRACING_PROVIDER: "otel"
+      TRACING_SERVICE_NAME: "hydra"
+      TRACING_PROVIDERS_OTLP_SERVER_URL: "otel-collector:4318"
+      TRACING_PROVIDERS_OTLP_INSECURE: "true"
+      TRACING_PROVIDERS_OTLP_SAMPLING_SAMPLING_RATIO: "0"
+    ports:
+      - "4444:4444"
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:4445/health/ready | grep -c ok" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  hydra-migrate:
+    container_name: hydra-migrate
+    image: oryd/hydra:v26.2.0
+    command: [ "migrate", "sql", "up", "-e", "--yes" ]
+    environment:
+      DSN: "postgres://postgres:password@postgres-hydra:5432/hydra-db?sslmode=disable"
+    depends_on:
+      postgres-hydra:
+        condition: service_healthy
+
+  # Registers the OAuth2 clients once Hydra is up; skips a client that already exists, so a restart is a no-op.
+  hydra-clients:
+    container_name: hydra-clients
+    image: oryd/hydra:v26.2.0
+    entrypoint: [ "/bin/sh", "/hydra-clients.sh" ]
+    environment:
+      ORY_SDK_URL: "http://hydra:4445"
+    volumes:
+      - ./k8s-cluster/manifests/sso/hydra-clients.sh:/hydra-clients.sh:ro
+    depends_on:
+      hydra:
+        condition: service_healthy
+
+  postgres-hydra:
+    container_name: hydra-db
+    image: postgres:18.6
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=hydra-db
+    ports:
+      - "5434:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s

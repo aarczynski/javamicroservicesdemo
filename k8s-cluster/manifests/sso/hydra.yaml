@@ -1,0 +1,170 @@
+# kubectl apply -k . (see kustomization.yaml) — k8s-cluster/scripts/deploy-sso.sh, `make k8s-deploy-sso`.
+#
+# Ory Hydra, the SSO for app-to-app calls: app-candidates gets a client_credentials token from the public port
+# (4444), app-job-offers introspects incoming tokens on the admin port (4445) and caches active ones for 60 s, so
+# Hydra sees a handful of introspections per minute instead of one per request. Mirrors compose.yml's hydra
+# service. The admin port has no auth of its own — ClusterIP only, never exposed through the Gateway.
+#
+# Runs on sso-1 (D0, role=sso taint, 192.168.10.60), next to its Postgres. One replica is plenty with the cache:
+# ~0.0013 CPU at 2100 rps.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hydra
+  namespace: sso
+type: Opaque
+stringData:
+  # max_conns: the default is 2x CPU count (8 on a Pi 5). Every introspection is a database read; without the
+  # introspection cache in app-job-offers (~2000/s) the pool, not Hydra, would set the ceiling.
+  DSN: "postgres://postgres:password@postgres-hydra.sso.svc.cluster.local:5432/hydra-db?sslmode=disable&max_conns=16&max_idle_conns=16"
+  SECRETS_SYSTEM: "k8s-rpi-cluster-hydra-system-secret"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hydra
+  namespace: sso
+spec:
+  replicas: 1
+  # Single replica on a single node: the old pod stops before the new one starts (a few seconds of misses failing).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: hydra
+  template:
+    metadata:
+      labels:
+        app: hydra
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4445"
+        prometheus.io/path: /admin/metrics/prometheus
+    spec:
+      tolerations:
+        - key: role
+          operator: Equal
+          value: sso
+          effect: NoSchedule
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-sso-1
+      initContainers:
+        # Idempotent; on a scale-up the schema is already there and this is a no-op.
+        - name: migrate
+          image: oryd/hydra:v26.2.0
+          args: ["migrate", "sql", "up", "-e", "--yes"]
+          envFrom:
+            - secretRef:
+                name: hydra
+      containers:
+        - name: hydra
+          image: oryd/hydra:v26.2.0
+          # --dev only allows the plain-HTTP issuer URL (no TLS anywhere inside this cluster).
+          args: ["serve", "all", "--dev", "--sqa-opt-out"]
+          ports:
+            - name: public
+              containerPort: 4444
+            - name: admin
+              containerPort: 4445
+          envFrom:
+            - secretRef:
+                name: hydra
+          env:
+            - name: URLS_SELF_ISSUER
+              value: http://hydra.sso.svc.cluster.local:4444
+            # info logs two lines per request — ~4000 lines/s into Loki at 2000 rps.
+            - name: LOG_LEVEL
+              value: warn
+            # Spans over OTLP/HTTP (Hydra has no gRPC exporter), joined to the calling app's trace through
+            # traceparent. Ratio 0 drops spans with no parent (kubelet probes); a call from an app follows the
+            # app's decision.
+            - name: TRACING_PROVIDER
+              value: otel
+            - name: TRACING_SERVICE_NAME
+              value: hydra
+            - name: TRACING_PROVIDERS_OTLP_SERVER_URL
+              value: otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+            - name: TRACING_PROVIDERS_OTLP_INSECURE
+              value: "true"
+            - name: TRACING_PROVIDERS_OTLP_SAMPLING_SAMPLING_RATIO
+              value: "0"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health/alive
+              port: admin
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hydra
+  namespace: sso
+spec:
+  type: ClusterIP
+  selector:
+    app: hydra
+  ports:
+    - name: public
+      port: 4444
+      targetPort: public
+    - name: admin
+      port: 4445
+      targetPort: admin
+
+---
+# Registers the OAuth2 clients (hydra-clients.sh, mounted from the hydra-clients-script ConfigMap).
+# Jobs are immutable — deploy-sso.sh deletes the previous run before applying.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hydra-clients
+  namespace: sso
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      tolerations:
+        - key: role
+          operator: Equal
+          value: sso
+          effect: NoSchedule
+      nodeSelector:
+        kubernetes.io/hostname: k8s-rpi-sso-1
+      containers:
+        - name: hydra-clients
+          image: oryd/hydra:v26.2.0
+          command: ["/bin/sh", "/scripts/hydra-clients.sh"]
+          env:
+            - name: ORY_SDK_URL
+              value: http://hydra.sso.svc.cluster.local:4445
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: hydra-clients-script

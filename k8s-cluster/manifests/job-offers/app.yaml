@@ -2,7 +2,7 @@
 # app-job-offers. Internal only (called via Feign by app-candidates) — no
 # LoadBalancer, ClusterIP is enough. Datasource in the image's baked-in
 # docker/application.yml already matches the in-namespace Postgres Service
-# name, so no config override needed here (unlike app-candidates).
+# name; only the SSO introspection URL is overridden (env below).
 
 apiVersion: apps/v1
 kind: Deployment
@@ -88,6 +88,9 @@ spec:
               value: "false"
             - name: OTEL_JAVAAGENT_EXTENSIONS
               value: "./otel-metrics-filter.jar"
+            # See k8s-cluster/manifests/candidates/app.yaml.
+            - name: OTEL_DEMO_TRACES_SAMPLING_ALWAYS_KEPT_HOSTS
+              value: hydra.sso.svc.cluster.local
             - name: OTEL_INSTRUMENTATION_COMMON_CONTROLLER_TELEMETRY_ENABLED
               value: "true"
             # Emits the db.client.operation.duration histogram behind the DB panels
@@ -102,6 +105,9 @@ spec:
             # Compose keeps the agent's OTLP log export (no Alloy there).
             - name: OTEL_LOGS_EXPORTER
               value: none
+            # Every incoming token is checked in the SSO (Hydra admin port, k8s-cluster/manifests/sso/hydra.yaml).
+            - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_OPAQUETOKEN_INTROSPECTIONURI
+              value: http://hydra.sso.svc.cluster.local:4445/admin/oauth2/introspect
           readinessProbe:
             httpGet:
               path: /actuator/health

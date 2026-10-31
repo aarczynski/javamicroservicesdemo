@@ -34,3 +34,7 @@ speaker:
       operator: Equal
       value: platform
       effect: NoSchedule
+    - key: role
+      operator: Equal
+      value: sso
+      effect: NoSchedule

@@ -106,6 +106,10 @@ echo "==> prometheus-adapter (RPS metric for the app-candidates HPA)"
 helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapter -n observability \
   -f "$MANIFESTS/observability/values-prometheus-adapter.yaml" --version 5.3.0
 
+echo "==> SSO"
+# Before the apps: app-job-offers rejects every call without a token Hydra can introspect.
+kubectl apply -k "$MANIFESTS/sso"
+
 echo "==> Apps"
 # Explicit filenames, not `-f "$dir/"` — that directory-wide form tries to
 # apply every *.yaml in the dir including kustomization.yaml (added so the

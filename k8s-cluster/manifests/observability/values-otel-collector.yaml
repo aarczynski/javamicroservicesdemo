@@ -31,6 +31,9 @@ alternateConfig:
       protocols:
         grpc:
           endpoint: 0.0.0.0:4317
+        # Ory Hydra only exports over OTLP/HTTP.
+        http:
+          endpoint: 0.0.0.0:4318
 
   processors:
     batch:
