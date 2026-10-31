@@ -10,7 +10,9 @@ metadata:
   name: app-job-offers
   namespace: job-offers
 spec:
-  replicas: 2
+  # 3 since 2026-10-31: with 2, both replicas sat at their 3-CPU limit
+  # (47-53% throttled) and the 10-min 2100 rps run lost 5.8% to 503s.
+  replicas: 3
   # See k8s-cluster/manifests/candidates/app.yaml — default maxSurge=25%
   # deadlocks against the hard anti-affinity below when there's exactly one
   # node per app replica and no spare capacity for a surge pod.
@@ -40,6 +42,18 @@ spec:
       # self-reinforcing Gateway connection-imbalance from two app replicas
       # sharing a node).
       affinity:
+        # Not on a D0 board (worker-6): it burns 10-23% more CPU per request
+        # and this app is the busiest on the request path — see
+        # k8s-cluster/RPS-SCALING.md, "Known issue". Label set by
+        # ansible/cluster-init.yml from inventory.ini.
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: bcm2712-stepping
+                    operator: In
+                    values:
+                      - c1
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:

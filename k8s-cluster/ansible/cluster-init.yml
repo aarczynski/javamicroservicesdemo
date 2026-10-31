@@ -108,3 +108,10 @@
       loop: "{{ groups['k8s_sso'] }}"
       changed_when: true
 
+    # app-job-offers requires bcm2712-stepping=c1 (see its app.yaml).
+    - name: Label nodes with their BCM2712 stepping (bcm2712-stepping=c1|d0)
+      ansible.builtin.command: >
+        kubectl --kubeconfig={{ kubeconfig_path }}
+        label node {{ item }} bcm2712-stepping={{ hostvars[item].bcm2712_stepping }} --overwrite
+      loop: "{{ groups['k8s_all'] }}"
+      changed_when: true
