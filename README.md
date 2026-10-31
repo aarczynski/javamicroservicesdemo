@@ -6,7 +6,7 @@ App to analyze distributed microservices system and DB performance using Gatling
   job_offer, job_offer_skill, and job_offer_employment_type.
   A job offer belongs to one company and may require multiple skills at specific seniority levels. Job offers include remote/hybrid work requirements and required years of experience
 * **app-candidates** - a microservice managing candidates, acting as a client for app-job-offers to find matching
-  offers.
+  offers. Every call to app-job-offers carries a token from the SSO (Ory Hydra), see [SSO](#sso).
   Data model consists of three tables: candidate, candidate_skill, and candidate_preferred_employment_type. Candidates include remote work preferences.
 * **data-generator** - a utility tool to generate SQL file(s) to populate job-offers and candidates databases with
   significant amounts of data.
@@ -44,6 +44,8 @@ flowchart LR
         joboffersdb[("app-job-offers-db\ncompany\nskill\njob_offer\njob_offer_skill\njob_offer_employment_type")]
     end
 
+    hydra["Ory Hydra\nSSO"]
+
     subgraph observability["Observability"]
         otel["OTEL Collector"]
         prometheus["Prometheus"]
@@ -54,7 +56,9 @@ flowchart LR
 
     gatling -->|HTTP| candidates
     k6 -->|HTTP 24/7| candidates
-    candidates -->|HTTP| joboffers
+    candidates -->|HTTP + token| joboffers
+    candidates -->|client_credentials| hydra
+    joboffers -->|introspection,\ncached 60 s| hydra
     candidates --- candidatesdb
     joboffers --- joboffersdb
     candidates -->|OTEL| otel
@@ -167,6 +171,34 @@ limits each app to 2 cores.
 | Distance   | 15%    | Haversine cosine decay blended with remote allowance — fully remote offers always score 1.0; in-office offers use pure cosine decay; hybrid offers blend proportionally. |
 
 SQL bounding box pre-filters offers cheaply; Haversine and the full scoring run only on the reduced set.
+
+# SSO
+
+Calls from `app-candidates` to `app-job-offers` are authenticated through **[Ory Hydra](https://www.ory.sh/hydra/)**
+(v26.2.0) — a light OAuth2 server, chosen over Keycloak:
+
+* `app-candidates` gets a `client_credentials` token with the `job-offers.search` scope from Hydra's public port
+  (4444), keeps it until it expires (1 h) and sends it with every Feign call
+  (`spring.cloud.openfeign.oauth2`).
+* `app-job-offers` checks every incoming token by **introspection** on Hydra's admin port (4445), not by validating it
+  locally, and requires the `job-offers.search` scope. The answer for an active token is cached for 60 s (never past
+  the token's own expiry, rejected tokens are not cached; `CachingOpaqueTokenIntrospector`,
+  `job-offers.security.introspection-cache-ttl`). Requests that bring the same uncached token wait for one call to
+  Hydra together.
+* The trade-off of the cache: a token revoked in Hydra is still accepted for up to 60 s. Without it, every request was
+  a call to Hydra, and one Hydra replica capped the whole system at ~1350 rps; with it, Hydra answers a handful of
+  introspections per minute at 2100 rps and uses ~0.001 CPU.
+* Both apps call Hydra with a 2 s connect/read timeout (`candidates.security.sso-timeout`,
+  `job-offers.security.sso-timeout`). With Hydra down, a request fails after ~2 s with 500 instead of hanging.
+* The OAuth2 clients are registered by
+  [`k8s-cluster/manifests/sso/hydra-clients.sh`](k8s-cluster/manifests/sso/hydra-clients.sh) — the `hydra-clients`
+  service in Compose, a Job on Kubernetes.
+* Observability: Hydra's spans join the apps' traces, its metrics are on the HTTP Monitoring dashboard ("SSO" row,
+  with the introspection cache hit/miss rate), and the token lookups are spans of their own — `token.source=cache|sso`
+  in `app-candidates`, `token.introspection.cache=hit|miss` in `app-job-offers`.
+
+Hydra runs with `--dev`, which allows a plain-HTTP issuer URL. Its admin port has no authentication of its own, so it
+is never published outside Compose's network or the cluster.
 
 # Sample HTTP requests
 
@@ -377,13 +409,18 @@ serialized and sent. The OTEL Collector no longer samples at all (a second pass 
 Trade-offs: the decision is per service, so a trace that is slow or failing only in `app-candidates` keeps just
 `app-candidates`' spans (the 1% part is derived from the trace id alone, so those traces are always complete). The
 ratio and threshold are the `otel.demo.traces.sampling.ratio` / `otel.demo.traces.sampling.slow-threshold`
-properties (`OTEL_DEMO_TRACES_SAMPLING_RATIO` / `OTEL_DEMO_TRACES_SAMPLING_SLOW_THRESHOLD`). DB query timings on the
+properties (`OTEL_DEMO_TRACES_SAMPLING_RATIO` / `OTEL_DEMO_TRACES_SAMPLING_SLOW_THRESHOLD`).
+Traces through [Hydra](#sso) are kept as well: Hydra exports every span that has a parent, so the apps keep any trace
+that called it (`OTEL_DEMO_TRACES_SAMPLING_ALWAYS_KEPT_HOSTS`), and `app-candidates` also keeps a trace in which
+`app-job-offers` answered with `X-Keep-Trace` — it does that when it asked Hydra about the token on its own, on a cache
+miss, while `app-candidates` took the token from its cache. The agent sends `traceparent` with flags `01` instead of
+`03` (`Level1TraceFlagsCustomizer`): Hydra v26.2.0 ignores a parent marked with W3C Level 2 random-id flags. DB query timings on the
 Performance dashboard come from the agent's `db.client.operation.duration` histogram
 (`OTEL_SEMCONV_STABILITY_OPT_IN=database`) rather than from spans, so they still cover 100% of queries.
 
 # Home Kubernetes cluster
 
-Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster running on 12× Raspberry Pi 5
+Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster running on 14× Raspberry Pi 5
 (8GB RAM, NVMe boot). Built with `kubeadm` rather than k3s — a deliberate choice to learn the full stack by picking
 and wiring up each piece by hand (CNI, storage, load-balancing, ingress) instead of relying on a batteries-included
 distribution.
@@ -399,11 +436,12 @@ Current state:
   doesn't need — see [Differences from Docker Compose](#differences-from-docker-compose) for why.
 * `app-candidates` and `app-job-offers` deployed (plain Kubernetes manifests, one namespace per service, each with its
   own Postgres), publicly reachable through the Gateway at `http://192.168.10.100/api/v1/...`.
-* Dedicated, tainted nodes for databases, observability, and platform/ingress services, plus generic worker nodes for
-  the Java apps. Roles are matched to the hardware: 4 of the 12 boards (Rev 1.1, BCM2712 D0) write memory 2-3× slower,
-  so they run only the master and observability, which barely use CPU under load; the Gateway, Postgres and the apps
-  run on the 8 faster boards (Rev 1.0, C1) — see the note in
-  [`inventory.ini`](k8s-cluster/ansible/inventory.ini#L5-L9) (each node is listed there with its board and MAC) and
+* Dedicated, tainted nodes for databases, observability, SSO and platform/ingress services, plus generic worker nodes
+  for the Java apps. Roles are matched to the hardware: 6 of the 14 boards (Rev 1.1, BCM2712 D0) write memory 2-3×
+  slower, so they run the master, observability and the SSO, which barely use CPU under load, plus one
+  `app-candidates` replica; the Gateway, Postgres and the rest of the apps run on the 8 faster boards (Rev 1.0, C1) —
+  see the note in
+  [`inventory.ini`](k8s-cluster/ansible/inventory.ini#L5-L10) (each node is listed there with its board and MAC) and
   [Known issues](#known-issues).
 
 ### Services running in the cluster
@@ -431,6 +469,7 @@ Current state:
 | Image registry | Platform | Self-hosted Docker Distribution — holds `app-candidates`/`app-job-offers`/`load-background` images, replaces `ghcr.io` (k8s-only, see below) |
 | `chrony` (NTP) | Platform | Local time server on `platform-1` the rest of the cluster syncs to, instead of the public NTP pool (see [NTP / clock sync](#ntp--clock-sync)) |
 | `app-candidates` / `app-job-offers` | App | The two Java microservices this whole project is about |
+| Ory Hydra + `postgres-hydra` | App | SSO for the calls between the two apps (see [SSO](#sso)) |
 | `postgres-candidates` / `postgres-job-offers` | App | One Postgres instance per service |
 | `load-background` | App | k6 ambient traffic generator (k8s-only version of the module described above) |
 
@@ -452,16 +491,19 @@ Current state:
 | `db-1`/`db-2` | `role=database` | Postgres instances (`db-3` repurposed to `worker-4` 2026-09-20 — only 2 Postgres instances ever run here) |
 | `observability-1`/`observability-2`/`observability-3` | `role=observability` | Prometheus, Grafana, Loki, OTEL Collector, Tempo, Kafka, RustFS, Hubble Relay/UI. `-3` added 2026-09-20 to split Kafka/Tempo's write path from the rest |
 | `platform-1` | `role=platform` | Gateway ingress, MetalLB controller, `local-path-provisioner`, image registry, local NTP server (see below). Down to a single platform node since 2026-09-20 — MetalLB's L2 mode is active-passive per IP, so `platform-2` measured near-idle even under load; repurposed to `worker-5` instead of keeping a dedicated (and mostly idle) failover node (see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md)) |
-| `worker-1`–`worker-5` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20). `worker-5` added 2026-09-20 (repurposed from `platform-2`); with `app-candidates` pinned to 3 replicas (see the HPA below) plus 2 `app-job-offers`, all 5 workers are permanently occupied |
+| `sso-1` | `role=sso` | Ory Hydra (one replica) and its Postgres, added 2026-10-26 |
+| `worker-1`–`worker-6` | none | `app-candidates`, `app-job-offers`, one dedicated node per replica (hard `podAntiAffinity` since 2026-09-20). `worker-5` added 2026-09-20 (repurposed from `platform-2`), `worker-6` (D0) 2026-10-31; with `app-candidates` pinned to 3 replicas (see the HPA below) plus 3 `app-job-offers`, all 6 workers are permanently occupied. `app-job-offers` runs only on C1 boards (node label `bcm2712-stepping=c1`), so `worker-6` holds an `app-candidates` replica |
 
 DaemonSets that must run everywhere (Cilium, Alloy, node-exporter, the MetalLB speaker) tolerate all of the above and
 run on every node regardless of taint.
 
-Which board carries which role is not arbitrary: the 4 Rev 1.1 boards (BCM2712 D0, slower memory writes — see
-[Known issues](#known-issues)) run `master` and `observability-1`/`-2`/`-3`, which use ~8-15% CPU even at ~2350 rps.
-The 8 Rev 1.0 boards (C1) run everything on the request path: `platform-1` (Gateway), `db-1`/`db-2` and
+Which board carries which role is not arbitrary: the 6 Rev 1.1 boards (BCM2712 D0, slower memory writes — see
+[Known issues](#known-issues)) run `master` and `observability-1`/`-2`/`-3`, which use ~8-15% CPU even at ~2350 rps,
+`sso-1` (~3% at 2100 rps) and `worker-6`, whose `app-candidates` replica costs only ~5% more CPU there than on C1.
+The 8 Rev 1.0 boards (C1) run the rest of the request path: `platform-1` (Gateway), `db-1`/`db-2` and
 `worker-1`–`worker-5`. The board → role mapping (by MAC, as reserved in Omada) is in
-[`k8s-cluster/ansible/inventory.ini`](k8s-cluster/ansible/inventory.ini).
+[`k8s-cluster/ansible/inventory.ini`](k8s-cluster/ansible/inventory.ini), and each node carries the label
+`bcm2712-stepping=c1|d0` taken from it.
 
 ### NTP / clock sync
 
@@ -486,8 +528,8 @@ its full traffic share the instant it passed readiness, and a live 1500rps test 
 hitting 150-215ms (vs a steady-state ~5ms) for ~60-90s, which blew the connection pool's concurrency budget and
 produced real 500s. Pinning to a static 3 sidesteps the problem entirely (no scale event, no freshly-cold pod) —
 see [Future plans](#future-plans) for what unblocks going elastic again. `maxReplicas: 3` (even once unpinned) is a
-hard ceiling — `worker-5` is the only spare generic-worker slot the hard `podAntiAffinity` above leaves free; going
-higher needs another worker node and a deliberate decision, not an automatic bump. Needs `prometheus-adapter`
+hard ceiling — every worker already holds one app replica under the hard `podAntiAffinity` above; going higher needs
+another worker node and a deliberate decision, not an automatic bump. Needs `prometheus-adapter`
 (`k8s-cluster/manifests/observability/values-prometheus-adapter.yaml`) installed to expose the RPS metric (kept
 live even while pinned, so unpinning later is a one-line change) — see the handoff doc if it shows `<unknown>`
 targets.
@@ -496,6 +538,7 @@ targets.
 |---|---|
 | `make k8s-rebuild-all` | Bare metal → running cluster |
 | `make k8s-deploy` | Day-to-day: redeploy the apps after a code/manifest change |
+| `make k8s-deploy-sso` | Redeploy Hydra, its Postgres and the client registration Job after changing `k8s-cluster/manifests/sso/` |
 | `make k8s-load-data` | Replace all data with a freshly generated dataset (same steps as `make load-data`, plus syncing `load-background`). It regenerates the data with `make generate-data`, so pass the cluster's dataset size explicitly or it falls back to the generator defaults — currently `make k8s-load-data candidates=200000 jobOffers=1000000 companies=10000`, plus the 500k copied offers described in [Row counts](#row-counts-on-the-home-k8s-cluster) |
 | `make k8s-gc` | Force a full GC in every app replica — `make candidateSimulation` runs it automatically before a test against the cluster |
 | `make k8s-deploy-load-background` | Rare: rebuild+redeploy `load-background` after changing its own source (JS script, entrypoint, Dockerfile) |
@@ -508,10 +551,16 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current ceiling: 2100 RPS, 0% KO held for 10 minutes** on 200k candidates / 1.5M job offers / 10k companies
-(see [Row counts](#row-counts-on-the-home-k8s-cluster)), limited by `app-job-offers`' connection pool: the search's
-geographic bounding box holds more offers per request as offer density grows, so each search holds its pooled
-connection longer (1M offers 3.1 ms, 1.5M 4.8 ms, 2M 7.9 ms). `postgres-job-offers` has room (~1.8 of its 3 cores).
+**Current ceiling: 2100 RPS, 0% KO held for 10 minutes, with every call between the apps authenticated through the
+[SSO](#sso)** (p99 98 ms), on 200k candidates / 1.5M job offers / 10k companies (see
+[Row counts](#row-counts-on-the-home-k8s-cluster)). The SSO costs CPU on every request (the security filter chain,
+the OAuth2 client), so `app-job-offers` runs 3 replicas since 2026-10-31 — with 2 they sat at their CPU limit and
+lost 5.8% to 503s. Nothing is saturated at 2100 RPS; the next limit is the Gateway's node (`platform-1` at 75%).
+Hydra itself uses ~0.001 CPU thanks to the introspection cache.
+
+> [!NOTE]
+> **Target: 2500 RPS, then the cluster stops growing** — 15 boards at most (one more D0 board to come). Getting there
+> means taking load off the Gateway's node first, see [Future plans](#future-plans).
 
 > [!IMPORTANT]
 > **The dataset grew again on 2026-10-23** — 350k → 1.5M job offers (4.3×; 10× the original 150k), same 200k
@@ -712,14 +761,15 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 
 # Known issues
 
-* **4 of the 12 boards write memory 2-3× slower.** Raspberry Pi 5 Rev 1.1 boards carry the cost-reduced BCM2712
+* **6 of the 14 boards write memory 2-3× slower.** Raspberry Pi 5 Rev 1.1 boards carry the cost-reduced BCM2712
   **D0** SoC stepping, Rev 1.0 boards the original **C1**. On D0, memory writes beyond L2 (through L3 and into DRAM)
   are 2-3× slower; reads, L2 and pure CPU are the same. Neither the kernel (6.8 vs 6.17) nor the bootloader (one board
   flashed to 2026-09-25) changes it — it's the silicon. A JVM writes a lot of memory (zeroing allocations, copying in
   GC): an `app-job-offers` replica on D0 burns 10-23% more CPU per request, and a staircase test with both its replicas
   on D0 broke down ~2000 rps instead of ~2350 (p99 at 2000 rps 436 ms vs 74 ms). Postgres mostly reads and loses
-  only ~5-10%. Worked around by placement: since 2026-10-03 the D0 boards run only the master and the observability
-  nodes (see [Node taints](#node-taints--what-runs-where)). Per-node measurements:
+  only ~5-10%. Worked around by placement: since 2026-10-03 the D0 boards run the master and the observability nodes,
+  later also the SSO and one `app-candidates` replica (~5% more CPU per request than on C1, measured 2026-10-31);
+  `app-job-offers` is kept off them by node affinity (see [Node taints](#node-taints--what-runs-where)). Per-node measurements:
   [`k8s-cluster/RPS-SCALING.md`](k8s-cluster/RPS-SCALING.md#known-issue-not-every-pi-5-is-equally-fast).
 * **Spring percentile metrics do not work with OTEL Agent** — Grafana's p99 is a `histogram_quantile()` estimate
   over the OTel histogram's fixed bucket boundaries (750ms → 1s → 2.5s at the tail), not an exact calculation, and
@@ -787,17 +837,10 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
 * ~~Third observability node~~ — done 2026-09-20 (`observability-3`, see [Node taints](#node-taints--what-runs-where)).
   ~~Tail-based trace sampling~~ — done 2026-09-20 too, moved from the collector into the apps 2026-09-27, see
   [Traces](#traces).
-* Keycloak/SSO: real introspection-based auth (not local JWT validation) between `app-candidates` and
-  `app-job-offers`. No node earmarked for it anymore — the `sso-1` plan (repurposing `platform-2`) was reconsidered
-  2026-09-20 in favor of keeping that Pi as generic spare capacity (`worker-5`, see
-  [Node taints](#node-taints--what-runs-where)); this needs a fresh capacity decision whenever it's actually picked
-  up. Low priority, no timeline yet — see [k8s-cluster handoff](.claude/handoff-k8s-rpi-cluster.md) for the
-  architecture notes and the capacity risk (a single Keycloak instance handling introspection at ~1500rps needs to
-  be measured in isolation first).
-* **Next session candidate #1**: `postgres-job-offers` is the ceiling on the current 150k-offer dataset (see
-  [Measured capacity](#measured-capacity)) — measure the real per-query cost with `pg_stat_statements`, including
-  whether the search's prepared statements actually skip planning under load (planning ~0.95ms vs execution
-  ~0.58ms on a warm DB).
-* **Next session candidate #2 (alternative to #1, not both)**: the percentile-metrics estimation gap — see
+* ~~SSO between the apps~~ — done 2026-10-31 with Ory Hydra and cached introspection, see [SSO](#sso).
+* **2500 RPS, the last target** (15 boards at most). The Gateway's node is next: `platform-1` runs at 75% at 2100 RPS
+  (Cilium's Envoy ~1.5 CPU, the Cilium agent ~1.1, softirq ~0.5), and MetalLB's L2 mode sends all traffic for `.100`
+  to that one node. First check whether Envoy's L7 access logs to the Cilium agent (`envoy-access-log-enabled`) are
+  what keeps the agent busy; failing that, a second Gateway IP announced from another node, or BGP with ECMP.
+* The percentile-metrics estimation gap — see
   [Known issues](#known-issues).
-* Keycloak/SSO stays explicitly behind both of the above — no node, no timeline, see the bullet above.

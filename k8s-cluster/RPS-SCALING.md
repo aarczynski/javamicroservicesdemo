@@ -36,7 +36,8 @@ lands in the same bounding boxes as its original, so it adds work per search the
 
 - **Trace sampling in the apps, 1%** (plus every request that failed with 4xx/5xx or took >= 500 ms) — `LocalTailSamplingSpanExporter` from
   `otel-metrics-filter`, added to every state's image; app code otherwise untouched.
-- **Cluster topology:** 12 nodes, 3 observability nodes, local NTP. `worker-2` (the only node on Ubuntu 25.10 /
+- **Cluster topology:** 12 nodes (14 from the [SSO step](#2026-10-31--sso-ory-hydra-with-cached-introspection-app-job-offers--3)
+  on: + `sso-1` for Hydra, + `worker-6`), 3 observability nodes, local NTP. `worker-2` (the only node on Ubuntu 25.10 /
   kernel 6.17) is cordoned until the last step, the only one that needs all 5 workers.
 - **Hard `podAntiAffinity`, one app replica per node,** in every state.
 - **Heap pinned: `-Xms384m -Xmx384m`** on both apps (the default 384 MB ceiling). Without `-Xms`, Serial GC grows the
@@ -83,6 +84,9 @@ evenly, so the slowest replica caps the whole service. In the replayed states th
 (`postgres-job-offers` on `db-*`, `app-job-offers` on `worker-3`/`-4`), while all three `app-candidates` replicas ran
 on D0 with headroom to spare — but only by chance, nothing enforced it. Since 2026-10-03 all workers, both database
 nodes and `platform-1` are C1, and the D0 boards run only the master and observability (~8-15% CPU at ~2350 rps).
+Since 2026-10-31 a D0 worker (`worker-6`) holds one `app-candidates` replica — measured at ~5% more CPU per request
+than its C1 siblings (2.0 vs 1.9 CPU at 2100 rps) — while `app-job-offers` is kept on C1 by node affinity
+(`bcm2712-stepping=c1`), see [2026-10-31](#2026-10-31--sso-ory-hydra-with-cached-introspection-app-job-offers--3).
 
 ## How a state is built
 
@@ -109,6 +113,7 @@ Each result is the best ~10-minute run at a constant rate with 0% KO.
 | [2026-09-28](#2026-09-28--app-candidates--3) | `app-candidates` × 3, Hikari 40, `postgres-candidates` `max_connections=150` (`feff7ee`, `cd83f92`, `92979c4`) | **2100 rps** (+5%) | `postgres-job-offers` CPU |
 | [2026-10-18](#2026-10-18--search-answered-from-indexes-350k-job-offers) | **Dataset grown: 150k → 350k job offers, 100k → 200k candidates** ([Dataset](#dataset)); search answered from indexes with a GiST bounding box, Postgres `jit=off` + generic plans (`48b0e5d`) | **2100 rps** (+0%, on 2.3× the offers) | `postgres-job-offers` CPU |
 | [2026-10-23](#2026-10-23--search-reads-a-trigger-maintained-read-model-15m-job-offers) | **Dataset grown: 350k → 1.5M job offers** ([Dataset](#dataset)); search reads `job_offer_match`, a read model kept in sync by triggers, filtered from one covering index (`50ae17e`) | **2100 rps** (+0%, on 4.3× the offers) | `app-job-offers` Hikari pool + CPU |
+| [2026-10-31](#2026-10-31--sso-ory-hydra-with-cached-introspection-app-job-offers--3) | **SSO:** every call `app-candidates` → `app-job-offers` carries an Ory Hydra token, introspected in Hydra and cached for 60 s; `app-job-offers` × 3, on a new worker (`3078185`, `fd2a665`, `53976f4`, `b9153ef`) | **2100 rps** (+0%, now with SSO) | none saturated; next: the Gateway node (`platform-1` 75%) |
 
 ## Results
 
@@ -1509,6 +1514,109 @@ WHERE m.id IN (
 PGOPTIONS='-c job_offer_match.sync=off' psql ... -f 03-job-offers.sql   # every import, triggers off
 psql ... -c "SELECT rebuild_job_offer_match()"                          # once, after the import
 psql ... -c "VACUUM ANALYZE"
+```
+
+</details>
+
+</details>
+
+### 2026-10-31 — SSO (Ory Hydra) with cached introspection, `app-job-offers` × 3
+
+**2100 rps** — 10 min, 1,386,000 requests, 0% KO · bottleneck: none saturated; next is the Gateway node
+(`platform-1`, 75%)
+
+> [!IMPORTANT]
+> From this step on, every call from `app-candidates` to `app-job-offers` is authenticated through an SSO, and the
+> cluster has 14 nodes: `sso-1` (Hydra and its Postgres) and `worker-6` (a D0 board, one `app-candidates` replica).
+
+<details>
+<summary>Details</summary>
+
+| p50 | p95 | p99 | max |
+|---|---|---|---|
+| 15 ms | 58 ms | 98 ms | 1,058 ms |
+
+**Change:** `app-candidates` gets a `client_credentials` token from **Ory Hydra** (v26.2.0, one replica on its own
+node) and Feign sends it with every search. `app-job-offers` checks the token by **introspection in Hydra**, not
+locally, and caches the answer for an active token for 60 s (never past the token's expiry). Spring Security's
+per-request Micrometer observations are switched off (`SecurityObservationSettings.noObservations()`) — they took ~11%
+of `app-job-offers` CPU in a JFR profile. The SSO alone still costs CPU on every request (the security filter chain,
+the OAuth2 client), and with 2 replicas `app-job-offers` ran out of it, so a third replica went onto a new worker.
+
+| | Previous step (no SSO) | SSO, `app-job-offers` × 2 | SSO, `app-job-offers` × 3 |
+|---|---:|---:|---:|
+| KO at 2100 rps (10 min) | 0% | 5.81% (503) | **0%** |
+| p99 | 167 ms | 3,035 ms | **98 ms** |
+| `app-job-offers` CPU per replica | 2.35 of 3 | ~2.9 of 3, 47-53% throttled | **~1.8 of 3**, ~1% throttled |
+| `app-job-offers` CPU per request | ~2,250 µs | ~2,900 µs | ~2,620 µs |
+| `app-candidates` CPU per request | ~2,250 µs | ~2,750 µs | ~2,740 µs |
+| `postgres-job-offers` CPU | 1.82 of 3 | 1.73 of 3 | 1.88 of 3 |
+| Hydra CPU / its Postgres | — | 0.0011 / 0.015 | **0.0013 / 0.015** |
+| `platform-1` (Gateway) busy | — | 76% | 75% |
+
+Introspection without the cache (measured 2026-10-26, Gatling over Wi-Fi, so only indicative): every request was a
+call to Hydra — ~1,750 µs of `app-job-offers` CPU per request, and one Hydra replica capped the system at ~1,350 rps
+(Hydra 2.5 CPU, p99 of an introspection ~500 ms). A second Hydra replica moved the limit to `app-job-offers`' CPU, not
+higher. With the cache, Hydra answered ~280 introspections in 8.5 minutes of 2100 rps (52-81 misses per >1M lookups)
+— it no longer grows with the request rate.
+
+**Bottleneck:** nothing is saturated at 2100 rps. The next limit is the Gateway: `platform-1` runs at 75% (Cilium's
+Envoy 1.52 CPU, the Cilium agent 1.09, softirq ~0.5), roughly 3.8 of its 4 cores at 2500 rps. MetalLB's L2 mode
+sends all traffic for `.100` to that one node, so a second Gateway replica wouldn't share the load.
+
+<details>
+<summary>Key code changes</summary>
+
+`app-job-offers/.../security/CachingOpaqueTokenIntrospector.java` (abridged)
+
+```java
+@Override
+@WithSpan
+public OAuth2AuthenticatedPrincipal introspect(String token) {
+    CompletableFuture<OAuth2AuthenticatedPrincipal> ssoCall = new CompletableFuture<>();
+    CompletableFuture<OAuth2AuthenticatedPrincipal> principal = principals.get(token, (uncachedToken, executor) -> ssoCall);
+    if (principal != ssoCall) {
+        Span.current().setAttribute(CACHE_RESULT, "hit");
+        return join(principal);         // cached, or another request is asking Hydra about this token right now
+    }
+    Span.current().setAttribute(CACHE_RESULT, "miss");
+    askCallerToKeepTrace();             // X-Keep-Trace, see "Traces" in README.md
+    return introspectInSso(token, ssoCall);
+}
+```
+
+`app-candidates/src/main/resources/application.yml`
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          job-offers:
+            provider: hydra
+            client-id: app-candidates
+            authorization-grant-type: client_credentials
+            scope: job-offers.search
+  cloud:
+    openfeign:
+      oauth2:
+        enabled: true
+        client-registration-id: job-offers
+```
+
+`k8s-cluster/manifests/job-offers/app.yaml`
+
+```yaml
+replicas: 3
+affinity:
+  nodeAffinity:   # not on D0 (worker-6)
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: bcm2712-stepping
+              operator: In
+              values: [c1]
 ```
 
 </details>

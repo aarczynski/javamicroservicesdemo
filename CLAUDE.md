@@ -424,10 +424,22 @@ Rules:
 
 Logging is mandatory for every new service and major operation.
 
+## SSO
+
+`app-candidates` calls `app-job-offers` with a `client_credentials` token from **Ory Hydra** (`k8s-cluster/manifests/sso/`,
+`hydra` in `compose.yml`; not Keycloak — chosen for being light). `app-job-offers` validates each token by
+**introspection in Hydra**, not locally — do not propose JWT/JWKS validation. Its answer for an active token is cached
+for 60 s (`CachingOpaqueTokenIntrospector`, `job-offers.security.introspection-cache-ttl`): without the cache one Hydra
+replica capped the system at ~1350 rps. The price: a token revoked in Hydra is accepted for up to 60 s more. Both apps
+call Hydra with a 2 s timeout (`*.security.sso-timeout`).
+
 ## Trace sampling
 
 Traces are sampled in the apps, not in the OTEL Collector — `LocalTailSamplingSpanExporter` in `otel-metrics-filter`
 keeps 1% by trace id, any HTTP 4xx/5xx and any local root >= 500 ms; the collector keeps everything it receives.
+Traces through Hydra are kept too: Hydra exports every span that has a parent, so the apps keep any trace that called
+it (`OTEL_DEMO_TRACES_SAMPLING_ALWAYS_KEPT_HOSTS`) or in which `app-job-offers` answered `X-Keep-Trace` (it asked
+Hydra on its own, on a cache miss, while `app-candidates` took its token from its cache).
 Do not add a sampling step to the collector (it would keep 1% of the 1%), and do not use plain head sampling
 (`OTEL_TRACES_SAMPLER=traceidratio`) — it decides before the request runs and loses slow/failing traces.
 
@@ -536,7 +548,7 @@ config still looking right:
 
 ## Home Kubernetes Cluster (Raspberry Pi 5)
 
-Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster (12× Raspberry Pi 5, `kubeadm`-based — not k3s, a deliberate choice to learn the full stack manually rather than rely on batteries-included defaults).
+Alongside Docker Compose, this project is being deployed to a home Kubernetes cluster (14× Raspberry Pi 5, `kubeadm`-based — not k3s, a deliberate choice to learn the full stack manually rather than rely on batteries-included defaults).
 
 Detailed, current state (node topology, architectural decisions, in-progress work, gotchas already hit) is tracked in `.claude/handoff-k8s-rpi-cluster.md` — read it at the start of any session touching the cluster, and keep it updated as work progresses.
 
@@ -545,7 +557,7 @@ The distilled, forward-looking history of what has actually moved the throughput
 **IP addressing on the `192.168.10.0/24` VLAN ("Cloud"):**
 | Range | Purpose |
 |---|---|
-| `.1`–`.99` | Static reservations for node IPs (master/db/observability/worker) |
+| `.1`–`.99` | Static reservations for node IPs (master/db/observability/worker/sso) |
 | `.100`–`.199` | MetalLB IP pool (LoadBalancer IPs for k8s Services — e.g. `.100` Gateway, `.198` Headlamp, `.199` Grafana) |
 | `.200`–`.252` | Omada dynamic DHCP range |
 | `.253` | Static — managed switch (ES224G) |
@@ -557,15 +569,18 @@ The distilled, forward-looking history of what has actually moved the throughput
 | `master` | `node-role.kubernetes.io/control-plane:NoSchedule` | Control plane only (apiserver, etcd, scheduler, controller-manager) |
 | `db-1`, `db-2` | `role=database:NoSchedule` | Postgres instances (one per node) |
 | `observability-1`, `observability-2`, `observability-3` | `role=observability:NoSchedule` | Prometheus, Grafana, Loki, otel-collector, Tempo components, Kafka, RustFS, Hubble Relay/UI. Kafka + Tempo's write path stay on `-1`, `otel-collector`/querier/query-frontend/backendWorker/backendScheduler on `-3` — `-1` alone crashed its kubelet under sustained 1200-1500rps load tests |
-| `platform-1` | `role=platform:NoSchedule` | Gateway ingress (`.100` L2 announcement), MetalLB controller, `local-path-provisioner`, self-hosted image registry (`.190`, replaces `ghcr.io`). Single node, no failover for `.100` — accepted trade-off, since MetalLB L2 is active-passive per IP and a second platform node sat idle |
-| `worker-1`–`worker-5` | none (generic) | `app-candidates` (3 replicas — HPA in `k8s-cluster/manifests/candidates/hpa.yaml` is **pinned at `minReplicas`==`maxReplicas`==3**: a scale-up hands a cold JVM its full traffic share with no LB slow-start and exhausts its connection pool, see handoff), `app-job-offers` (2 replicas, no HPA). A hard `podAntiAffinity` keeps exactly one app replica per worker (a shared node throttled the pod ~10x), so all 5 workers are occupied — no free node until another one is added |
+| `platform-1` | `role=platform:NoSchedule` | Gateway ingress (`.100` L2 announcement), MetalLB controller, `local-path-provisioner`, self-hosted image registry (`.190`, replaces `ghcr.io`), `load-background` (k6 ambient load; its data PVC is `local-path`, so it's pinned here too). Single node, no failover for `.100` — accepted trade-off, since MetalLB L2 is active-passive per IP and a second platform node sat idle |
+| `sso-1` | `role=sso:NoSchedule` | Ory Hydra (SSO for app-to-app calls, see "SSO" above) and its Postgres — one replica, ~0.0013 CPU at 2100 rps thanks to app-job-offers' introspection cache. D0, `.60` |
+| `worker-1`–`worker-6` | none (generic) | `app-candidates` (3 replicas — HPA in `k8s-cluster/manifests/candidates/hpa.yaml` is **pinned at `minReplicas`==`maxReplicas`==3**: a scale-up hands a cold JVM its full traffic share with no LB slow-start and exhausts its connection pool, see handoff), `app-job-offers` (3 replicas, no HPA, `nodeAffinity` `bcm2712-stepping=c1` — never on D0 `worker-6`, which holds a candidates replica). A hard `podAntiAffinity` keeps exactly one app replica per worker (a shared node throttled the pod ~10x), so all 6 workers are occupied — no free node until another one is added |
 
-**Boards are not interchangeable (since 2026-10-03):** the 4 Rev 1.1 boards (BCM2712 D0 — memory writes 2-3× slower
-beyond L2) run only `master` and `observability-1..3`; the 8 Rev 1.0 boards (C1) run `platform-1`, `db-1/2` and
-`worker-1..5`. Board → role mapping by MAC is in `k8s-cluster/ansible/inventory.ini`; keep it when changing roles —
-an `app-job-offers` replica on D0 dropped the ceiling from ~2350 to ~2000 rps (see `k8s-cluster/RPS-SCALING.md`).
+**Boards are not interchangeable (since 2026-10-03):** the 6 Rev 1.1 boards (BCM2712 D0 — memory writes 2-3× slower
+beyond L2) run `master`, `observability-1..3`, `sso-1` and `worker-6` (one `app-candidates` replica, which has CPU to
+spare); the 8 Rev 1.0 boards (C1) run `platform-1`, `db-1/2` and `worker-1..5`. Board → role mapping by MAC is in
+`k8s-cluster/ansible/inventory.ini`, and each node carries the label `bcm2712-stepping=c1|d0` from it
+(`cluster-init.yml`); keep both when changing roles — an `app-job-offers` replica on D0 dropped the ceiling from
+~2350 to ~2000 rps (see `k8s-cluster/RPS-SCALING.md`), so it requires `c1`.
 
-DaemonSets (Cilium, `cilium-envoy`, Alloy, `prometheus-node-exporter`, `metallb-speaker`) run on **every** node regardless of taint — each has explicit tolerations for `role=database`/`role=observability`/`role=platform`/control-plane. When adding a new taint value, remember to add a matching toleration to these five, or the DaemonSet silently stops covering that node.
+DaemonSets (Cilium, `cilium-envoy`, Alloy, `prometheus-node-exporter`, `metallb-speaker`) run on **every** node regardless of taint — each has explicit tolerations for `role=database`/`role=observability`/`role=platform`/`role=sso`/control-plane (Cilium, `cilium-envoy` and kube-proxy tolerate everything with `operator: Exists`; Alloy, `prometheus-node-exporter` and `metallb-speaker` list them). When adding a new taint value, remember to add a matching toleration to these five, or the DaemonSet silently stops covering that node.
 
 Conventions for this work stream:
 - Cluster resources as code live under `k8s-cluster/`: `ansible/` for node provisioning, `manifests/` for Helm chart values and plain Kubernetes manifests.
