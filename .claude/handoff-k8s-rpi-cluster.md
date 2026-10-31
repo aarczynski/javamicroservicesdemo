@@ -1,32 +1,31 @@
 # Handoff: klaster k8s na RPi5
 
-Skondensowany handoff — stan na 2026-10-22. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
+Skondensowany handoff — stan na 2026-10-31. Pełna narracja diagnostyczna (sesja po sesji, ze ślepymi zaułkami)
 żyje w historii gita tego pliku (`git log -p -- .claude/handoff-k8s-rpi-cluster.md`) — zakończone punkty są
 stąd usuwane, nie archiwizowane w treści.
 
 ## Obecny stan (skrót)
 
-12/12 node'ów fizycznych w klastrze, `kubeadm` (nie k3s, Kubernetes 1.36), Cilium 1.20.2 (CNI + Gateway API v1.6.2,
-bez kube-proxy), MetalLB (L2), `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x2,
+14/14 node'ów fizycznych w klastrze, `kubeadm` (nie k3s, Kubernetes 1.36), Cilium 1.20.2 (CNI + Gateway API v1.6.2,
+bez kube-proxy), MetalLB (L2), `local-path-provisioner`. Oba mikroserwisy (`app-candidates` x3 / `app-job-offers` x3,
 jedna replika na node) + ich Postgresy wdrożone, dane załadowane (**200k candidates / 1,5M job offers / 10k
-companies** od 2026-10-23: 1M z `data-generator` + 500k kopii z nowymi id, opis w README „Row counts”; wcześniej 200k/350k od
-2026-10-18, 100k/150k). Stack observability: Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze
-`tempo-distributed` (Kafka+RustFS). Ambient load (`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w
-`CLAUDE.md` (nie duplikować tutaj).
+companies** od 2026-10-23: 1M z `data-generator` + 500k kopii z nowymi id, opis w README „Row counts”). Wywołania
+`app-candidates` → `app-job-offers` idą z tokenem z **Ory Hydra** (pkt 11c). Stack observability:
+Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distributed` (Kafka+RustFS). Ambient load
+(`load-background`, k6) działa 24/7. Tabela node taintów/IP jest w `CLAUDE.md` (nie duplikować tutaj).
 
-**Płytki D0/C1 rozdzielone wg ról (przebudowa 2026-10-03):** 4× D0 → `master` + `observability-1/2/3`, 8× C1 →
-`platform-1`, `db-1/2`, `worker-1..5` — wszystkie appki i Postgresy na C1 (mapowanie MAC → rola w `inventory.ini`).
+**Płytki D0/C1 rozdzielone wg ról:** 6× D0 → `master`, `observability-1/2/3`, `sso-1`, `worker-6` (1 replika
+`app-candidates`); 8× C1 → `platform-1`, `db-1/2`, `worker-1..5`. `app-job-offers` ma `nodeAffinity`
+`bcm2712-stepping=c1` (etykieta z `inventory.ini`, `cluster-init.yml`). Docelowo 15 płytek, plan w pkt 11b.
 
-**Klaster stoi na `main`** (read model zmergowany 2026-10-23), obrazy appek `50ae17e` (wdrożone ponownie 2026-10-23 18:15 po teście top 50 `771f80c` z lokalnego brancha `perf/job-offer-top50`; wcześniej `main` `48b0e5d`, Boot 4.1.1, OTel agent 2.32.0). Podbicie zależności wdrożone w
-całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart 29.37.0, Loki 18.15.1,
-tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana 13.1.8 (chart 13.6.0 — 13.2
-ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka dopiero w 13.3). Checki z
-`CLAUDE.md` (w tym linki logi ↔ trace) przechodzą na Compose, minikube i klastrze. Kubernetes 1.36 → 1.37 świadomie
-poza tym podbiciem (osobna operacja).
+**Klaster stoi na branchu `experiment/sso`** (wypchnięty, niezmergowany), obrazy appek `fd2a665`. Podbicie
+zależności wdrożone w całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart
+29.37.0, Loki 18.15.1, tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana
+13.1.8 (chart 13.6.0 — 13.2 ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka
+dopiero w 13.3). Kubernetes 1.36 → 1.37 świadomie poza tym podbiciem (osobna operacja).
 
-**Zmierzony sufit (2026-10-03, po przebudowie): 2100rps czyste** (10 min, 0% KO, p50/p95/p99 25/~210/471 ms na
-klastrze stojącym ~2,5 h). 2200rps prawie, ale nie czysto (22 KO, p99 1859 ms) — ogranicza CPU `postgres-job-offers`
-(2,88/3 rdzenia, throttling 55%). Cała historia zmian odtworzona krok po kroku od stanu bazowego (400rps):
+**Zmierzony sufit (2026-10-31, z SSO): 2100 rps czyste** (10 min, 0% KO, p50/p95/p99 15/58/98 ms). Nic nie jest
+nasycone; następny limit to Gateway na `platform-1` (75%). Cała historia zmian odtworzona krok po kroku od stanu bazowego (400rps):
 `k8s-cluster/RPS-SCALING.md` — czytać przed każdą pracą nad skalowaniem, nie duplikować tutaj. Każdy krok stamtąd ma
 swój lokalny branch `replay/*` (manifesty z gałkami + przypięte obrazy w rejestrze) — odtworzenie stanu to
 `kubectl apply` manifestów z brancha. `make candidateSimulation` przeciw klastrowi sam robi wymuszony pełny GC w
@@ -38,73 +37,18 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
-1. **Read model `job_offer_match` — zmergowany do `main` 2026-10-23, wpis w RPS-SCALING (2100 rps przy 1,5M).**
-   **Wynik do RPS-SCALING (2026-10-23 21:02, `50ae17e`, 1,5M, JVM-y ~45 min po deployu + 5 min rozgrzewki): 2100 rps,
-   10 min, 0% KO, p50/p95/p99 21/89/167 ms, max 947.** Hikari `app-job-offers` śr. 15/20 zajętych, śr. 14,5
-   czekających (max 82), czekanie śr. 6,5 ms, trzymanie 4,8 ms; CPU `app-job-offers` 2,35/3 na replikę (throttling do
-   12%), Postgres 1,82/3 (~865 µs/req), `app-candidates` ~1,57/3 na replikę, `postgres-candidates` 0,54/3. GC
-   `app-job-offers` z metryk: ~2,6 pauzy/s po ~8,7 ms (~2,3% czasu) — mniej niż w JFR przy 2M (niżej).
-   Dawny opis brancha `perf/job-offer-read-model`: zwykła tabela `job_offer_match` (`V1_3`) zamiast
-   materialized view, utrzymywana triggerami na `job_offer`, `job_offer_skill`, `job_offer_employment_type`, `company`,
-   `skill` w transakcji zapisu, więc dane nigdy nie są nieaktualne. Masowy import idzie z
-   `PGOPTIONS='-c job_offer_match.sync=off'` i jednym `rebuild_job_offer_match()` na końcu (oba `*load-data`).
-   Zweryfikowane: testy (w tym 7 na synchronizację), Compose i minikube (pełny load + checki observability z linkami
-   logi ↔ trace), na klastrze migracja 8,4 s, read model = źródło (244 969 wierszy), index-only scan bez heap fetches,
-   checki observability zielone. 8 równoległych transakcji na tej samej ofercie zostawia read model zgodny ze źródłem
-   (lock `FOR NO KEY UPDATE` w `refresh_job_offer_match`).
-   - **Load testy 2026-10-22 wieczorem** (10 min stałej fazy, Mac na LAN w VLAN 10 i zasilaniu, appki rozgrzane 9 h;
-     1M = pełny zbiór z `data-generator`, 1,5M/2M = 1M + kopie 500k/1M ofert z nowymi id, jak przy widoku):
-
-     | Oferty (aktywne) | rps | KO | p50/p95/p99 | `postgres-job-offers` | `app-job-offers` (2×3) | Hikari `app-job-offers` (10) |
-     |---|---:|---:|---|---|---|---|
-     | 1M (700k) | 2100 | 0% | 13/52/85 ms | 1,42/3, ~680 µs/req | 4,10, ~1950 µs/req | śr. 5,4 aktywnych, ~1 czekający |
-     | 1,5M (1,05M) | 2100 | 0,01% (124×503) | 42/747/1237 ms | 1,79/3, ~850 µs/req | 4,97, throttling 19% | pełna, śr. ~100 czekających |
-     | 2M (1,4M) | 2100 | 5,43% (503) | 675/2326/3041 ms | 2,44/3, throttling 26% | 5,14, throttling 30% | pełna, ~185 czekających |
-     | 2M (1,4M) | 1800 | 0% | 29/207/473 ms | 2,20/3, ~1220 µs/req | 4,74, ~2630 µs/req | śr. 8,8 aktywnych, ~50 czekających |
-
-     Przy 1M lepiej niż `main` przy 350k (p99 85 vs 157 ms, Postgres ~680 vs ~1250 µs/req). Limit od 1,5M:
-     `app-job-offers` — pula Hikari pełna, CPU blisko limitu z throttlingiem; Postgres ma zapas do 2M. Kopie podwajają
-     dopasowania na kandydata, więc rośnie też praca appki (scoring, serializacja) — nie tylko bazy.
-     Dane na klastrze (od 2026-10-23 18:10): **1,5M ofert (1M + 500k kopii, 1 049 687 aktywnych) + tabela pomocnicza
-     `bench_original_offer`** (id oryginałów; kopie dokłada/usuwa skrypt z `job_offer_match.sync=off` + rebuild + vacuum)
-     — przed kolejnym pomiarem na realnym zbiorze przeładować (`make k8s-load-data` albo import samego job-offers bez generowania).
-   - **Top 50 (2026-10-23, `771f80c`) — odłożone, nie na tym branchu.** Commity `b368387` + `771f80c` (+ pin
-     manifestów i ten opis w `e3e8eeb`) leżą na lokalnym branchu `perf/job-offer-top50`; `perf/job-offer-read-model` ma
-     tylko read model. Zamiast sztywnego limitu ma być paginacja (osobny punkt niżej). Odpowiedź to 50 najlepszych ofert (wcześniej wszystkie dopasowane; przy 2M
-     średnio 33, max 830, teraz średnio 14, 15% kandydatów trafia w limit). Najpierw zrobione jako dwa zapytania
-     (scoring + szczegóły dla 50, `b368387`) — gorzej: 2M/2100 7,98% KO, 2M/1800 4,64% KO. JFR: wiersze i scoring to
-     mały udział CPU `app-job-offers`, każde native query ma stały narzut Hibernate/Spring Data + osobny checkout z puli
-     (drugie zapytanie samo 13% CPU). Wrócone do jednego zapytania z limitem w pamięci. Wyniki na 2M, świeże JVM-y
-     (~40 min po deployu, 5 min rozgrzewki):
-
-     | Wersja | rps | KO | p50/p95/p99 | CPU/req `app-job-offers` | CPU/req `app-candidates` | czas trzymania połączenia |
-     |---|---:|---:|---|---|---|---|
-     | wszystkie oferty | 2100 | 5,43% | 675/2326/3041 ms | ~2450 µs | ~2300 µs | 7,9 ms |
-     | top 50 | 2100 | 2,13% | 556/2189/2945 ms | ~2490 µs | ~2130 µs | 7,6 ms |
-     | wszystkie oferty | 1800 | 0% | 29/207/473 ms | ~2630 µs | ~2430 µs | 6,7 ms |
-     | top 50 | 1800 | 0% | 17/117/710 ms | ~2500 µs | ~2110 µs | 5,6 ms |
-
-     Prawdziwy limit przy rosnących danych to **czas trzymania połączenia** przez zapytanie (1M 3,1 ms → 1,5M 5,9 →
-     2M 7,9 ms przy 2×10 połączeniach), nie CPU per wiersz w appce — rośnie praca Postgresa na zapytanie (więcej ofert
-     w bounding boxie), Postgres ma 2,5/3 rdzenia z throttlingiem przy 2M/2100. Kolejne dźwignie: mniej pracy Postgresa
-     na zapytanie, ew. pula Hikari, GC (niżej).
-     Sprawdzić też, czy `jit=off`/`force_generic_plan` nadal pomagają.
-   - **Pauzy GC w `app-job-offers` (JFR 2026-10-23, 2M, 120 s pod obciążeniem)** — JVM jedzie na **Serial GC**
-     (`DefNew` + `SerialOld`, 0 wątków GC): ergonomia wybiera G1 dopiero od ≥2 CPU **i ≥1792 MB** pamięci, a kontener
-     ma limit 1536Mi, a we flagach `java` nie ma wyboru GC. Heap `-Xms384m -Xmx384m`, młoda generacja ~100 MB
-     (heapUsed 94→196 MB). Wynik: 227 young GC w 120 s (~1,9/s), mediana pauzy 28,7 ms, p99 38,9, max 40 ms — razem
-     6,7 s, czyli **5,6% czasu cała JVM stoi** (stop-the-world, jednym wątkiem). W trakcie pauzy wszystkie żądania w
-     locie trzymają połączenia z puli, więc pauzy dokładają się do czasu trzymania połączenia i do ogona p99.
-     `app-candidates` ma ten sam heap i limit → prawdopodobnie też Serial (niesprawdzone). Nieruszane. Kandydaci do
-     sprawdzenia: `-XX:+UseParallelGC` albo `-XX:+UseG1GC` (3 CPU, wielowątkowe young GC) i/lub większy heap
-     (limit 1536Mi daje miejsce, młoda generacja rzadziej) — mierzyć osobno, 10-min run.
-   - Punkt odniesienia — materialized view z 2026-10-17/18 (`jit=on`, `plan_cache_mode=auto`, dane >1M to kopie 1M):
-     1M — Postgres ~1,3/3 (~630 µs/req), `app-job-offers` ~4,4/6; 1,5M — 0% KO, p99 255 ms, Postgres 1,8/3,
-     `app-job-offers` 4,8/6; 1,75M — p99 910 ms (granica); 2M — 0,62% KO. Limitem było CPU `app-job-offers`.
-     Model znormalizowany (`main`) przy 350k: Postgres 2,62/3 (~1250 µs/req).
-   - Read model pod ciągłymi zapisami nie był mierzony — update czyści bity visibility map, index-only scan wtedy
-     sięga do tabeli do następnego autovacuum. Przy dodawaniu zapisów ofert: test z zapisami w tle, ew. tuning
-     autovacuum dla `job_offer_match`.
+1. **Otwarte po read modelu `job_offer_match` (zmergowany 2026-10-23, wynik w RPS-SCALING).**
+   - **Pauzy GC w `app-job-offers` (JFR 2026-10-23, 2M, 120 s pod obciążeniem)** — JVM jedzie na **Serial GC**:
+     ergonomia wybiera G1 dopiero od ≥2 CPU **i ≥1792 MB** pamięci, a kontener ma limit 1536Mi. Heap
+     `-Xms384m -Xmx384m`: ~1,9 young GC/s, mediana pauzy 28,7 ms, **5,6% czasu JVM stoi** (stop-the-world, jednym
+     wątkiem), a żądania w locie trzymają wtedy połączenia z puli. `app-candidates` ma ten sam heap i limit
+     (niesprawdzone). Do zmierzenia osobno, 10-min run: `-XX:+UseParallelGC` albo `-XX:+UseG1GC` i/lub większy heap.
+   - **Top 50 — odłożone** na lokalnym branchu `perf/job-offer-top50` (`b368387`, `771f80c`, `e3e8eeb`). Zamiast
+     sztywnego limitu ma być paginacja (pkt 2). Dwa zapytania (ranking + szczegóły) były gorsze niż jedno.
+   - Read model pod ciągłymi zapisami nie był mierzony — update czyści bity visibility map, index-only scan sięga
+     wtedy do tabeli do następnego autovacuum. Przy dodawaniu zapisów ofert: test z zapisami w tle.
+   - Dane na klastrze: 1,5M ofert (1M + 500k kopii) + tabela pomocnicza `bench_original_offer` (id oryginałów;
+     kopie dokłada/usuwa skrypt z `job_offer_match.sync=off` + rebuild + vacuum).
 
 2. **Paginacja wyników wyszukiwania zamiast sztywnego top 50 (dodane 2026-10-23).** Top 50 tylko ucina listę i nie
    da się dojść do dalszych ofert. Do zrobienia `page`/`size` w `POST /job-offers/search`, przekazywane z endpointu
@@ -169,13 +113,6 @@ stojącym kilka godzin.
    zasilania zniknął. Wstecz niezweryfikowane; jeśli wróci przy Macu na AC — procedura sondy
    w git history tego pliku (2026-09-24).
 
-9. **Postgres job-offers jest sufitem — następny krok: `pg_stat_statements`.** Na rozgrzanej bazie zapytanie
-   wyszukujące planuje się ~0,95 ms, a wykonuje ~0,58 ms; niezweryfikowane, czy pod obciążeniem prepared statementy
-   (listy `IN` o zmiennej długości → różny tekst SQL) faktycznie omijają planowanie. `pg_stat_statements` da realny
-   koszt i liczbę wywołań każdego zapytania zamiast próbkowania `pg_stat_activity`. Kandydaci do
-   odciążenia: `findByIdIn` (entity graph + `IN`, ~26% próbek aktywnych), doładowania employment types (~6%).
-   Niedokładne p99 w Grafanie (`README.md` Known issues) nadal otwarte; Keycloak/SSO świadomie za nimi, bez node'a.
-
 10. **Brak zabezpieczenia przed rozjazdem `candidatesDataFile` vs. baza na klastrze** — od 2026-09-30 każdy
    `*load-data` (Compose/k8s/minikube) zawsze przeładowuje bazę, więc `data-generator/output/candidates/01-candidates.sql`
    po ostatnim uruchomieniu zawsze pasuje do bazy, na którą je załadowano. Ryzyko zostaje przy przełączaniu między
@@ -190,18 +127,82 @@ stojącym kilka godzin.
    inspector w Grafanie albo `/api/ds/query` z pomiarem czasu) i porównać z obciążeniem Prometheusa/Loki
    (`prometheus-server`, `loki-0` — oba na `observability-2`, płytka D0).
 
-11b. **Rozbudowa o nowe płytki i przetasowanie ról (dodane 2026-10-24).** Dwie nowe Pi 5 8 GB czekają poza
-   klastrem (wyłączone, bez rezerwacji DHCP, nie w `inventory.ini`): obie **Rev 1.1 / D0** (`d04171`), Ubuntu 26.04.1,
-   NVMe Lexar NM620 256 GB, `throttled=0x0`, SMART OK, passwordless sudo dodane ręcznie
-   (`/etc/sudoers.d/90-aarczynski`, playbook tego nie robi). `98:fe:54:45:45:01` miała gorsze i dużo głośniejsze
-   chłodzenie (przy 65 °C ~7300 rpm vs ~4500 rpm; ~3-4 °C cieplej na tym samym biegu) — user podmienia wentylator na
-   fabryczny z obudowy, jak w `98:fe:54:45:3a:73`. User dokupuje trzecią płytkę; wtedy:
-   - zlistować na nowo wszystkie płytki (rewizja, `bcm2712d0/c1-pinctrl`, MAC) i ułożyć role od zera,
-   - `platform-1` (i coś jeszcze) przenieść na wolniejsze płytki D0, zwalniając C1 — Gateway jest na ścieżce
-     każdego requestu, więc po przenosinach powtórzyć 10-min load test i sprawdzić, czy sufit 2100 rps się trzyma,
-   - może spróbować SSO (Keycloak) na zwolnionym node'zie (dotąd odłożone „bez node'a”, patrz pkt 9),
-   - nowe wartości taintów → tolerancje w pięciu DaemonSetach (`CLAUDE.md`), rezerwacje DHCP w Omadzie (wymagają
-     restartu płytki), `known_hosts` po zmianie IP.
+11b. **Docelowy klaster: 15 płytek, cel 2500 rps (ustalone 2026-10-31).** User kończy rozbudowę na 15 Pi 5 —
+   więcej płytek dla kolejnych rps „bez sensu”. 2500 rps to ostatni cel. 15. płytkę user kupuje w tygodniu od
+   2026-11-02; będzie wolniejsza, czyli **D0** (sprawdzić: `Revision` `d04171`, `bcm2712d0-pinctrl`).
+   - **Skład po zakupie: 8× C1 (Rev 1.0) + 7× D0 (Rev 1.1).** Liczby C1 nie da się zwiększyć — każda rola przeniesiona
+     na D0 zwalnia C1 dla ścieżki requestu.
+   - **Stan na 2026-10-31 (14 płytek):**
+     | Płytka | Stepping | Rola |
+     |---|---|---|
+     | master | D0 | control plane |
+     | observability-1..3 | D0 | observability |
+     | sso-1 (`.60`) | D0 | Hydra + jej Postgres |
+     | worker-6 (`.15`, `98:fe:54:45:3a:73`, była sso-2) | D0 | 1 replika `app-candidates` |
+     | platform-1 | C1 | Gateway (cilium-envoy), MetalLB, registry, load-background |
+     | db-1, db-2 | C1 | Postgres candidates / job-offers |
+     | worker-1..5 | C1 | 2× `app-candidates`, 3× `app-job-offers` (`nodeAffinity` `bcm2712-stepping=c1`) |
+     Etykieta node'a `bcm2712-stepping=c1|d0` pochodzi z `bcm2712_stepping` w `inventory.ini` (`cluster-init.yml`).
+   - **Obciążenie przy ~1925 rps** (10 min, 2026-10-31, jeszcze 2 repliki job-offers). Przeliczone na
+     2500 rps liniowo, tylko jako szacunek:
+     | Rola | Teraz | ~2500 rps |
+     |---|---|---|
+     | `app-job-offers` | 2× ~2,9 CPU (limit 3, throttling 47–53%) — **sufit** | ~6,8 CPU → 3× ~2,3 |
+     | `app-candidates` | 3× ~1,8 CPU (JVM ~60%) | 3× ~2,3; na D0 zmierzone +5% (2,0 przy 2100 rps) → ~2,4 na worker-6 |
+     | platform-1 (Gateway) | 76% node'a: envoy 1,58 + agent cilium 1,16 + softirq 0,5 CPU | ~3,8 z 4 rdzeni — **następny sufit** |
+     | db-2 (job-offers) | 49% | ~64% |
+     | db-1 (candidates) | 20% | ~26% |
+     | observability-1..3 | 11–19% | bez problemu |
+     | master | 8% | bez problemu |
+     | sso-1 | 2,6% (Hydra 0,0011 CPU, jej Postgres 0,015) | bez problemu |
+   - **Po dodaniu worker-6 (3× job-offers): 2100 rps, 0% KO, p99 98 ms** — szczegóły w RPS-SCALING (2026-10-31).
+     Candidates na D0 tylko ~5% droższy od C1 (2,0 vs 1,9 CPU). platform-1 75%, db-2 53%.
+   - **Do rozplanowania przy 15. płytce:**
+     - Gateway: MetalLB L2 = cały ruch na jednym node'zie, druga replika nic nie da. Najpierw zmniejszyć koszt
+       requestu (podejrzenie: `envoy-access-log-enabled: "true"` w `cilium-config` → logi L7 do agenta Cilium,
+       stąd jego ~1,16 CPU — do zmierzenia). Inaczej drugi adres LB z drugiego node'a C1 (podział ruchu po stronie
+       klienta) albo BGP/ECMP (czy ER7406 ma BGP — niesprawdzone).
+     - Gdzie dać 7. D0: kandydaci to role, które mało biorą (SSO, druga replika czegoś lekkiego) albo kolejna
+       replika `app-candidates` (na D0 droższa o 10–23%). `app-job-offers` i Gateway tylko na C1.
+     - Czy SSO potrzebuje osobnej płytki: przy cache'u introspekcji bierze ~0,016 CPU w sumie — jej płytka mogłaby
+       przejąć coś innego (np. observability albo master tylko z tolerancją), zwalniając D0 na workera.
+     - Po każdej zmianie ról: 10-min test przy 2500 rps (rozgrzewka przed nim, pkt 11c).
+   - Przy zmianie ról: nowe wartości taintów → tolerancje w pięciu DaemonSetach (`CLAUDE.md`), rezerwacje DHCP w
+     Omadzie (wymagają restartu płytki), `known_hosts` po zmianie IP (stary klucz `.15` blokował SSH 2026-10-31).
+   - Dołączenie płytki (zrobione tak dla worker-6, 2026-10-31): rezerwacja + nazwa klienta przez Omada Open API,
+     restart płytki, wpis w `inventory.ini` (z `bcm2712_stepping`),
+     `ansible-playbook ... playbook.yml --limit <host>`, `... cluster-init.yml --limit k8s-rpi-master,<host>`.
+
+11c. **SSO: Ory Hydra (branch `experiment/sso`, 2026-10-26 – 2026-10-31, wypchnięty, niezmergowany).** Opis
+   działania w README („SSO”) i `CLAUDE.md`; wynik w RPS-SCALING (2026-10-31). Tu tylko to, czego tam nie ma:
+   - Ustalenia z userem: SSO lekkie (**nie Keycloak**), walidacja tokenu **introspekcją w SSO, nie lokalnie** (bez
+     JWT/JWKS). Cache introspekcji 60 s zaakceptowany 2026-10-28; 1 replika Hydry ma wystarczyć.
+   - Hydra: `--dev` (bez tego nie przyjmuje issuera po HTTP), `LOG_LEVEL=warn` (info daje 2 linie/request), DSN z
+     `max_conns=16` (domyślnie 2× CPU = 8). Tracing: OTLP/HTTP (Hydra nie ma gRPC) na 4318, `SAMPLING_RATIO=0`
+     (eksportuje tylko spany z rodzicem). Metryki: adnotacje `prometheus.io/*` na podzie
+     (`http_requests_total{app="hydra"}`, `http_requests_duration_seconds_bucket`).
+   - Płytka `k8s-rpi-sso-1` (`98:fe:54:45:45:01`, D0, `.60`). Rezerwacje DHCP i nazwy klientów w Omadzie ustawiam
+     przez Open API (credentiale w `~/dev/homeassistant/omada.env`, opis w README tamtego repo, rozdz. 10/10c). Kubelet
+     nie ma przypiętego `node-ip` — po zmianie rezerwacji i restarcie płytki sam podejmuje nowy adres.
+   - Pomiary bez cache'u (2026-10-26, Mac po Wi-Fi): 1 replika Hydry → sufit ~1350 rps (Hydra 2,5 CPU, p99
+     introspekcji ~500 ms); 2 repliki → ~1340 rps, limit przeszedł na CPU `app-job-offers` (~4000 µs/request).
+   - Pułapki znalezione po drodze:
+     - Spring Security domyślnie owija każdy filtr w obserwację Micrometera (~11% CPU job-offers w JFR).
+       `management.observations.enable.spring.security=false` nie wystarcza (`ObservationFilterChainDecorator` dalej
+       ~3%) — dopiero bean `SecurityObservationSettings.noObservations()`.
+     - Agent Java 2.32 wysyła `traceparent` z flagami `03`; Hydra v26.2.0 taki nagłówek ignoruje i zaczyna własny
+       trace (`Level1TraceFlagsCustomizer` w `otel-metrics-filter`).
+     - Bez timeoutu request przy wyłączonej Hydrze wisiał 137-270 s (timeout TCP systemu); teraz 2 s.
+       Sprawdzone `kubectl scale --replicas=0`: requesty kończą się po ~2,0 s z 500 (job-offers zwraca 401).
+     - Sync `Cache` przy awarii Hydry: requesty z tym samym tokenem próbowały po kolei (2, 4, 6 s) — stąd `AsyncCache`.
+       `AsyncCache.get(key, Function)` woła loader w ForkJoinPool (bez kontekstu requestu) — dlatego loader zwraca
+       własny `CompletableFuture`, a wywołanie Hydry idzie w wątku requestu.
+     - Hikari keepalive (housekeeper, `isValid()` co ~2 min na bezczynne połączenie) robi osobne trace'y
+       `<db>|postgres` bez requestu — w candidates częściej (pula 40×3 vs 10×3).
+     - Świeżo wdrożone pody: pierwsze ~3 min ~1000 rps (JIT) — przed pomiarem rozgrzewka
+       `maxRps=1800 stepDuration=1m ramps=3`.
+   - Nie zrobione: weryfikacja observability z `CLAUDE.md` (w tym linki logi ↔ trace) w Compose i na minikube po
+     zmianach SSO — na klastrze trace'y z Hydrą sprawdzone ręcznie.
 
 12. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
@@ -445,7 +446,8 @@ stojącym kilka godzin.
   wolniejszy od L3 w górę (memset 1,5M: 10 vs 25-34 GB/s; DRAM: 6,9 vs 13,3 GB/s), odczyt prawie równy. JVM (zerowanie
   TLAB, kopiowanie w GC) jest zapisochłonny → ~10-15% więcej CPU/request na D0. To krzem, nie kernel ani firmware
   (bootloader `2026-09-25` z "Enable background refresh on 2712d0" nic nie zmienił). Dlatego od 2026-10-03 D0 obsługują
-  tylko `master`/`observability-*`. Pomiary (`taskset -c 3`, `python3` + `ctypes.memset`/`memmove`, bufory 256K-64M,
+  `master`/`observability-*`, od 2026-10-26 też `sso-1`, od 2026-10-31 `worker-6` z repliką `app-candidates`
+  (zmierzone tylko ~5% drożej niż na C1); `app-job-offers` wymaga `bcm2712-stepping=c1`. Pomiary (`taskset -c 3`, `python3` + `ctypes.memset`/`memmove`, bufory 256K-64M,
   best of 3) porównywać na node'ach w tym samym stanie (pusty vs. z podem) — działająca appka zaszumia L2. Tabela
   wszystkich 12 node'ów: `k8s-cluster/RPS-SCALING.md` → "Known issue: not every Pi 5 is equally fast".
 - Flash bootloadera: repo `rpi-eeprom` (paczka Ubuntu kończy się na 2024-11) i
