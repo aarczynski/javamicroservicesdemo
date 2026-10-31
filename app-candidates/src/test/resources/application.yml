@@ -15,3 +15,22 @@ spring:
         config:
           job-offers:
             url: http://localhost:9999
+      oauth2:
+        enabled: true
+        client-registration-id: job-offers
+  security:
+    oauth2:
+      client:
+        registration:
+          job-offers:
+            provider: hydra
+            client-id: app-candidates
+            client-secret: test-secret
+            authorization-grant-type: client_credentials
+            scope: job-offers.search
+        provider:
+          hydra:
+            token-uri: http://localhost:9998/oauth2/token
+candidates:
+  security:
+    sso-timeout: 2s

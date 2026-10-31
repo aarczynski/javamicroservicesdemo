@@ -8,6 +8,20 @@ spring:
       ddl-auto: validate
   flyway:
     locations: db/migration/postgres
+  security:
+    oauth2:
+      resourceserver:
+        opaquetoken:
+          client-id: app-job-offers
+job-offers:
+  security:
+    # How long an SSO introspection answer for an active token is reused (never past the token's own exp).
+    # Without it every request was one call to Hydra: ~1750 us of app-job-offers CPU per request, and one
+    # Hydra replica topped out at ~1350 rps. A token revoked in Hydra stays accepted for up to this long.
+    introspection-cache-ttl: 60s
+    # Connect and read timeout of the introspection call. Hydra answers in ~3 ms; without a timeout a request
+    # waited minutes for the operating system to give up on a Hydra that was down.
+    sso-timeout: 2s
 logging:
   pattern:
     # trace_id/span_id come from MDC, populated automatically by the OTel

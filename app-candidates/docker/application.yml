@@ -3,6 +3,15 @@ spring:
     url: jdbc:postgresql://postgres-candidates:5432/app-candidates-db
     username: postgres
     password: password
+  security:
+    oauth2:
+      client:
+        registration:
+          job-offers:
+            client-secret: app-candidates-secret
+        provider:
+          hydra:
+            token-uri: http://hydra:4444/oauth2/token
   cloud:
     openfeign:
       client:

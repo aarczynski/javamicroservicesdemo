@@ -1,24 +1,31 @@
 package pl.lunasoftware.demo.microservices.joboffers.offer.api
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import pl.lunasoftware.demo.microservices.joboffers.offer.EmploymentType
 import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferService
 import pl.lunasoftware.demo.microservices.joboffers.offer.JobOfferStatus
+import pl.lunasoftware.demo.microservices.joboffers.security.SecurityConfig
 import spock.lang.Specification
 
 import org.springframework.transaction.CannotCreateTransactionException
 
 import static org.mockito.ArgumentMatchers.any
+import static org.mockito.Mockito.verifyNoInteractions
 import static org.mockito.Mockito.when
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.opaqueToken
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @WebMvcTest(JobOfferController)
+@Import([SecurityConfig, SimpleMeterRegistry])
 class JobOfferControllerSpec extends Specification {
 
     private static final String VALID_REQUEST = '''
@@ -65,6 +72,7 @@ class JobOfferControllerSpec extends Specification {
 
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
+                .with(tokenWithScope('job-offers.search'))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(VALID_REQUEST))
                 .andExpect(status().isOk())
@@ -79,6 +87,7 @@ class JobOfferControllerSpec extends Specification {
     def "POST search returns 400 when candidateSkills is empty"() {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
+                .with(tokenWithScope('job-offers.search'))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content('{"candidateSkills":[],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":100,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
@@ -88,6 +97,7 @@ class JobOfferControllerSpec extends Specification {
     def "POST search returns 400 when radiusKm is not positive"() {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
+                .with(tokenWithScope('job-offers.search'))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":-10,"expectedSalary":15000,"preferredEmploymentTypes":["B2B"],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
@@ -101,6 +111,7 @@ class JobOfferControllerSpec extends Specification {
 
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
+                .with(tokenWithScope('job-offers.search'))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(VALID_REQUEST))
                 .andExpect(status().isInternalServerError())
@@ -110,9 +121,33 @@ class JobOfferControllerSpec extends Specification {
     def "POST search returns 400 when preferredEmploymentTypes is empty"() {
         expect:
         mockMvc.perform(post('/api/v1/job-offers/search')
+                .with(tokenWithScope('job-offers.search'))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content('{"candidateSkills":[{"skillName":"Java","seniorityLevel":"MID"}],"geoLat":52.2297,"geoLon":21.0122,"radiusKm":50,"expectedSalary":15000,"preferredEmploymentTypes":[],"yearsOfExperience":5,"preferredRemoteDaysPercentage":0}'))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"preferredEmploymentTypes: must not be empty"}'))
+    }
+
+    def "POST search returns 401 when request has no token"() {
+        expect:
+        mockMvc.perform(post('/api/v1/job-offers/search')
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_REQUEST))
+                .andExpect(status().isUnauthorized())
+        verifyNoInteractions(jobOfferService)
+    }
+
+    def "POST search returns 403 when token lacks the search scope"() {
+        expect:
+        mockMvc.perform(post('/api/v1/job-offers/search')
+                .with(tokenWithScope('other.scope'))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(VALID_REQUEST))
+                .andExpect(status().isForbidden())
+        verifyNoInteractions(jobOfferService)
+    }
+
+    private static def tokenWithScope(String scope) {
+        opaqueToken().authorities(new SimpleGrantedAuthority("SCOPE_$scope"))
     }
 }

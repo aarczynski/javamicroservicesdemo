@@ -3,6 +3,12 @@ spring:
     url: jdbc:postgresql://postgres-job-offers:5432/app-job-offers-db
     username: postgres
     password: password
+  security:
+    oauth2:
+      resourceserver:
+        opaquetoken:
+          introspection-uri: http://hydra:4445/admin/oauth2/introspect
+          client-secret: app-job-offers-secret
 #  jpa:
 #    show-sql: true
 #    properties:

@@ -20,6 +20,25 @@ spring:
       ddl-auto: validate
   flyway:
     locations: db/migration/postgres
+  security:
+    oauth2:
+      client:
+        registration:
+          job-offers:
+            provider: hydra
+            client-id: app-candidates
+            authorization-grant-type: client_credentials
+            scope: job-offers.search
+  cloud:
+    openfeign:
+      oauth2:
+        enabled: true
+        client-registration-id: job-offers
+candidates:
+  security:
+    # Connect and read timeout of the token call to Hydra (~26 ms when it is up). Without a timeout a request
+    # waited 137-270 s for the operating system to give up on a Hydra that was down.
+    sso-timeout: 2s
 logging:
   pattern:
     # trace_id/span_id come from MDC, populated automatically by the OTel

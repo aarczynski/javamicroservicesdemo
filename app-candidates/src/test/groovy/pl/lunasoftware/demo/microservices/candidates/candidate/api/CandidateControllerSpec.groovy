@@ -2,6 +2,9 @@ package pl.lunasoftware.demo.microservices.candidates.candidate.api
 
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
+import org.springframework.security.oauth2.client.ClientAuthorizationException
+import org.springframework.security.oauth2.core.OAuth2Error
 import org.springframework.transaction.CannotCreateTransactionException
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
@@ -9,6 +12,7 @@ import pl.lunasoftware.demo.microservices.candidates.candidate.CandidateService
 import pl.lunasoftware.demo.microservices.candidates.joboffer.DownstreamServiceException
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOfferMatchDto
 import pl.lunasoftware.demo.microservices.candidates.joboffer.JobOffersClient
+import pl.lunasoftware.demo.microservices.candidates.security.SecurityConfig
 import spock.lang.Specification
 
 import static org.mockito.Mockito.when
@@ -17,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @WebMvcTest(CandidateController)
+@Import(SecurityConfig)
 class CandidateControllerSpec extends Specification {
 
     @Autowired
@@ -106,5 +111,17 @@ class CandidateControllerSpec extends Specification {
         mockMvc.perform(get('/api/v1/candidates/{id}/matching-offers', candidateId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json('{"message":"Job offers service returned bad request"}'))
+    }
+
+    def "GET matching-offers returns 500 when SSO token request fails"() {
+        given:
+        def candidateId = UUID.fromString('00000000-0000-0000-0000-000000000004')
+        when(candidateService.findMatchingOffers(candidateId))
+                .thenThrow(new ClientAuthorizationException(new OAuth2Error('invalid_client'), 'job-offers'))
+
+        expect:
+        mockMvc.perform(get('/api/v1/candidates/{id}/matching-offers', candidateId))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().json('{"message":"Internal server error"}'))
     }
 }

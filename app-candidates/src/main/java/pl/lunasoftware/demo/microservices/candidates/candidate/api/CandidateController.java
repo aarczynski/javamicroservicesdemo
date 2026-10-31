@@ -5,6 +5,7 @@ import org.springframework.core.NestedRuntimeException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.transaction.TransactionException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -77,6 +78,13 @@ public class CandidateController {
         @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
         ErrorResponse handleDownstreamError(DownstreamServiceException ex) {
             log.error("Downstream service error, service={}, cause='{}'", ex.getServiceName(), ex.getCause().getMessage(), ex);
+            return new ErrorResponse("Internal server error");
+        }
+
+        @ExceptionHandler(OAuth2AuthorizationException.class)
+        @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+        ErrorResponse handleSsoTokenError(OAuth2AuthorizationException ex) {
+            log.error("SSO token request failed, error={}", ex.getError().getErrorCode(), ex);
             return new ErrorResponse("Internal server error");
         }
 

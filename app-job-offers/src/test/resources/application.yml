@@ -9,3 +9,14 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration/h2
+  security:
+    oauth2:
+      resourceserver:
+        opaquetoken:
+          introspection-uri: http://localhost:9998/admin/oauth2/introspect
+          client-id: app-job-offers
+          client-secret: test-secret
+job-offers:
+  security:
+    introspection-cache-ttl: 60s
+    sso-timeout: 2s
