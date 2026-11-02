@@ -2388,6 +2388,7 @@ data:
           "id": 4,
           "type": "stat",
           "title": "Total Pods",
+          "description": "Pods that haven't finished: a completed Job's pod (phase Succeeded, e.g. sso's hydra-clients) is left out.",
           "gridPos": {
             "x": 8,
             "y": 1,
@@ -2404,7 +2405,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(kube_pod_info)",
+              "expr": "count(kube_pod_status_phase{phase!=\"Succeeded\"} == 1)",
               "refId": "A",
               "instant": true,
               "format": "table"
@@ -2443,7 +2444,8 @@ data:
         {
           "id": 5,
           "type": "stat",
-          "title": "Running Pods",
+          "title": "Ready Pods",
+          "description": "Pods whose Ready condition is true. Not the phase Running: a pod in CrashLoopBackOff stays Running between restarts.",
           "gridPos": {
             "x": 12,
             "y": 1,
@@ -2460,7 +2462,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(kube_pod_status_phase{phase=\"Running\"} == 1)",
+              "expr": "count(kube_pod_status_ready{condition=\"true\"} == 1)",
               "refId": "A",
               "instant": true,
               "format": "table"
@@ -2499,8 +2501,8 @@ data:
         {
           "id": 6,
           "type": "stat",
-          "title": "Pods Not Running",
-          "description": "Pods stuck in Pending, Failed or Unknown. Succeeded is left out: a finished Job's pod (e.g. sso's hydra-clients) is not a problem.",
+          "title": "Pods Not Ready",
+          "description": "Pods whose Ready condition is false: Pending, Failed, or running but failing readiness (e.g. a container in CrashLoopBackOff). Ready + Not Ready = Total.",
           "gridPos": {
             "x": 16,
             "y": 1,
@@ -2517,7 +2519,7 @@ data:
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "count(kube_pod_status_phase{phase=~\"Pending|Failed|Unknown\"} == 1) OR on() vector(0)",
+              "expr": "count((kube_pod_status_ready{condition=\"true\"} == 0) and on(namespace, pod) (kube_pod_status_phase{phase!=\"Succeeded\"} == 1)) OR on() vector(0)",
               "refId": "A",
               "instant": true,
               "format": "table"
