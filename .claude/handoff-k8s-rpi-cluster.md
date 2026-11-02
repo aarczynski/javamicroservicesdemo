@@ -18,14 +18,15 @@ Prometheus/Loki/Grafana/Headlamp/Hubble + Tempo w architekturze `tempo-distribut
 `app-candidates`); 8× C1 → `platform-1`, `db-1/2`, `worker-1..5`. `app-job-offers` ma `nodeAffinity`
 `bcm2712-stepping=c1` (etykieta z `inventory.ini`, `cluster-init.yml`). Docelowo 15 płytek, plan w pkt 11b.
 
-**Klaster stoi na branchu `experiment/sso`** (wypchnięty, niezmergowany), obrazy appek `fd2a665`. Podbicie
+**Klaster stoi na branchu `experiment/sso`** (wypchnięty, niezmergowany), obrazy appek `63252da`. Podbicie
 zależności wdrożone w całości 2026-10-15: Cilium 1.20.2, Gateway API v1.6.2, Strimzi 1.3.0, Prometheus chart
 29.37.0, Loki 18.15.1, tempo-distributed 3.12.0, otel-collector 0.162.0 (chart 0.176.0), Alloy 1.13.1, Grafana
 13.1.8 (chart 13.6.0 — 13.2 ma regres z toastem „Unauthorized” dla anonimów, grafana/grafana#131876, poprawka
 dopiero w 13.3). Kubernetes 1.36 → 1.37 świadomie poza tym podbiciem (osobna operacja).
 
-**Zmierzony sufit (2026-10-31, z SSO): 2100 rps czyste** (10 min, 0% KO, p50/p95/p99 15/58/98 ms). Nic nie jest
-nasycone; następny limit to Gateway na `platform-1` (75%). Cała historia zmian odtworzona krok po kroku od stanu bazowego (400rps):
+**Zmierzony sufit (2026-11-02, z SSO): 2500 rps czyste** (10 min, 0% KO, p50/p95/p99 41/138/225 ms; przy 2100 rps
+15/58/98 ms). Cel 2500 osiągnięty na 14 płytkach. Żadna warstwa nie pada, ale cała ścieżka jest na ~85%: workery
+81–85%, `platform-1` (Gateway) 86%, `postgres-job-offers` 2,3 z 3. Cała historia zmian odtworzona krok po kroku od stanu bazowego (400rps):
 `k8s-cluster/RPS-SCALING.md` — czytać przed każdą pracą nad skalowaniem, nie duplikować tutaj. Każdy krok stamtąd ma
 swój lokalny branch `replay/*` (manifesty z gałkami + przypięte obrazy w rejestrze) — odtworzenie stanu to
 `kubectl apply` manifestów z brancha. `make candidateSimulation` przeciw klastrowi sam robi wymuszony pełny GC w
@@ -36,16 +37,6 @@ lepszy (JIT, Cilium, nadrabianie Tempo/Kafki; dokładna przyczyna niezbadana). M
 stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
-
-0. **Kafelki podów na dashboardzie „Kubernetes Cluster” się nie sumują (dodane 2026-11-02).** „Total Pods” to
-   `count(kube_pod_info)` — liczy też pody zakończone (`Succeeded`), np. `hydra-clients-*` z Joba w `sso`, stąd
-   Total 127 vs Running 126 przy „Not Running” (`Pending|Failed|Unknown`) = 0. Do poprawienia razem:
-   - Total bez zakończonych, np. `count(kube_pod_status_phase{phase!="Succeeded"} == 1)`.
-   - Running wg gotowości zamiast fazy (`kube_pod_container_status_ready`) — pod w CrashLoopBackOff ma fazę
-     `Running` (pułapka „Running Pods” niżej); potem wykreślić ten panel z pkt 12.
-   - Zmiana w `kubernetes-cluster.json` i `dashboards-configmap.yaml`.
-   - Na razie odrzucone: `ttlSecondsAfterFinished` w Jobie `hydra-clients` — każde `kubectl apply -k` tworzyłoby
-     Job od nowa (ponowna rejestracja klientów).
 
 1. **Otwarte po read modelu `job_offer_match` (zmergowany 2026-10-23, wynik w RPS-SCALING).**
    - **Pauzy GC w `app-job-offers` (JFR 2026-10-23, 2M, 120 s pod obciążeniem)** — JVM jedzie na **Serial GC**:
@@ -167,6 +158,22 @@ stojącym kilka godzin.
      | sso-1 | 2,6% (Hydra 0,0011 CPU, jej Postgres 0,015) | bez problemu |
    - **Po dodaniu worker-6 (3× job-offers): 2100 rps, 0% KO, p99 98 ms** — szczegóły w RPS-SCALING (2026-10-31).
      Candidates na D0 tylko ~5% droższy od C1 (2,0 vs 1,9 CPU). platform-1 75%, db-2 53%.
+   - **2500 rps zmierzone 2026-11-02 na 14 płytkach: 0% KO, p99 225 ms** (szacunek z tabeli wyżej się sprawdził).
+     Appki ~2,4 z 3 CPU (throttling 6–9%), workery 81–85%, platform-1 86% (envoy 1,74 + agent cilium 1,45),
+     db-2 63%, Hydra 0,0012. Alloy na workerach throttlowany 34–37% — logi mogą się spóźniać pod tym ruchem.
+     15. płytka da zapas, nie wyższy sufit — Gateway jest tak samo zajęty jak workery.
+     **Fala 503 przy wygasaniu tokenu — naprawiona (`63252da`).** Wcześniejsze runy tego wieczoru: raz 0,45% KO
+     (503 z Envoya), raz „przyczkało”. Przyczyna: Spring (`AuthorizedClientServiceOAuth2AuthorizedClientManager`)
+     przy tokenie bliskim wygaśnięcia (60 s przed) pozwala każdemu requestowi pobrać własny → ~560 tokenów z Hydry
+     w minutę → ~560 missów cache'u introspekcji w job-offers → Hydra 66–273 ms → ~6k requestów w locie → circuit
+     breaker Envoya (1024, nie do zmiany w Cilium Gateway API) → 503. Teraz `TracedAuthorizedClientManager` puszcza
+     jedno wywołanie do Hydry, reszta czeka na nie. Sprawdzone testem z TTL tokenu 5 min (Hydra `TTL_ACCESS_TOKEN`,
+     potem przywrócone): ~1 token/min, 0×503. Diagnoza na przyszłość: `http_requests_total{endpoint="/oauth2/token"}`
+     w Hydrze (okno `[1m]`, scrape ~30 s) i `envoy_cluster_upstream_cx_active` dla klastra candidates.
+     Znany drobiazg: pojedyncze 500 „Connection reset” na keep-alive Feigna do job-offers (2 na 1,65M) — rzadkie,
+     nieruszane.
+     Screenshoty z runu z poprawką: `k8s-cluster/rps-history/2026-11-02-sso-2500/` (skrypt: headless Chrome przez
+     CDP, panele `d-solo` 1000×380 ×2, ciemny motyw).
    - **Do rozplanowania przy 15. płytce:**
      - Gateway: MetalLB L2 = cały ruch na jednym node'zie, druga replika nic nie da. Najpierw zmniejszyć koszt
        requestu (podejrzenie: `envoy-access-log-enabled: "true"` w `cilium-config` → logi L7 do agenta Cilium,
@@ -214,9 +221,21 @@ stojącym kilka godzin.
    - Nie zrobione: weryfikacja observability z `CLAUDE.md` (w tym linki logi ↔ trace) w Compose i na minikube po
      zmianach SSO — na klastrze trace'y z Hydrą sprawdzone ręcznie.
 
+11d. **Monitoring Postgresa od środka na klastrze (dodane 2026-11-02, user: „warto zrobić”).** Dziś dashboard
+   „Postgres Usage” na klastrze pokazuje tylko CPU/pamięć kontenera, pulę Hikari (widok appki) i dysk node'a, a
+   „HTTP Monitoring” czasy zapytań z appek. Metryk `pg_*` w Prometheusie brak — `postgres_exporter` jest tylko w
+   Compose (`compose.yml`, v0.20.1, README „Postgres”). Na k8s był dodany i wycofany w `a2f37c7` tylko dlatego, że
+   prośba dotyczyła samego Compose — gotowy sidecar + adnotacje Service są w `a2f37c7^` (`git show a2f37c7^:k8s-cluster/manifests/{candidates,job-offers}/postgres.yaml`).
+   - Co by dało: połączenia po stronie bazy wg stanu vs `max_connections` (150 w candidates), cache hit ratio,
+     transakcje/s, blokady, deadlocki, rozmiar bazy, martwe krotki i ostatni autovacuum — zwłaszcza na
+     `job_offer_match`, bo bez aktualnej visibility mapy index-only scan wraca do czytania tabeli (`CLAUDE.md`).
+   - Opcjonalnie `pg_stat_statements` (najwolniejsze/najczęstsze zapytania): wymaga
+     `shared_preload_libraries` → restart Postgresa i `CREATE EXTENSION`; sprawdzić koszt CPU przy 2500 rps.
+   - Panele: wziąć z dashboardu Compose (te same nazwy metryk po przejściu przez collector — uwaga na dopisywane
+     `_total`). Po wdrożeniu: 10-min test 2500 rps, czy exporter (scrape co 15 s) nie zabiera CPU z db-2 (~63%).
+
 12. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
-   GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
-   (świadomie tylko w Compose, `a2f37c7`), panel "Running Pods" liczący fazę zamiast gotowości kontenera.
+   GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa.
 
 ## Kluczowe pułapki / lekcje (żeby nie powtórzyć błędu)
 
@@ -364,15 +383,12 @@ stojącym kilka godzin.
   to appka/Cilium/apiserver.
 
 ### Observability / Tempo / dane
-- **Grafana "Running Pods" (`kubernetes-cluster-dashboard`) i Headlamp mogą się rozjeżdżać dla poda w
-  CrashLoopBackOff — to nie bug dashboardu, tylko inna metryka.** Panel liczy
-  `count(kube_pod_status_phase{phase="Running"} == 1)` — **faza poda**, nie gotowość kontenera. Pod w
-  CrashLoopBackOff zostaje w fazie `Running` między restartami (kubelet go faktycznie odpala, tylko kontener zaraz
-  pada), więc licznik go nie odejmuje. Headlamp czyta `containerStatuses[].ready` (per-kontener), co poprawnie
-  pokazuje `false`. Znalezione 2026-09-22: `tempo-block-builder-0` crash-looping, Headlamp poprawnie pokazywał
-  "1 down", Grafana dalej liczyła "111 up" (zgadza się z realną liczbą podów w klastrze — tylko "Running" nie
-  znaczy "zdrowy"). Do poprawy kiedyś: `kube_pod_container_status_ready` zamiast `kube_pod_status_phase` złapałby
-  ten przypadek, ale nie zrobione teraz (poza zakresem sesji).
+- **Kafelki podów na `kubernetes-cluster-dashboard` liczą gotowość, nie fazę (poprawione 2026-11-02).** Dawniej
+  „Running Pods” = `kube_pod_status_phase{phase="Running"}`: pod w CrashLoopBackOff zostaje w fazie `Running` między
+  restartami, więc Grafana pokazywała „111 up”, gdy Headlamp (`containerStatuses[].ready`) pokazywał „1 down”
+  (`tempo-block-builder-0`, 2026-09-22). A „Total Pods” = `count(kube_pod_info)` liczył też zakończone pody Joba
+  (`hydra-clients-*`, faza `Succeeded`) — 127 vs 126. Teraz Total = pody bez `Succeeded`, Ready/Not Ready z
+  `kube_pod_status_ready`, i Ready + Not Ready = Total. Nie wracać do fazy jako miary zdrowia.
 - **Tempo 3.x w trybie mikroserwisowym (`tempo-distributed`) wymaga Kafki** — to twardy wymóg architektury, nie
   opcja do wyłączenia. Monolityczny single-binary chart Tempo utknął na appVersion 2.10.8 i nigdy nie dostanie
   configu pod schemat Tempo 3.x (`app.Config` przebudowany od zera) — jedyna droga do Tempo 3.x to `tempo-distributed`.

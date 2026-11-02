@@ -113,7 +113,7 @@ Each result is the best ~10-minute run at a constant rate with 0% KO.
 | [2026-09-28](#2026-09-28--app-candidates--3) | `app-candidates` × 3, Hikari 40, `postgres-candidates` `max_connections=150` (`feff7ee`, `cd83f92`, `92979c4`) | **2100 rps** (+5%) | `postgres-job-offers` CPU |
 | [2026-10-18](#2026-10-18--search-answered-from-indexes-350k-job-offers) | **Dataset grown: 150k → 350k job offers, 100k → 200k candidates** ([Dataset](#dataset)); search answered from indexes with a GiST bounding box, Postgres `jit=off` + generic plans (`48b0e5d`) | **2100 rps** (+0%, on 2.3× the offers) | `postgres-job-offers` CPU |
 | [2026-10-23](#2026-10-23--search-reads-a-trigger-maintained-read-model-15m-job-offers) | **Dataset grown: 350k → 1.5M job offers** ([Dataset](#dataset)); search reads `job_offer_match`, a read model kept in sync by triggers, filtered from one covering index (`50ae17e`) | **2100 rps** (+0%, on 4.3× the offers) | `app-job-offers` Hikari pool + CPU |
-| [2026-10-31](#2026-10-31--sso-ory-hydra-with-cached-introspection-app-job-offers--3) | **SSO:** every call `app-candidates` → `app-job-offers` carries an Ory Hydra token, introspected in Hydra and cached for 60 s; `app-job-offers` × 3, on a new worker (`3078185`, `fd2a665`, `53976f4`, `b9153ef`) | **2100 rps** (+0%, now with SSO) | none saturated; next: the Gateway node (`platform-1` 75%) |
+| [2026-10-31](#2026-10-31--sso-ory-hydra-with-cached-introspection-app-job-offers--3) | **SSO:** every call `app-candidates` → `app-job-offers` carries an Ory Hydra token, introspected in Hydra and cached for 60 s; `app-job-offers` × 3, on a new worker; `app-candidates` fetches a new token once, not per request (`3078185`, `fd2a665`, `53976f4`, `b9153ef`, `63252da`) | **2500 rps** (+19%, now with SSO) | none alone — the workers (81-85%) and the Gateway node (`platform-1` 86%) together |
 
 ## Results
 
@@ -1522,8 +1522,8 @@ psql ... -c "VACUUM ANALYZE"
 
 ### 2026-10-31 — SSO (Ory Hydra) with cached introspection, `app-job-offers` × 3
 
-**2100 rps** — 10 min, 1,386,000 requests, 0% KO · bottleneck: none saturated; next is the Gateway node
-(`platform-1`, 75%)
+**2500 rps** — 10 min, 1,650,000 requests, 0% KO · bottleneck: none alone — the workers (81-85%) and the Gateway
+node (`platform-1`, 86%) together
 
 > [!IMPORTANT]
 > From this step on, every call from `app-candidates` to `app-job-offers` is authenticated through an SSO, and the
@@ -1532,9 +1532,10 @@ psql ... -c "VACUUM ANALYZE"
 <details>
 <summary>Details</summary>
 
-| p50 | p95 | p99 | max |
-|---|---|---|---|
-| 15 ms | 58 ms | 98 ms | 1,058 ms |
+| | p50 | p95 | p99 | max |
+|---|---|---|---|---|
+| 2100 rps (2026-10-31) | 15 ms | 58 ms | 98 ms | 1,058 ms |
+| **2500 rps** (2026-11-02) | 41 ms | 138 ms | 225 ms | 1,321 ms |
 
 **Change:** `app-candidates` gets a `client_credentials` token from **Ory Hydra** (v26.2.0, one replica on its own
 node) and Feign sends it with every search. `app-job-offers` checks the token by **introspection in Hydra**, not
@@ -1542,17 +1543,21 @@ locally, and caches the answer for an active token for 60 s (never past the toke
 per-request Micrometer observations are switched off (`SecurityObservationSettings.noObservations()`) — they took ~11%
 of `app-job-offers` CPU in a JFR profile. The SSO alone still costs CPU on every request (the security filter chain,
 the OAuth2 client), and with 2 replicas `app-job-offers` ran out of it, so a third replica went onto a new worker.
+When the token nears its expiry, one request fetches a new one from Hydra and the rest wait for it
+(`TracedAuthorizedClientManager`) — Spring's manager let each of them fetch its own (see the bottleneck below).
 
-| | Previous step (no SSO) | SSO, `app-job-offers` × 2 | SSO, `app-job-offers` × 3 |
-|---|---:|---:|---:|
-| KO at 2100 rps (10 min) | 0% | 5.81% (503) | **0%** |
-| p99 | 167 ms | 3,035 ms | **98 ms** |
-| `app-job-offers` CPU per replica | 2.35 of 3 | ~2.9 of 3, 47-53% throttled | **~1.8 of 3**, ~1% throttled |
-| `app-job-offers` CPU per request | ~2,250 µs | ~2,900 µs | ~2,620 µs |
-| `app-candidates` CPU per request | ~2,250 µs | ~2,750 µs | ~2,740 µs |
-| `postgres-job-offers` CPU | 1.82 of 3 | 1.73 of 3 | 1.88 of 3 |
-| Hydra CPU / its Postgres | — | 0.0011 / 0.015 | **0.0013 / 0.015** |
-| `platform-1` (Gateway) busy | — | 76% | 75% |
+| | Previous step (no SSO), 2100 rps | SSO, `app-job-offers` × 2, 2100 rps | SSO, `app-job-offers` × 3, 2100 rps | SSO, `app-job-offers` × 3, **2500 rps** |
+|---|---:|---:|---:|---:|
+| KO (10 min) | 0% | 5.81% (503) | **0%** | **0%** |
+| p99 | 167 ms | 3,035 ms | **98 ms** | 225 ms |
+| `app-job-offers` CPU per replica | 2.35 of 3 | ~2.9 of 3, 47-53% throttled | **~1.8 of 3**, ~1% throttled | ~2.4 of 3, 8-9% throttled |
+| `app-candidates` CPU per replica | — | — | ~1.9 of 3 | ~2.4 of 3, 6-8% throttled |
+| `app-job-offers` CPU per request | ~2,250 µs | ~2,900 µs | ~2,620 µs | ~2,900 µs |
+| `app-candidates` CPU per request | ~2,250 µs | ~2,750 µs | ~2,740 µs | ~2,910 µs |
+| `postgres-job-offers` CPU | 1.82 of 3 | 1.73 of 3 | 1.88 of 3 | 2.31 of 3 |
+| Hydra CPU / its Postgres | — | 0.0011 / 0.015 | **0.0013 / 0.015** | 0.0012 / 0.015 |
+| `worker-1`–`worker-6` busy | — | — | — | 81-85% |
+| `platform-1` (Gateway) busy | — | 76% | 75% | 86% |
 
 Introspection without the cache (measured 2026-10-26, Gatling over Wi-Fi, so only indicative): every request was a
 call to Hydra — ~1,750 µs of `app-job-offers` CPU per request, and one Hydra replica capped the system at ~1,350 rps
@@ -1560,9 +1565,24 @@ call to Hydra — ~1,750 µs of `app-job-offers` CPU per request, and one Hydra 
 higher. With the cache, Hydra answered ~280 introspections in 8.5 minutes of 2100 rps (52-81 misses per >1M lookups)
 — it no longer grows with the request rate.
 
-**Bottleneck:** nothing is saturated at 2100 rps. The next limit is the Gateway: `platform-1` runs at 75% (Cilium's
-Envoy 1.52 CPU, the Cilium agent 1.09, softirq ~0.5), roughly 3.8 of its 4 cores at 2500 rps. MetalLB's L2 mode
-sends all traffic for `.100` to that one node, so a second Gateway replica wouldn't share the load.
+**Bottleneck:** at 2100 rps nothing was saturated, so the same state was run at 2500 rps on 2026-11-02. The first
+runs held it with 0% KO and p99 330 ms, but one of them lost 0.45% to 503s in a single burst. The cause was the
+token: when it nears expiry (60 s before), Spring's `AuthorizedClientServiceOAuth2AuthorizedClientManager` lets every
+request that finds it so fetch its own — at 2500 rps ~560 calls to Hydra in a minute. Each new token was a miss in
+`app-job-offers`' introspection cache, so ~560 introspections hit Hydra too (66-273 ms each instead of ~1 ms), ~6k
+requests piled up in flight and the Gateway's Envoy answered 503 once its default circuit breaker (1024 pending
+requests per cluster, not configurable in Cilium's Gateway API) was full. With one token call shared by all the
+requests waiting for it (`63252da`), a test with a 5-minute token lifetime fetched ~1 token a minute and returned no
+503s.
+
+The run above is with that fix (and Hydra's default 1 h token lifetime): 0% KO, p99 225 ms, the apps' own p99 212 ms
+(`app-candidates`) and 92 ms (`app-job-offers`), and no minute with p99 above 240 ms. Envoy held at most 571
+connections to `app-candidates`, Hydra answered 86 introspections in 10 minutes (87 misses per 1.48M lookups). No
+single layer gives way, but every one on the request path is near its limit — the six workers at 81-85% (the app
+replicas at ~2.4 of 3 CPU, throttled 6-9%, CPU per request up ~10% from 2100 rps), `platform-1` at 86% (Cilium's
+Envoy 1.74 CPU, the Cilium agent 1.45) and `postgres-job-offers` at 2.31 of 3. Of these, `platform-1` is the one a
+15th board doesn't help: MetalLB's L2 mode sends all traffic for `.100` to that one node, so a second Gateway replica
+wouldn't share the load. Alloy on the workers was throttled 34-37% — its logs may lag under this load.
 
 <details>
 <summary>Key code changes</summary>
@@ -1618,6 +1638,35 @@ affinity:
               operator: In
               values: [c1]
 ```
+
+</details>
+
+<details>
+<summary>Screenshots (2500 rps, 2026-11-02)</summary>
+
+| Gatling — responses per second | Gatling — response time distribution |
+|---|---|
+| ![](rps-history/2026-11-02-sso-2500/gatling-rps.png) | ![](rps-history/2026-11-02-sso-2500/gatling-response-time-distribution.png) |
+
+| `postgres-candidates` CPU | `postgres-job-offers` CPU |
+|---|---|
+| ![](rps-history/2026-11-02-sso-2500/grafana-postgres-cpu-candidates.png) | ![](rps-history/2026-11-02-sso-2500/grafana-postgres-cpu.png) |
+
+| Hikari pending `app-candidates` | Hikari pending `app-job-offers` |
+|---|---|
+| ![](rps-history/2026-11-02-sso-2500/grafana-hikari-pending-candidates.png) | ![](rps-history/2026-11-02-sso-2500/grafana-hikari-pending-job-offers.png) |
+
+| JVM CPU `app-candidates` | JVM CPU `app-job-offers` |
+|---|---|
+| ![](rps-history/2026-11-02-sso-2500/grafana-jvm-cpu-candidates.png) | ![](rps-history/2026-11-02-sso-2500/grafana-jvm-cpu-job-offers.png) |
+
+| Heap `app-candidates` (one replica) | Heap `app-job-offers` (one replica) |
+|---|---|
+| ![](rps-history/2026-11-02-sso-2500/grafana-heap-candidates.png) | ![](rps-history/2026-11-02-sso-2500/grafana-heap-job-offers.png) |
+
+| CPU by node — the six workers and `platform-1` at 82-87% |
+|---|
+| ![](rps-history/2026-11-02-sso-2500/grafana-node-cpu.png) |
 
 </details>
 

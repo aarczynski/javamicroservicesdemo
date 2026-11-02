@@ -187,7 +187,7 @@ Calls from `app-candidates` to `app-job-offers` are authenticated through **[Ory
   Hydra together.
 * The trade-off of the cache: a token revoked in Hydra is still accepted for up to 60 s. Without it, every request was
   a call to Hydra, and one Hydra replica capped the whole system at ~1350 rps; with it, Hydra answers a handful of
-  introspections per minute at 2100 rps and uses ~0.001 CPU.
+  introspections per minute at 2500 rps and uses ~0.001 CPU.
 * Both apps call Hydra with a 2 s connect/read timeout (`candidates.security.sso-timeout`,
   `job-offers.security.sso-timeout`). With Hydra down, a request fails after ~2 s with 500 instead of hanging.
 * The OAuth2 clients are registered by
@@ -551,16 +551,18 @@ Sustained-load ceiling of the physical cluster, measured with `load-test` agains
 (`http://192.168.10.100`), client wired directly into the `192.168.10.0/24` VLAN (a Wi-Fi/inter-VLAN client
 introduces its own packet loss unrelated to the cluster — see [Known issues](#known-issues)).
 
-**Current ceiling: 2100 RPS, 0% KO held for 10 minutes, with every call between the apps authenticated through the
-[SSO](#sso)** (p99 98 ms), on 200k candidates / 1.5M job offers / 10k companies (see
+**Current ceiling: 2500 RPS, 0% KO held for 10 minutes, with every call between the apps authenticated through the
+[SSO](#sso)** (p99 225 ms; 98 ms at 2100 RPS), on 200k candidates / 1.5M job offers / 10k companies (see
 [Row counts](#row-counts-on-the-home-k8s-cluster)). The SSO costs CPU on every request (the security filter chain,
 the OAuth2 client), so `app-job-offers` runs 3 replicas since 2026-10-31 — with 2 they sat at their CPU limit and
-lost 5.8% to 503s. Nothing is saturated at 2100 RPS; the next limit is the Gateway's node (`platform-1` at 75%).
-Hydra itself uses ~0.001 CPU thanks to the introspection cache.
+lost 5.8% to 503s. At 2500 RPS no single layer gives way, but the whole request path runs near its limit: the six
+workers at 81-85% CPU and the Gateway's node (`platform-1`) at 86%. Hydra itself uses ~0.001 CPU thanks to the
+introspection cache.
 
 > [!NOTE]
-> **Target: 2500 RPS, then the cluster stops growing** — 15 boards at most (one more D0 board to come). Getting there
-> means taking load off the Gateway's node first, see [Future plans](#future-plans).
+> **2500 RPS was the last target, and the cluster stops growing** — 15 boards at most (one more D0 board to come),
+> which would add headroom, not a higher ceiling: the Gateway's node is as busy as the workers, see
+> [Future plans](#future-plans).
 
 > [!IMPORTANT]
 > **The dataset grew again on 2026-10-23** — 350k → 1.5M job offers (4.3×; 10× the original 150k), same 200k
@@ -838,9 +840,9 @@ new dependencies at [`k8s-cluster/manifests/kafka/`](k8s-cluster/manifests/kafka
   ~~Tail-based trace sampling~~ — done 2026-09-20 too, moved from the collector into the apps 2026-09-27, see
   [Traces](#traces).
 * ~~SSO between the apps~~ — done 2026-10-31 with Ory Hydra and cached introspection, see [SSO](#sso).
-* **2500 RPS, the last target** (15 boards at most). The Gateway's node is next: `platform-1` runs at 75% at 2100 RPS
-  (Cilium's Envoy ~1.5 CPU, the Cilium agent ~1.1, softirq ~0.5), and MetalLB's L2 mode sends all traffic for `.100`
-  to that one node. First check whether Envoy's L7 access logs to the Cilium agent (`envoy-access-log-enabled`) are
+* ~~2500 RPS, the last target~~ — reached 2026-11-02 on 14 boards, with ~15% headroom left on the request path. To
+  widen it, the Gateway's node first: `platform-1` runs at 86% at 2500 RPS (Cilium's Envoy ~1.7 CPU, the Cilium
+  agent ~1.5), and MetalLB's L2 mode sends all traffic for `.100` to that one node. First check whether Envoy's L7 access logs to the Cilium agent (`envoy-access-log-enabled`) are
   what keeps the agent busy; failing that, a second Gateway IP announced from another node, or BGP with ECMP.
 * The percentile-metrics estimation gap — see
   [Known issues](#known-issues).
