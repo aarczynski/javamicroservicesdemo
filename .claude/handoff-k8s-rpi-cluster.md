@@ -37,6 +37,16 @@ stojącym kilka godzin.
 
 ## TODO / Next steps (w kolejności priorytetu)
 
+0. **Kafelki podów na dashboardzie „Kubernetes Cluster” się nie sumują (dodane 2026-11-02).** „Total Pods” to
+   `count(kube_pod_info)` — liczy też pody zakończone (`Succeeded`), np. `hydra-clients-*` z Joba w `sso`, stąd
+   Total 127 vs Running 126 przy „Not Running” (`Pending|Failed|Unknown`) = 0. Do poprawienia razem:
+   - Total bez zakończonych, np. `count(kube_pod_status_phase{phase!="Succeeded"} == 1)`.
+   - Running wg gotowości zamiast fazy (`kube_pod_container_status_ready`) — pod w CrashLoopBackOff ma fazę
+     `Running` (pułapka „Running Pods” niżej); potem wykreślić ten panel z pkt 12.
+   - Zmiana w `kubernetes-cluster.json` i `dashboards-configmap.yaml`.
+   - Na razie odrzucone: `ttlSecondsAfterFinished` w Jobie `hydra-clients` — każde `kubectl apply -k` tworzyłoby
+     Job od nowa (ponowna rejestracja klientów).
+
 1. **Otwarte po read modelu `job_offer_match` (zmergowany 2026-10-23, wynik w RPS-SCALING).**
    - **Pauzy GC w `app-job-offers` (JFR 2026-10-23, 2M, 120 s pod obciążeniem)** — JVM jedzie na **Serial GC**:
      ergonomia wybiera G1 dopiero od ≥2 CPU **i ≥1792 MB** pamięci, a kontener ma limit 1536Mi. Heap
@@ -203,16 +213,6 @@ stojącym kilka godzin.
        `maxRps=1800 stepDuration=1m ramps=3`.
    - Nie zrobione: weryfikacja observability z `CLAUDE.md` (w tym linki logi ↔ trace) w Compose i na minikube po
      zmianach SSO — na klastrze trace'y z Hydrą sprawdzone ręcznie.
-
-11e. **Kafelki podów na dashboardzie „Kubernetes Cluster” się nie sumują (dodane 2026-11-02).** „Total Pods” to
-   `count(kube_pod_info)` — liczy też pody zakończone (`Succeeded`), np. `hydra-clients-*` z Joba w `sso`, stąd
-   Total 127 vs Running 126 przy „Not Running” (`Pending|Failed|Unknown`) = 0. Do poprawienia razem:
-   - Total bez zakończonych, np. `count(kube_pod_status_phase{phase!="Succeeded"} == 1)`.
-   - Running wg gotowości zamiast fazy (`kube_pod_container_status_ready`) — pod w CrashLoopBackOff ma fazę
-     `Running` (pułapka „Running Pods” niżej); potem wykreślić ten panel z pkt 12.
-   - Zmiana w `kubernetes-cluster.json` i `dashboards-configmap.yaml`.
-   - Na razie odrzucone: `ttlSecondsAfterFinished` w Jobie `hydra-clients` — każde `kubectl apply -k` tworzyłoby
-     Job od nowa (ponowna rejestracja klientów).
 
 12. Dalekie / niepriorytetowe: HA Postgresa (CloudNativePG/Patroni — `local-path` trzyma PV na dysku node'a),
    GitOps (ArgoCD/Flux), rozszerzenie `HTTPRoute`, dashboard I/O dysku Postgresa, `postgres-exporter` na k8s
